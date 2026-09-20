@@ -80,6 +80,9 @@ async function boot() {
   // حجم الخط المختار يُطبَّق قبل ظهور أي شيء
   applyFontScale();
 
+  // المظهر: يدوي / حسب الوقت / حسب الجهاز
+  applyThemeMode();
+
   setupPWAInstallPrompt();
 
   await loadChatPanelPartial();
@@ -90,6 +93,17 @@ async function boot() {
     data: { session },
   } = await supabase.auth.getSession();
 
+  // ننسخ الجلسة لمُشغِّل الخدمة (للرد من الإشعار بلا فتح التطبيق)
+  mirrorSession(session);
+
+  // تحديث النسخة دورياً حتى لا تنتهي صلاحية الرد السريع
+  setInterval(() => {
+    supabase.auth
+      .getSession()
+      .then(({ data }) => mirrorSession(data?.session))
+      .catch(() => {});
+  }, 5 * 60 * 1000);
+
   wireAuthForms();
   wireChrome();
 
@@ -97,6 +111,9 @@ async function boot() {
 
   if (session) {
     await enterApp();
+
+    // إن جاء المستخدم من زر «رد سريع» في الإشعار: نُرسل الرد فوراً
+    await handleUrlQuickReply();
   } else {
     showAuthScreen();
   }
@@ -105,6 +122,8 @@ async function boot() {
   // لا ننفذ طلبات Supabase متداخلة داخل قفل onAuthStateChange الداخلي.
   supabase.auth.onAuthStateChange((event, session) => {
     setTimeout(async () => {
+      if (session) mirrorSession(session);
+
       if (
         (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
         session?.user
@@ -850,11 +869,28 @@ async function renderAdminTools() {
   await loadAutoReplySettings();
   renderReplyPreview();
 
+  // التوقيع التلقائي: للمشرفين فقط
+  ["#signature-label", "#signature-input", "#btn-save-signature"].forEach((sel) =>
+    $(sel)?.classList.remove("hidden")
+  );
+
+  const signatureInput = $("#signature-input");
+  if (signatureInput && signatureInput.dataset.filled !== "1") {
+    signatureInput.dataset.filled = "1";
+    signatureInput.value = state.me.signature || "";
+  }
+
+  // ملخص اليوم: لكل مشرف
+  $("#summary-block")?.classList.remove("hidden");
+  renderDailySummary();
+
   if (state.me.is_super_admin) {
-    await Promise.all([loadAdminStats(), loadAdminUsers()]);
+    $("#activity-block")?.classList.remove("hidden");
+    await Promise.all([loadAdminStats(), loadAdminUsers(), renderActivityFeed()]);
   } else {
     $("#admin-stats")?.classList.add("hidden");
     $("#admin-manage-block")?.classList.add("hidden");
+    $("#activity-block")?.classList.add("hidden");
   }
 }
 
@@ -1372,6 +1408,992 @@ function wireQuickAuth() {
 // CHROME
 // ===============================================================
 
+// ===============================================================
+// الرد السريع من الإشعار
+//   • ننسخ جلسة الدخول إلى IndexedDB حتى يستطيع مُشغِّل الخدمة
+//     (Service Worker) إرسال الرد بلا فتح التطبيق.
+//   • وإن تعذّر ذلك (جلسة منتهية) نُرسل الرد بعد فتح التطبيق فوراً.
+// ===============================================================
+
+const QUICK_REPLIES = {
+  "reply-done": "✅ تمّت معالجة طلبك، شكراً لتواصلك معنا.",
+  "reply-ack": "👋 وصلنا رسالتك، وسيتم الرد عليك في أقرب وقت.",
+};
+
+function mirrorSession(session) {
+  try {
+    if (!session?.access_token) return;
+
+    const request = indexedDB.open("messi-auth", 1);
+
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains("session")) {
+        db.createObjectStore("session", { keyPath: "key" });
+      }
+    };
+
+    request.onsuccess = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains("session")) return;
+
+      const tx = db.transaction("session", "readwrite");
+      tx.objectStore("session").put({
+        key: "current",
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        expires_at: session.expires_at,
+        user_id: session.user?.id || null,
+      });
+
+      // اسم المشرف الحالي (لعرضه في الإشعار لاحقاً عند الحاجة)
+      tx.objectStore("session").put({
+        key: "user",
+        user_id: session.user?.id || null,
+      });
+    };
+  } catch (err) {
+    console.warn("mirrorSession failed:", err);
+  }
+}
+
+async function handleUrlQuickReply() {
+  const params = new URLSearchParams(window.location.search);
+  const action = params.get("quickreply");
+  const conversationId = params.get("conversation");
+
+  if (!action || !conversationId) return;
+
+  const text = QUICK_REPLIES[action];
+  if (!text) return;
+
+  // قد يكون مسار الإشعار فتح المحادثة أصلاً
+  if (String(state.activeConversation?.id) !== String(conversationId)) {
+    const contact = (state.contacts || []).find(
+      (c) => String(c._conversationId) === String(conversationId)
+    );
+
+    if (contact) {
+      await openConversation(contact);
+    } else {
+      await openConversationById(conversationId);
+    }
+  }
+
+  if (String(state.activeConversation?.id) !== String(conversationId)) {
+    showAuthError("تعذّر فتح المحادثة لإرسال الرد السريع.");
+    return;
+  }
+
+  await sendMessage({ content: text });
+
+  window.history.replaceState({}, "", window.location.pathname);
+}
+
+// ===============================================================
+// مزايا الإدارة الموسّعة
+//   1) البحث في المحادثات وفي داخل الرسائل
+//   2) تصنيف المحادثات + فلتر سريع
+//   3) الوسوم والملاحظات الداخلية
+//   4) الكتم والأرشفة
+//   5) سجل نشاط المشرفين
+//   6) التوقيع التلقائي
+//   7) تصدير المحادثات (Excel / PDF)
+//   8) الملخص اليومي
+// ===============================================================
+
+const STATUS_LABELS = { new: "جديد", pending: "بانتظار رد", done: "تمّت المعالجة" };
+const STATUS_ICONS = { new: "🆕", pending: "⏳", done: "✅" };
+const QUICK_TAGS = ["عميل مهم", "عاجل", "شكوى", "استفسار", "متابعة", "مغلق"];
+
+const FILTER_LABELS = {
+  all: "الكل",
+  unread: "غير مقروء",
+  new: "جديد",
+  pending: "بانتظار رد",
+  done: "تمّت",
+  archived: "المؤرشفة",
+};
+
+state.adminMeta = state.adminMeta || {};
+state.contactFilter = state.contactFilter || "all";
+state.searchQuery = state.searchQuery || "";
+state.msgSearch = state.msgSearch || { query: "", hits: [], index: -1 };
+
+// ---------------------------------------------------------------
+// 1) بيانات الإدارة لكل محادثة
+// ---------------------------------------------------------------
+
+async function loadAdminMeta() {
+  if (!state.me?.is_admin) return;
+
+  try {
+    const { data, error } = await supabase.rpc("admin_conversations_overview");
+    if (error) throw error;
+
+    const map = {};
+
+    (Array.isArray(data) ? data : []).forEach((row) => {
+      map[row.conversation_id] = {
+        status: row.status || "new",
+        tags: Array.isArray(row.tags) ? row.tags : [],
+        note: row.note || "",
+        muted: Boolean(row.muted),
+        archived: Boolean(row.archived),
+      };
+    });
+
+    state.adminMeta = map;
+
+    Object.keys(map).forEach(paintContactMeta);
+    applyContactFilters();
+  } catch (err) {
+    console.warn("loadAdminMeta failed:", err);
+  }
+}
+
+function metaFor(conversationId) {
+  return (
+    state.adminMeta[conversationId] || {
+      status: "new",
+      tags: [],
+      note: "",
+      muted: false,
+      archived: false,
+    }
+  );
+}
+
+// يرسم شارات الحالة والوسوم والكتم على صف المحادثة
+function paintContactMeta(conversationId) {
+  const row = state.contactElements?.[conversationId];
+  if (!row) return;
+
+  const meta = metaFor(conversationId);
+
+  let box = row.querySelector(".contact-badges");
+
+  if (!meta.tags.length && meta.status === "new" && !meta.muted) {
+    box?.remove();
+    return;
+  }
+
+  if (!box) {
+    box = document.createElement("div");
+    box.className = "contact-badges";
+    row.appendChild(box);
+  }
+
+  box.innerHTML = `
+    ${meta.muted ? '<span class="mini-icon" title="مكتومة">🔇</span>' : ""}
+    ${
+      meta.status !== "new"
+        ? `<span class="status-chip st-${meta.status}" title="حالة المحادثة">${STATUS_ICONS[meta.status]} ${STATUS_LABELS[meta.status]}</span>`
+        : ""
+    }
+    ${meta.tags
+      .slice(0, 3)
+      .map((t) => `<span class="tag-chip">${escapeHtml(t)}</span>`)
+      .join("")}
+  `;
+}
+
+// ---------------------------------------------------------------
+// 2) البحث + الفلتر السريع
+// ---------------------------------------------------------------
+
+function applyContactFilters() {
+  const indexes = state.contactElements || {};
+  const query = state.searchQuery.trim().toLowerCase();
+  const filter = state.contactFilter;
+
+  Object.entries(indexes).forEach(([conversationId, row]) => {
+    const meta = metaFor(conversationId);
+
+    const text = row.textContent.toLowerCase();
+    const matchesText = !query || text.includes(query);
+
+    let matchesFilter = true;
+
+    if (filter === "unread") matchesFilter = Number(row.dataset.unread || 0) > 0;
+    else if (filter === "archived") matchesFilter = meta.archived;
+    else if (filter === "all") matchesFilter = !meta.archived;
+    else matchesFilter = meta.status === filter && !meta.archived;
+
+    row.classList.toggle("filtered-out", !(matchesText && matchesFilter));
+  });
+
+  const visible = Object.values(indexes).filter(
+    (row) => !row.classList.contains("filtered-out")
+  ).length;
+
+  const empty = $("#contact-empty-filter");
+
+  if (empty) {
+    empty.classList.toggle("hidden", visible > 0 || (!query && filter === "all"));
+  }
+}
+
+function wireContactFilters() {
+  const bar = $("#chat-filters");
+  if (bar && bar.dataset.wired !== "1") {
+    bar.dataset.wired = "1";
+
+    bar.innerHTML = Object.entries(FILTER_LABELS)
+      .map(
+        ([key, label]) =>
+          `<button type="button" data-filter="${key}" class="${key === state.contactFilter ? "active" : ""}">${label}</button>`
+      )
+      .join("");
+
+    bar.addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-filter]");
+      if (!btn) return;
+
+      state.contactFilter = btn.dataset.filter;
+      bar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+      applyContactFilters();
+    });
+  }
+
+  const search = $("#contact-search");
+  if (search && search.dataset.wired !== "1") {
+    search.dataset.wired = "1";
+    search.addEventListener("input", () => {
+      state.searchQuery = search.value;
+      applyContactFilters();
+    });
+  }
+
+  // فلتر الحالة يظهر للمشرفين فقط
+  bar?.classList.toggle("hidden", !state.me?.is_admin);
+  if (bar && state.me?.is_admin) {
+    bar.querySelectorAll("button").forEach((b) =>
+      b.classList.toggle("active", b.dataset.filter === state.contactFilter)
+    );
+  }
+}
+
+// ---------------------------------------------------------------
+// 3) البحث داخل الرسائل
+// ---------------------------------------------------------------
+
+function toggleMessageSearch(force) {
+  const bar = $("#chat-search-bar");
+  if (!bar) return;
+
+  const show = force ?? bar.classList.contains("hidden");
+
+  bar.classList.toggle("hidden", !show);
+
+  if (show) {
+    $("#chat-search-input")?.focus();
+  } else {
+    clearMessageSearch();
+  }
+}
+
+function clearMessageSearch() {
+  state.msgSearch = { query: "", hits: [], index: -1 };
+
+  document.querySelectorAll(".bubble-row.search-hit, .bubble-row.search-current").forEach((row) => {
+    row.classList.remove("search-hit", "search-current");
+  });
+
+  const input = $("#chat-search-input");
+  if (input) input.value = "";
+
+  const count = $("#chat-search-count");
+  if (count) count.textContent = "";
+
+  refreshSearchHighlights();
+}
+
+function runMessageSearch(query) {
+  const clean = (query || "").trim().toLowerCase();
+
+  state.msgSearch = { query: clean, hits: [], index: -1 };
+
+  document.querySelectorAll(".bubble-row.search-hit, .bubble-row.search-current").forEach((row) => {
+    row.classList.remove("search-hit", "search-current");
+  });
+
+  if (!clean) {
+    refreshSearchHighlights();
+    if ($("#chat-search-count")) $("#chat-search-count").textContent = "";
+    return;
+  }
+
+  state.messages.forEach((m) => {
+    const content = (m.content || "").toLowerCase();
+    if (content.includes(clean)) state.msgSearch.hits.push(m.id);
+  });
+
+  const count = $("#chat-search-count");
+
+  if (count) {
+    count.textContent = state.msgSearch.hits.length
+      ? `0 / ${state.msgSearch.hits.length}`
+      : "لا نتائج";
+  }
+
+  refreshSearchHighlights();
+
+  if (state.msgSearch.hits.length) goToSearchHit(0);
+}
+
+function goToSearchHit(index) {
+  const hits = state.msgSearch.hits;
+  if (!hits.length) return;
+
+  const next = (index + hits.length) % hits.length;
+  state.msgSearch.index = next;
+
+  document.querySelectorAll(".bubble-row.search-current").forEach((row) => {
+    row.classList.remove("search-current");
+  });
+
+  const box = $("#chat-messages");
+  const row = box?.querySelector(`[data-message-id="${hits[next]}"]`);
+
+  if (row) {
+    row.classList.add("search-hit", "search-current");
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+  }
+
+  const count = $("#chat-search-count");
+  if (count) count.textContent = `${next + 1} / ${hits.length}`;
+}
+
+// تلوين الكلمات المطابقة داخل نص الرسائل
+function refreshSearchHighlights() {
+  const query = state.msgSearch?.query || "";
+
+  document.querySelectorAll("#chat-messages .bubble-text").forEach((el) => {
+    const original = el.dataset.rawText;
+
+    if (original === undefined) return;
+
+    if (!query) {
+      if (el.dataset.marked === "1") {
+        el.textContent = original;
+        el.dataset.marked = "0";
+      }
+      return;
+    }
+
+    const lower = original.toLowerCase();
+    let html = "";
+    let cursor = 0;
+    let found = false;
+
+    while (true) {
+      const at = lower.indexOf(query, cursor);
+      if (at === -1) break;
+
+      found = true;
+      html += escapeHtml(original.slice(cursor, at));
+      html += `<mark>${escapeHtml(original.slice(at, at + query.length))}</mark>`;
+      cursor = at + query.length;
+    }
+
+    if (!found) {
+      if (el.dataset.marked === "1") {
+        el.textContent = original;
+        el.dataset.marked = "0";
+      }
+      return;
+    }
+
+    html += escapeHtml(original.slice(cursor));
+    el.innerHTML = html;
+    el.dataset.marked = "1";
+  });
+}
+
+function wireMessageSearch() {
+  $("#chat-search-toggle")?.addEventListener("click", () => toggleMessageSearch());
+  $("#chat-search-close")?.addEventListener("click", () => toggleMessageSearch(false));
+  $("#chat-search-prev")?.addEventListener("click", () => goToSearchHit(state.msgSearch.index - 1));
+  $("#chat-search-next")?.addEventListener("click", () => goToSearchHit(state.msgSearch.index + 1));
+
+  $("#chat-search-input")?.addEventListener("input", (event) => {
+    runMessageSearch(event.target.value);
+  });
+
+  $("#chat-search-input")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      goToSearchHit(state.msgSearch.index + 1);
+    }
+    if (event.key === "Escape") toggleMessageSearch(false);
+  });
+}
+
+// ---------------------------------------------------------------
+// 4) الحالة والوسوم والملاحظات والكتم/الأرشفة
+// ---------------------------------------------------------------
+
+async function setConversationStatus(conversationId, status) {
+  if (!state.me?.is_admin || !conversationId) return;
+
+  const { error } = await supabase.rpc("set_conversation_status", {
+    p_conversation_id: conversationId,
+    p_status: status,
+  });
+
+  if (error) {
+    showAuthError("تعذّر تغيير الحالة: " + error.message);
+    return;
+  }
+
+  state.adminMeta[conversationId] = { ...metaFor(conversationId), status };
+
+  paintContactMeta(conversationId);
+  applyContactFilters();
+  renderNotesPanel();
+  updateChatStatusChip();
+
+  showAuthError(`تم تعيين الحالة: ${STATUS_LABELS[status]}`);
+}
+
+async function toggleConversationMute(conversationId) {
+  const meta = metaFor(conversationId);
+  const next = !meta.muted;
+
+  const { error } = await supabase.rpc("set_conversation_prefs", {
+    p_conversation_id: conversationId,
+    p_muted: next,
+    p_archived: meta.archived,
+  });
+
+  if (error) {
+    showAuthError("تعذّر التغيير: " + error.message);
+    return;
+  }
+
+  state.adminMeta[conversationId] = { ...meta, muted: next };
+  paintContactMeta(conversationId);
+  updateAdminConversationOptions();
+  showAuthError(next ? "🔇 تم كتم المحادثة." : "🔔 تم إلغاء الكتم.");
+}
+
+async function toggleConversationArchive(conversationId) {
+  const meta = metaFor(conversationId);
+  const next = !meta.archived;
+
+  const { error } = await supabase.rpc("set_conversation_prefs", {
+    p_conversation_id: conversationId,
+    p_muted: meta.muted,
+    p_archived: next,
+  });
+
+  if (error) {
+    showAuthError("تعذّر التغيير: " + error.message);
+    return;
+  }
+
+  state.adminMeta[conversationId] = { ...meta, archived: next };
+  paintContactMeta(conversationId);
+  applyContactFilters();
+  updateAdminConversationOptions();
+  showAuthError(next ? "📦 تم أرشفة المحادثة." : "تم إرجاع المحادثة من الأرشيف.");
+}
+
+async function logConversationView(conversationId) {
+  if (!state.me?.is_admin || !conversationId) return;
+  try {
+    await supabase.rpc("log_conversation_view", { p_conversation_id: conversationId });
+  } catch (_) {}
+}
+
+// ---------------------------------------------------------------
+// لوحة الملاحظات الداخلية
+// ---------------------------------------------------------------
+
+function openNotesPanel() {
+  const panel = $("#notes-panel");
+  if (!panel || !state.me?.is_admin || !state.activeConversation) return;
+
+  renderNotesPanel();
+  panel.classList.remove("hidden");
+}
+
+function closeNotesPanel() {
+  $("#notes-panel")?.classList.add("hidden");
+}
+
+function renderNotesPanel() {
+  const conv = state.activeConversation;
+  if (!conv) return;
+
+  const meta = metaFor(conv.id);
+
+  const statusBox = $("#notes-status");
+  if (statusBox) {
+    statusBox.innerHTML = Object.entries(STATUS_LABELS)
+      .map(
+        ([key, label]) =>
+          `<button type="button" data-status="${key}" class="${meta.status === key ? "active" : ""}">${STATUS_ICONS[key]} ${label}</button>`
+      )
+      .join("");
+  }
+
+  const tags = $("#notes-tags");
+  if (tags && tags.dataset.filled !== conv.id) {
+    tags.value = meta.tags.join("، ");
+    tags.dataset.filled = conv.id;
+  }
+
+  const text = $("#notes-text");
+  if (text && text.dataset.filled !== conv.id) {
+    text.value = meta.note || "";
+    text.dataset.filled = conv.id;
+  }
+
+  const suggestions = $("#notes-tag-suggestions");
+  if (suggestions) {
+    suggestions.innerHTML = QUICK_TAGS.map(
+      (t) => `<button type="button" class="tag-suggestion">${t}</button>`
+    ).join("");
+  }
+}
+
+async function saveNotesPanel() {
+  const conv = state.activeConversation;
+  const status = $("#notes-status-text");
+
+  if (!conv) return;
+
+  const rawTags = $("#notes-tags")?.value || "";
+  const note = $("#notes-text")?.value || "";
+
+  const tags = rawTags
+    .split(/[،,\n]/)
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  setAdminStatusText(status, "جارٍ الحفظ…");
+
+  const { error } = await supabase.rpc("save_conversation_internal", {
+    p_conversation_id: conv.id,
+    p_tags: tags,
+    p_note: note,
+  });
+
+  if (error) {
+    setAdminStatusText(status, "تعذّر الحفظ: " + error.message, "err");
+    return;
+  }
+
+  state.adminMeta[conv.id] = { ...metaFor(conv.id), tags, note };
+
+  paintContactMeta(conv.id);
+  setAdminStatusText(status, "✔ تم حفظ الملاحظات الداخلية.");
+}
+
+function wireNotesPanel() {
+  $("#chat-notes-toggle")?.addEventListener("click", openNotesPanel);
+  $("#notes-close")?.addEventListener("click", closeNotesPanel);
+  $("#notes-save")?.addEventListener("click", saveNotesPanel);
+
+  $("#notes-panel")?.addEventListener("click", (event) => {
+    if (event.target.id === "notes-panel") closeNotesPanel();
+
+    const statusBtn = event.target.closest("button[data-status]");
+    if (statusBtn) {
+      setConversationStatus(state.activeConversation?.id, statusBtn.dataset.status);
+    }
+
+    const tagBtn = event.target.closest(".tag-suggestion");
+    if (tagBtn) {
+      const field = $("#notes-tags");
+      if (!field) return;
+
+      const current = field.value.split(/[،,\n]/).map((t) => t.trim()).filter(Boolean);
+      if (!current.includes(tagBtn.textContent)) current.push(tagBtn.textContent);
+
+      field.value = current.join("، ");
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeNotesPanel();
+  });
+}
+
+// شارة الحالة في رأس المحادثة
+function updateChatStatusChip() {
+  const chip = $("#chat-status-chip");
+  const conv = state.activeConversation;
+
+  if (!chip || !conv || !state.me?.is_admin) return;
+
+  const meta = metaFor(conv.id);
+
+  chip.className = `status-chip st-${meta.status}`;
+  chip.textContent = `${STATUS_ICONS[meta.status]} ${STATUS_LABELS[meta.status]}`;
+  chip.classList.toggle("hidden", meta.status === "new");
+}
+
+// ---------------------------------------------------------------
+// 5) التوقيع التلقائي
+// ---------------------------------------------------------------
+
+function applySignatureToContent(content) {
+  const signature = state.me?.signature;
+
+  if (!content || !signature || !state.me?.is_admin) return content;
+  if (content.includes(signature)) return content;
+
+  return `${content}\n\n—\n${signature}`;
+}
+
+async function saveMySignature() {
+  const input = $("#signature-input");
+  const status = $("#signature-status");
+  const value = input?.value || "";
+
+  setAdminStatusText(status, "جارٍ الحفظ…");
+
+  const { data, error } = await supabase.rpc("set_my_signature", {
+    p_signature: value,
+  });
+
+  if (error) {
+    setAdminStatusText(status, "تعذّر الحفظ: " + error.message, "err");
+    return;
+  }
+
+  state.me.signature = data?.signature || null;
+  if (input) {
+    input.value = state.me.signature || "";
+    input.dataset.filled = "1";
+  }
+
+  setAdminStatusText(status, "✔ تم حفظ التوقيع — سيظهر أسفل ردودك.");
+}
+
+// ---------------------------------------------------------------
+// 6) تصدير المحادثة (Excel / PDF)
+// ---------------------------------------------------------------
+
+function downloadTextFile(filename, text, mime) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+
+function conversationFileBase() {
+  const conv = state.activeConversation;
+  const name = conv?.otherProfile?.display_name || "محادثة";
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+  return `${name}-${stamp}`;
+}
+
+function exportConversationCSV() {
+  const rows = [
+    ["التاريخ والوقت", "المرسل", "النص", "النوع", "رابط المرفق"],
+  ];
+
+  state.messages.forEach((m) => {
+    rows.push([
+      new Date(m.created_at).toLocaleString("ar-SA"),
+      isMessageMine(m) ? "أنا" : state.me?.is_admin ? "المستخدم" : "المشرف",
+      (m.content || "").replace(/[\r\n]+/g, " "),
+      m.attachment_type || "نص",
+      m.attachment_url || "",
+    ]);
+  });
+
+  const csv =
+    "\uFEFF" +
+    rows
+      .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\r\n");
+
+  downloadTextFile(`${conversationFileBase()}.csv`, csv, "text/csv;charset=utf-8;");
+  showAuthError("✔ تم تصدير المحادثة (ملف CSV يفتح في Excel).");
+}
+
+function printConversation() {
+  const conv = state.activeConversation;
+  if (!conv) return;
+
+  const name = conv.otherProfile?.display_name || "محادثة";
+
+  const body = state.messages
+    .map((m) => {
+      const mine = isMessageMine(m);
+      const who = mine ? "أنا" : name;
+      const when = new Date(m.created_at).toLocaleString("ar-SA");
+      const text = escapeHtml(m.content || (m.attachment_type ? `[${m.attachment_type}]` : ""));
+      return `
+        <div class="m ${mine ? "mine" : "theirs"}">
+          <div class="head"><b>${escapeHtml(who)}</b><span>${when}</span></div>
+          <div class="txt">${text}</div>
+        </div>`;
+    })
+    .join("");
+
+  const win = window.open("", "_blank");
+  if (!win) {
+    showAuthError("اسمح بالنوافذ المنبثقة للطباعة أو الحفظ PDF.");
+    return;
+  }
+
+  win.document.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<title>محادثة ${escapeHtml(name)}</title>
+<style>
+  body { font-family: "Segoe UI", Tahoma, sans-serif; padding: 24px; color: #111b21; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .meta { color: #667781; font-size: 12px; margin-bottom: 18px; }
+  .m { border: 1px solid #e9edef; border-radius: 8px; padding: 8px 12px; margin: 8px 0; page-break-inside: avoid; }
+  .m.mine { background: #d9fdd3; }
+  .head { display: flex; justify-content: space-between; font-size: 12px; color: #54656f; }
+  .txt { white-space: pre-wrap; font-size: 14px; margin-top: 4px; }
+  @media print { .m { border-color: #ddd; } }
+</style>
+</head>
+<body>
+  <h1>محادثة: ${escapeHtml(name)}</h1>
+  <div class="meta">
+    عدد الرسائل: ${state.messages.length} ·
+    تاريخ الطباعة: ${new Date().toLocaleString("ar-SA")}
+  </div>
+  ${body}
+  <script>setTimeout(function(){ window.print(); }, 350);<\/script>
+</body>
+</html>`);
+
+  win.document.close();
+}
+
+// ---------------------------------------------------------------
+// 7) سجل النشاط + الملخص اليومي
+// ---------------------------------------------------------------
+
+const ACTIVITY_LABELS = {
+  replied: { icon: "💬", label: "ردّ على" },
+  viewed: { icon: "👁️", label: "فتح" },
+  status: { icon: "🏷️", label: "غيّر حالة" },
+  note: { icon: "📝", label: "كتب ملاحظة على" },
+};
+
+async function renderActivityFeed() {
+  const box = $("#activity-list");
+  if (!box || !state.me?.is_admin) return;
+
+  box.innerHTML = `<div class="admin-hint">جارٍ التحميل…</div>`;
+
+  const { data, error } = await supabase.rpc("admin_activity_feed", { p_limit: 60 });
+
+  if (error) {
+    box.innerHTML = `<div class="admin-hint err">تعذّر التحميل: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  const items = Array.isArray(data) ? data : [];
+
+  if (!items.length) {
+    box.innerHTML = `<div class="admin-hint">لا يوجد نشاط مسجَّل بعد.</div>`;
+    return;
+  }
+
+  box.innerHTML = items
+    .map((a) => {
+      const info = ACTIVITY_LABELS[a.action] || { icon: "•", label: a.action };
+      const when = new Date(a.created_at).toLocaleString("ar-SA", {
+        day: "2-digit",
+        month: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      return `
+        <div class="activity-row">
+          <span class="activity-icon">${info.icon}</span>
+          <div class="activity-body">
+            <div class="activity-line">
+              <b>${escapeHtml(a.admin_name || "مشرف")}</b>
+              ${info.label}
+              <b>${escapeHtml(a.user_name || "")}</b>
+            </div>
+            ${a.detail ? `<div class="activity-detail">${escapeHtml(a.detail)}</div>` : ""}
+            <div class="activity-time">${when}</div>
+          </div>
+        </div>`;
+    })
+    .join("");
+}
+
+async function renderDailySummary() {
+  const box = $("#summary-body");
+  if (!box || !state.me?.is_admin) return;
+
+  box.innerHTML = `<div class="admin-hint">جارٍ التحميل…</div>`;
+
+  const { data, error } = await supabase.rpc("daily_summary");
+
+  if (error) {
+    box.innerHTML = `<div class="admin-hint err">تعذّر التحميل: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  const s = data || {};
+
+  const tile = (label, value) =>
+    `<div class="admin-stat"><b>${value ?? 0}</b><span>${label}</span></div>`;
+
+  const top = Array.isArray(s.top_admins) && s.top_admins.length
+    ? `<div class="summary-top">
+         ${s.top_admins
+           .map(
+             (t) =>
+               `<div class="summary-top-row"><span>${escapeHtml(t.name)}</span><b>${t.replies}</b></div>`
+           )
+           .join("")}
+       </div>`
+    : `<div class="admin-hint">لا ردود مسجَّلة اليوم بعد.</div>`;
+
+  box.innerHTML = `
+    <div class="admin-stats">
+      ${tile("محادثات جديدة", s.new_conversations)}
+      ${tile("رسائل واردة", s.messages_received)}
+      ${tile("ردود مرسلة", s.messages_sent)}
+      ${tile("بانتظار رد", s.waiting_reply)}
+      ${tile("غير محسومة", s.unresolved)}
+      ${tile("إجمالي المحادثات", s.total_conversations)}
+    </div>
+    <div class="summary-title">أكثر المشرفين ردّاً اليوم</div>
+    ${top}
+    <div class="admin-hint">أُعدّ في ${new Date(s.generated_at || Date.now()).toLocaleString("ar-SA")}</div>
+  `;
+}
+
+// ---------------------------------------------------------------
+// 8) الوضع الليلي التلقائي
+// ---------------------------------------------------------------
+
+function applyThemeMode() {
+  const mode = localStorage.getItem("wa_theme_mode") || "manual";
+
+  let theme = state.theme;
+
+  if (mode === "system") {
+    theme = window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  } else if (mode === "time") {
+    const hour = new Date().getHours();
+    theme = hour >= 18 || hour < 6 ? "dark" : "light";
+  }
+
+  document.body.setAttribute("data-theme", theme);
+  applyChatBackground();
+}
+
+function wireThemeMode() {
+  const select = $("#theme-mode");
+  if (!select || select.dataset.wired === "1") return;
+
+  select.dataset.wired = "1";
+  select.value = localStorage.getItem("wa_theme_mode") || "manual";
+
+  select.addEventListener("change", () => {
+    localStorage.setItem("wa_theme_mode", select.value);
+    applyThemeMode();
+  });
+
+  window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener?.("change", () => {
+    if ((localStorage.getItem("wa_theme_mode") || "manual") === "system") applyThemeMode();
+  });
+
+  // إعادة التقييم كل 10 دقائق في الوضع الزمني
+  setInterval(() => {
+    if ((localStorage.getItem("wa_theme_mode") || "manual") !== "manual") applyThemeMode();
+  }, 10 * 60 * 1000);
+}
+
+// ---------------------------------------------------------------
+// قائمة خيارات المحادثة: عناصر الإدارة
+// ---------------------------------------------------------------
+
+function updateAdminConversationOptions() {
+  const conv = state.activeConversation;
+  const box = $("#chat-options-menu");
+  const existing = $("#chat-admin-options");
+
+  existing?.remove();
+
+  if (!box || !conv || !state.me?.is_admin) return;
+
+  const meta = metaFor(conv.id);
+
+  const wrap = document.createElement("div");
+  wrap.id = "chat-admin-options";
+
+  wrap.innerHTML = `
+    <button type="button" class="chat-option" data-admin-act="pending">⏳ بانتظار رد</button>
+    <button type="button" class="chat-option" data-admin-act="done">✅ تمّت المعالجة</button>
+    <button type="button" class="chat-option" data-admin-act="notes">📝 ملاحظات ووسوم</button>
+    <button type="button" class="chat-option" data-admin-act="mute">${meta.muted ? "🔔 إلغاء الكتم" : "🔇 كتم المحادثة"}</button>
+    <button type="button" class="chat-option" data-admin-act="archive">${meta.archived ? "📤 إخراج من الأرشيف" : "📦 أرشفة المحادثة"}</button>
+    <button type="button" class="chat-option" data-admin-act="csv">📊 تصدير Excel (CSV)</button>
+    <button type="button" class="chat-option" data-admin-act="print">🖨️ طباعة / حفظ PDF</button>
+  `;
+
+  box.appendChild(wrap);
+
+  wrap.addEventListener("click", (event) => {
+    const btn = event.target.closest("[data-admin-act]");
+    if (!btn) return;
+
+    box.classList.add("hidden");
+
+    const act = btn.dataset.adminAct;
+
+    if (act === "pending" || act === "done") setConversationStatus(conv.id, act);
+    else if (act === "notes") openNotesPanel();
+    else if (act === "mute") toggleConversationMute(conv.id);
+    else if (act === "archive") toggleConversationArchive(conv.id);
+    else if (act === "csv") exportConversationCSV();
+    else if (act === "print") printConversation();
+  });
+}
+
+// ---------------------------------------------------------------
+// الربط الشامل
+// ---------------------------------------------------------------
+
+function wireAdminFeatures() {
+  wireContactFilters();
+  wireMessageSearch();
+  wireNotesPanel();
+  wireThemeMode();
+
+  $("#btn-refresh-activity")?.addEventListener("click", renderActivityFeed);
+  $("#btn-refresh-summary")?.addEventListener("click", renderDailySummary);
+  $("#btn-save-signature")?.addEventListener("click", saveMySignature);
+
+  const themeToggle = $("#theme-toggle");
+  themeToggle?.addEventListener("click", () => {
+    // أي نقرة على زر المظهر تُلغي الوضع التلقائي
+    localStorage.setItem("wa_theme_mode", "manual");
+    const select = $("#theme-mode");
+    if (select) select.value = "manual";
+  });
+}
+
 function wireChrome() {
   $("#btn-settings")?.addEventListener("click", () => {
     const panel = $("#settings-panel");
@@ -1383,6 +2405,7 @@ function wireChrome() {
   wireAdminTools();
   wirePreferences();
   wireQuickAuth();
+  wireAdminFeatures();
 
   $("#btn-logout")?.addEventListener("click", async () => {
     await signOut(state.me?.id);
@@ -1623,6 +2646,9 @@ async function loadContacts() {
     const cached = await getCachedContacts();
     renderContactsFromCache(cached);
   }
+
+  // بعد رسم القائمة: نجلب حالة/وسوم/كتم كل محادثة ونطبّق الفلتر
+  await loadAdminMeta();
 }
 
 function renderContactsFromCache(cached) {
@@ -2204,6 +3230,9 @@ function updateConversationOptions() {
   );
 
   removeButton.classList.toggle("hidden", !canRemove);
+
+  // خيارات الإدارة (حالة/ملاحظات/كتم/أرشفة/تصدير)
+  updateAdminConversationOptions();
 }
 
 async function getModerationRoles(userId) {
@@ -2345,6 +3374,10 @@ async function openConversation(otherProfile) {
     };
 
     updateConversationOptions();
+
+    logConversationView(conversationId);
+    updateChatStatusChip();
+    clearMessageSearch();
 
     openConversationUIState(
       conversationId
@@ -2580,6 +3613,9 @@ function renderMessages() {
   if (nearBottom) {
     box.scrollTop = box.scrollHeight;
   }
+
+  // إعادة تلوين نتائج البحث بعد أي إعادة رسم
+  refreshSearchHighlights();
 }
 
 function messageSignature(m) {
@@ -2919,6 +3955,10 @@ function buildMessageBubble(m) {
 
     </div>
   `;
+
+  // نحفظ النص الأصلي لتلوين نتائج البحث لاحقاً بلا فقدان النص
+  const bubbleTextEl = div.querySelector(".bubble-text");
+  if (bubbleTextEl) bubbleTextEl.dataset.rawText = m.content || "";
 
   div
     .querySelectorAll(".msg-btn")
@@ -3725,6 +4765,9 @@ async function sendMessage({
   if (!conv || state.mediaUploading) {
     return;
   }
+
+  // التوقيع التلقائي للمشرف
+  content = applySignatureToContent(content);
 
   const replyToId =
     state.replyingTo?.id || null;

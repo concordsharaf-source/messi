@@ -4466,3 +4466,332 @@ body[data-theme="dark"] .auth-oauth.ghost {
 .admin-key[data-act="avatar"] {
   font-size: 15px;
 }
+
+/* =============================================================
+   16) مزايا الإدارة الموسّعة: البحث · الفلتر · الوسوم · النشاط · الملخص
+   ============================================================= */
+
+/* شريط الفلتر السريع */
+.chat-filters {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chat-filters::-webkit-scrollbar { display: none; }
+
+.chat-filters button {
+  flex: 0 0 auto;
+  padding: 6px 13px;
+  border-radius: 16px;
+  border: 1px solid rgba(134, 150, 160, 0.35);
+  background: transparent;
+  color: inherit;
+  font-size: calc(12.5px * var(--wa-font-scale));
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 32px;
+}
+
+.chat-filters button.active {
+  background: var(--wa-accent);
+  border-color: var(--wa-accent);
+  color: #fff;
+  font-weight: 700;
+}
+
+.contact-row.filtered-out { display: none !important; }
+
+#contact-empty-filter {
+  padding: 24px 16px;
+  text-align: center;
+  color: var(--wa-meta-dark);
+  font-size: calc(13.5px * var(--wa-font-scale));
+}
+
+/* شارات الحالة والوسوم على صف المحادثة */
+.contact-badges {
+  position: absolute;
+  inset-inline-start: 14px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-width: 70%;
+  pointer-events: none;
+}
+
+.contact-row { position: relative; }
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: calc(10.5px * var(--wa-font-scale));
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-chip.st-new       { background: rgba(0, 168, 132, 0.18);  color: #00a884; }
+.status-chip.st-pending   { background: rgba(255, 176, 32, 0.20); color: #d98d00; }
+.status-chip.st-done      { background: rgba(134, 150, 160, 0.22); color: #8696a0; }
+
+.tag-chip {
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(83, 189, 235, 0.18);
+  color: #53bdeb;
+  font-size: calc(10px * var(--wa-font-scale));
+  white-space: nowrap;
+}
+
+.mini-icon { font-size: calc(12px * var(--wa-font-scale)); }
+
+#chat-status-chip { margin-inline-start: auto; }
+
+/* شريط البحث داخل الرسائل */
+.chat-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(0, 168, 132, 0.12);
+  border-bottom: 1px solid rgba(134, 150, 160, 0.2);
+}
+
+.chat-search-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(134, 150, 160, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-family: inherit;
+  font-size: calc(14.5px * var(--wa-font-scale));
+}
+
+.chat-search-count {
+  font-size: calc(12px * var(--wa-font-scale));
+  color: var(--wa-meta-dark);
+  white-space: nowrap;
+}
+
+.chat-search-bar button {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(134, 150, 160, 0.2);
+  color: inherit;
+  cursor: pointer;
+}
+
+.bubble-row.search-hit .bubble { outline: 2px solid rgba(0, 168, 132, 0.45); }
+.bubble-row.search-current .bubble { outline: 2px solid var(--wa-accent); }
+.bubble-text mark { background: #ffe08a; color: #111b21; border-radius: 3px; }
+
+/* لوحة الملاحظات الداخلية */
+.notes-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(11, 20, 26, 0.75);
+}
+
+.notes-card {
+  width: min(460px, 100%);
+  max-height: 88%;
+  overflow-y: auto;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+
+body[data-theme="dark"] .notes-card { background: #111b21; color: #e9edef; }
+body[data-theme="light"] .notes-card { background: #ffffff; color: #111b21; }
+
+.notes-card h3 {
+  margin: 0 0 14px;
+  font-size: calc(17px * var(--wa-font-scale));
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notes-private {
+  font-size: calc(10.5px * var(--wa-font-scale));
+  font-weight: 600;
+  color: #ffb020;
+  border: 1px solid rgba(255, 176, 32, 0.45);
+  border-radius: 10px;
+  padding: 2px 8px;
+}
+
+.notes-card label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: calc(13px * var(--wa-font-scale));
+  color: var(--wa-accent);
+  font-weight: 600;
+}
+
+.notes-card input[type="text"],
+.notes-card textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(134, 150, 160, 0.3);
+  background: rgba(134, 150, 160, 0.10);
+  color: inherit;
+  font-family: inherit;
+  font-size: calc(14.5px * var(--wa-font-scale));
+  resize: vertical;
+}
+
+.notes-status { display: flex; gap: 6px; flex-wrap: wrap; }
+
+.notes-status button {
+  flex: 1 1 auto;
+  padding: 10px 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(134, 150, 160, 0.35);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: calc(13px * var(--wa-font-scale));
+  min-height: 42px;
+}
+
+.notes-status button.active {
+  border-color: var(--wa-accent);
+  background: rgba(0, 168, 132, 0.18);
+  color: var(--wa-accent);
+  font-weight: 700;
+}
+
+.notes-tag-suggestions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.tag-suggestion {
+  padding: 5px 11px;
+  border-radius: 12px;
+  border: 1px dashed rgba(83, 189, 235, 0.5);
+  background: transparent;
+  color: #53bdeb;
+  font-size: calc(11.5px * var(--wa-font-scale));
+  cursor: pointer;
+  min-height: 28px;
+}
+
+.notes-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+/* قائمة خيارات الإدارة */
+.chat-options-menu .chat-option {
+  display: block;
+  width: 100%;
+  text-align: start;
+  padding: 12px 20px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: calc(15px * var(--wa-font-scale));
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.chat-options-menu .chat-option:hover { background: rgba(134, 150, 160, 0.16); }
+
+/* سجل النشاط */
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.activity-row {
+  display: flex;
+  gap: 9px;
+  padding: 8px 2px;
+  border-bottom: 1px solid rgba(134, 150, 160, 0.12);
+}
+
+.activity-icon { font-size: calc(15px * var(--wa-font-scale)); }
+
+.activity-body { flex: 1; min-width: 0; }
+
+.activity-line {
+  font-size: calc(13px * var(--wa-font-scale));
+  line-height: 1.6;
+}
+
+.activity-line b { color: var(--wa-accent); font-weight: 600; }
+
+.activity-detail {
+  font-size: calc(12px * var(--wa-font-scale));
+  color: var(--wa-text-secondary);
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-time {
+  font-size: calc(10.5px * var(--wa-font-scale));
+  color: var(--wa-text-secondary);
+  margin-top: 3px;
+}
+
+.summary-title {
+  font-size: calc(13px * var(--wa-font-scale));
+  font-weight: 600;
+  color: var(--wa-accent);
+  margin: 14px 0 6px;
+}
+
+.summary-top { display: flex; flex-direction: column; gap: 4px; }
+
+.summary-top-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(134, 150, 160, 0.12);
+  font-size: calc(13px * var(--wa-font-scale));
+}
+
+.summary-top-row b { color: var(--wa-accent); }
+
+#theme-mode {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(134, 150, 160, 0.35);
+  background: rgba(134, 150, 160, 0.12);
+  color: inherit;
+  font-family: inherit;
+  font-size: calc(14px * var(--wa-font-scale));
+  min-height: 46px;
+}

@@ -342,6 +342,84 @@ expect "فلم تبقَ عضويات معلّقة" "0" \
 expect "وحساب المشرف لم يُحذف" "1" \
        "$(as_root "select count(*) from public.profiles where id='$A';")"
 
+# ============================================================================
+# 15) مزايا الإدارة: التصنيف · الوسوم · الكتم/الأرشفة · النشاط · التوقيع · الملخص
+# ============================================================================
+hdr "15) مزايا الإدارة"
+
+CONV15=$(as_root "select c.id from public.conversations c limit 1;")
+if [ -z "$CONV15" ]; then
+  as_root "insert into public.conversations (user_id, admin_id) values ('$U','$A');" >/dev/null
+  CONV15=$(as_root "select c.id from public.conversations c limit 1;")
+fi
+
+# المشرفون في هذه المجموعة: A مشرف، S مشرف عام
+as_root "update public.profiles set is_admin=true, is_super_admin=false where id='$A';" >/dev/null
+as_root "update public.profiles set is_admin=true, is_super_admin=true  where id='$S';" >/dev/null
+
+# ---- التصنيف ----
+R=$(as_user_do "$A" "select public.set_conversation_status('$CONV15','pending');")
+printf '%s' "$R" | grep -q success && expect "الحالة محفوظة فعلاً في القاعدة" "pending" \
+       "$(as_root "select status from public.conversations where id='$CONV15';")"
+printf '%s' "$R" | grep -q success && ok "المشرف يضبط الحالة إلى «بانتظار رد»" || bad "تعذّر ضبط الحالة" "$R"
+
+R=$(as_user "$U" "select public.set_conversation_status('$CONV15','done');")
+printf '%s' "$R" | grep -qi "للمشرفين فقط" && ok "المستخدم العادي لا يستطيع تغيير الحالة" || bad "المستخدم العادي غيّر الحالة" "$R"
+
+R=$(as_user "$A" "select public.set_conversation_status('$CONV15','hacked');")
+printf '%s' "$R" | grep -qi "حالة غير صحيحة" && ok "الحالة غير المسموحة مرفوضة" || bad "قُبلت حالة غير مسموحة" "$R"
+
+# ---- الوسوم والملاحظات ----
+R=$(as_user_do "$A" "select public.save_conversation_internal('$CONV15', array['عميل مهم',' متابعة ','عميل مهم'], 'ملاحظة سرية');")
+printf '%s' "$R" | grep -q success && ok "حفظ الوسوم والملاحظة الداخلية" || bad "تعذّر الحفظ" "$R"
+expect "تنقية الوسوم: التكرار والفراغ محذوفان" "2" \
+       "$(as_root "select coalesce(array_length(tags,1),0) from public.conversation_internal where conversation_id='$CONV15';")"
+
+R=$(as_user "$U" "select public.save_conversation_internal('$CONV15', array['تسلل'], 'اختراق');")
+printf '%s' "$R" | grep -qi "للمشرفين فقط" && ok "المستخدم العادي لا يكتب ملاحظات داخلية" || bad "كتب ملاحظة!" "$R"
+
+# ---- الكتم والأرشفة ----
+R=$(as_user_do "$A" "select public.set_conversation_prefs('$CONV15', true, true);")
+printf '%s' "$R" | grep -q success && ok "المشرف يكتم ويؤرشف" || bad "تعذّر الكتم/الأرشفة" "$R"
+R=$(as_user_do "$S" "select public.set_conversation_prefs('$CONV15', false, false);")
+printf '%s' "$R" | grep -q success && ok "لكل مشرف تفضيلاته المستقلة" || bad "تعذّر ضبط تفضيلات المشرف العام" "$R"
+expect "صفّا تفضيلات منفصلان (A و S)" "2" \
+       "$(as_root "select count(*) from public.admin_conversation_prefs where conversation_id='$CONV15';")"
+
+# ---- النظرة الشاملة ----
+R=$(as_user "$A" "select public.admin_conversations_overview();")
+printf '%s' "$R" | grep -q "conversation_id" && ok "المشرف يقرأ النظرة الشاملة" || bad "تعذّرت القراءة" "$R"
+expect "المستخدم العادي يرى قائمة فارغة" "[]" \
+       "$(as_user "$U" "select public.admin_conversations_overview();" | tr -d '[:space:]')"
+
+# ---- سجل النشاط ----
+as_user_do "$A" "insert into public.messages (conversation_id, sender_id, content) values ('$CONV15','$A','رد تجريبي');" >/dev/null
+expect "رد المشرف يُسجَّل تلقائياً" "1" \
+       "$(as_root "select count(*) from public.admin_activity where conversation_id='$CONV15' and action='replied';")"
+as_user_do "$A" "select public.log_conversation_view('$CONV15');" >/dev/null
+as_user_do "$A" "select public.log_conversation_view('$CONV15');" >/dev/null
+expect "فتح المحادثة يُسجَّل مرة واحدة (منع التكرار)" "1" \
+       "$(as_root "select count(*) from public.admin_activity where conversation_id='$CONV15' and action='viewed';")"
+R=$(as_user "$A" "select public.admin_activity_feed(5);")
+printf '%s' "$R" | grep -q "action" && ok "المشرف يقرأ سجل النشاط" || bad "تعذّرت قراءة السجل" "$R"
+expect "المستخدم العادي لا يقرأ سجل النشاط" "0" \
+       "$(as_root "select count(*) from public.admin_activity where admin_id='$U';")"
+
+# ---- التوقيع ----
+R=$(as_user_do "$A" "select public.set_my_signature('  مع تحيات فريق الدعم  ');")
+printf '%s' "$R" | grep -q success && ok "حفظ التوقيع التلقائي" || bad "تعذّر حفظ التوقيع" "$R"
+expect "التوقيع مُنقّى من الفراغات" "مع تحيات فريق الدعم" \
+       "$(as_root "select signature from public.profiles where id='$A';")"
+R=$(as_user "$A" "select public.set_my_signature(repeat('x',201));")
+printf '%s' "$R" | grep -qi "طويل" && ok "التوقيع الطويل مرفوض" || bad "قُبل توقيع طويل" "$R"
+
+# ---- الملخص اليومي ----
+R=$(as_user "$S" "select public.daily_summary();")
+printf '%s' "$R" | grep -q "new_conversations" && ok "المشرف العام يقرأ الملخص اليومي" || bad "تعذّر الملخص" "$R"
+R=$(as_user "$U" "select public.daily_summary();")
+printf '%s' "$R" | grep -qi "للمشرفين فقط" && ok "المستخدم العادي لا يقرأ الملخص" || bad "قرأ الملخص!" "$R"
+
+
 echo
 echo "════════════════════════════════════════════════════════════"
 printf " النتيجة: \033[32m%d ناجح\033[0m / \033[31m%d فاشل\033[0m\n" "$PASS" "$FAIL"

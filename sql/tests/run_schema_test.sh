@@ -28,6 +28,7 @@ run_file "2) fcm_and_rls.sql" "$REPO/sql/fcm_and_rls.sql"; F=$?
 run_file "3) auto_reply.sql"  "$REPO/sql/auto_reply.sql";  A=$?
 run_file "4) admin_tools.sql" "$REPO/sql/admin_tools.sql"; T=$?
 run_file "5) google_login.sql" "$REPO/sql/google_login.sql"; G=$?
+run_file "6) admin_features.sql" "$REPO/sql/admin_features.sql"; AF=$?
 
 echo
 echo "──────────── الحالة النهائية ────────────"

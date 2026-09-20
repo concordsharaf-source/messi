@@ -113,11 +113,22 @@
         <label data-i18n="profile_picture">الصورة الشخصية</label>
         <input id="avatar-input" type="file" accept="image/*" />
         <button id="btn-remove-avatar" class="settings-danger" type="button">حذف الصورة الشخصية</button>
+        <label id="signature-label" class="hidden">التوقيع التلقائي (للمشرفين)</label>
+        <input id="signature-input" type="text" maxlength="200" class="hidden" placeholder="مثال: مع تحيات فريق الدعم" />
+        <button id="btn-save-signature" class="admin-btn-primary hidden" type="button">💾 حفظ التوقيع</button>
+        <div id="signature-status" class="settings-hint"></div>
       </details>
 
       <!-- ============ المظهر وحجم الخط ============ -->
       <details class="admin-block" open>
         <summary>🎨 <span data-i18n="appearance">المظهر وحجم الخط</span></summary>
+        <label data-i18n="theme_mode">وضع المظهر</label>
+        <select id="theme-mode">
+          <option value="manual">يدوي (زر 🌓)</option>
+          <option value="time">تلقائي حسب الوقت (ليل/نهار)</option>
+          <option value="system">تلقائي حسب إعداد جهازك</option>
+        </select>
+
         <label data-i18n="font_size">حجم الخط</label>
         <div id="font-size-choices" class="settings-choices"></div>
         <div class="settings-hint" data-i18n="font_size_hint">يُطبَّق فوراً على كل التطبيق.</div>
@@ -183,6 +194,18 @@
           <div id="auto-reply-preview" class="admin-preview hidden"></div>
         </details>
 
+        <details class="admin-block" id="summary-block">
+          <summary>📊 ملخص اليوم</summary>
+          <div id="summary-body"></div>
+          <button id="btn-refresh-summary" type="button" class="admin-btn-mini">↻ تحديث</button>
+        </details>
+
+        <details class="admin-block hidden" id="activity-block">
+          <summary>🕘 سجل نشاط المشرفين</summary>
+          <div id="activity-list" class="activity-list"></div>
+          <button id="btn-refresh-activity" type="button" class="admin-btn-mini">↻ تحديث</button>
+        </details>
+
         <details class="admin-block hidden" id="admin-manage-block">
           <summary>👥 إدارة المشرفين</summary>
           <div class="admin-hint">اضغط على «مشرف» أو «مشرف عام» لتبديل الصلاحية · «📷» لتغيير الصورة الشخصية · «🚫» لحذفها · «🔑» لتعيين كلمة مرور · «✉️» لإرسال رابط استعادة.</div>
@@ -195,10 +218,14 @@
     </div>
 
     <div class="search-box">
-      <input type="text" data-i18n-placeholder="search" placeholder="بحث" />
+      <input id="contact-search" type="search" autocomplete="off" data-i18n-placeholder="search" placeholder="بحث في المحادثات" />
     </div>
 
+    <!-- فلتر سريع للمشرفين (يظهر لهم فقط) -->
+    <div id="chat-filters" class="chat-filters hidden"></div>
+
     <div id="contact-list-wrap">
+      <div id="contact-empty-filter" class="hidden">لا توجد محادثات مطابقة للفلتر أو البحث.</div>
       <!-- المستخدم العادي: قائمة مسطحة -->
       <div id="contact-list"></div>
 

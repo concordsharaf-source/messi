@@ -19,8 +19,11 @@
         <div id="chat-header-status" class="chat-header-status"></div>
         <div id="typing-indicator" class="typing-indicator hidden" data-i18n="typing">يكتب الآن...</div>
       </div>
+      <span id="chat-status-chip" class="status-chip hidden"></span>
+
       <div class="chat-header-actions">
-        <button id="chat-search-toggle" type="button" title="بحث">🔍</button>
+        <button id="chat-notes-toggle" type="button" title="ملاحظات داخلية">📝</button>
+        <button id="chat-search-toggle" type="button" title="بحث في الرسائل">🔍</button>
         <button id="chat-options-toggle" type="button" title="خيارات المحادثة" aria-expanded="false">⋮</button>
         <div id="chat-options-menu" class="chat-options-menu hidden" role="menu">
           <button id="chat-remove-member" type="button" class="chat-option-danger hidden" role="menuitem">
@@ -29,6 +32,14 @@
         </div>
       </div>
     </header>
+
+    <div id="chat-search-bar" class="chat-search-bar hidden">
+      <input id="chat-search-input" type="search" autocomplete="off" placeholder="ابحث في الرسائل…" />
+      <span id="chat-search-count" class="chat-search-count"></span>
+      <button id="chat-search-prev" type="button" title="السابق">▲</button>
+      <button id="chat-search-next" type="button" title="التالي">▼</button>
+      <button id="chat-search-close" type="button" title="إغلاق">✕</button>
+    </div>
 
     <div id="chat-messages" class="chat-messages" data-message-layout="participant-sides"></div>
 
@@ -57,6 +68,29 @@
       <button type="button" id="mic-btn" class="mic-btn" title="رسالة صوتية">🎤</button>
       <button type="submit" id="send-btn" class="send-btn">➤</button>
     </form>
+  </div>
+
+  <!-- لوحة الملاحظات الداخلية (للمشرفين) -->
+  <div id="notes-panel" class="notes-panel hidden">
+    <div class="notes-card">
+      <h3>📝 ملاحظات داخلية <span class="notes-private">لا يراها المستخدم</span></h3>
+
+      <label>حالة المحادثة</label>
+      <div id="notes-status" class="notes-status"></div>
+
+      <label for="notes-tags">الوسوم</label>
+      <input id="notes-tags" type="text" placeholder="مثال: عميل مهم، عاجل" />
+      <div id="notes-tag-suggestions" class="notes-tag-suggestions"></div>
+
+      <label for="notes-text">ملاحظة للفريق</label>
+      <textarea id="notes-text" rows="4" maxlength="2000" placeholder="اكتب ما يحتاج أن يعرفه بقية المشرفين…"></textarea>
+
+      <div class="notes-actions">
+        <button id="notes-save" class="admin-btn-primary" type="button">💾 حفظ</button>
+        <button id="notes-close" class="admin-btn-mini" type="button">إغلاق</button>
+      </div>
+      <div id="notes-status-text" class="settings-hint"></div>
+    </div>
   </div>
 
   <div id="media-viewer-modal" class="media-viewer-modal hidden" role="dialog" aria-modal="true" aria-label="عارض الوسائط">

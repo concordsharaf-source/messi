@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v11";  // رُفع بعد إضافة تغيير صور المشرفين
+const CACHE_NAME = "wa-clone-shell-v12";  // رُفع بعد البحث والتصنيف والملاحظات والنشاط والتصدير
 const APP_SHELL = [
   "./",
   "./index.html",
