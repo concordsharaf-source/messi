@@ -733,7 +733,7 @@ async function loadAdminUsers() {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, display_name, is_admin, is_super_admin")
+    .select("id, email, display_name, is_admin, is_super_admin, avatar_url")
     .order("is_super_admin", { ascending: false })
     .order("is_admin", { ascending: false })
     .order("email", { ascending: true });
@@ -750,23 +750,43 @@ async function loadAdminUsers() {
     const isSelf = p.id === state.me.id;
     const row = document.createElement("div");
     row.className = "admin-user";
+
+    const initial = (p.display_name || p.email || "?").trim().charAt(0);
+
     row.innerHTML = `
+      <div class="admin-user-avatar" id="avatar-thumb-${p.id}">
+        ${p.avatar_url ? `<img src="${escapeHtml(p.avatar_url)}" alt="">` : escapeHtml(initial)}
+      </div>
+
       <div class="admin-user-info">
         <b>${escapeHtml(p.display_name || "بدون اسم")}</b>
         <span>${escapeHtml(p.email || "")}</span>
       </div>
-      <button class="admin-flag ${p.is_admin ? "on" : ""}" data-act="admin" type="button"
-              title="تبديل صفة المشرف">مشرف</button>
-      <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
-              title="تبديل صفة المشرف العام">عام</button>
-      ${isSelf ? "" : `
-        <button class="admin-key" data-act="pass" type="button" title="تعيين كلمة مرور جديدة">🔑</button>
-        <button class="admin-key" data-act="reset-link" type="button" title="إرسال رابط استعادة بالبريد">✉️</button>
-      `}
+
+      <div class="admin-user-actions">
+        <button class="admin-flag ${p.is_admin ? "on" : ""}" data-act="admin" type="button"
+                title="تبديل صفة المشرف">مشرف</button>
+        <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
+                title="تبديل صفة المشرف العام">عام</button>
+        ${isSelf ? "" : `
+          <button class="admin-key" data-act="pass" type="button" title="تعيين كلمة مرور جديدة">🔑</button>
+          <button class="admin-key" data-act="reset-link" type="button" title="إرسال رابط استعادة بالبريد">✉️</button>
+        `}
+        <button class="admin-key" data-act="avatar" type="button" title="تغيير الصورة الشخصية">📷</button>
+        ${p.avatar_url ? `<button class="admin-key" data-act="avatar-del" type="button" title="حذف الصورة الشخصية">🚫</button>` : ""}
+      </div>
     `;
 
     row.querySelector('[data-act="pass"]')?.addEventListener("click", () => setUserPassword(p));
     row.querySelector('[data-act="reset-link"]')?.addEventListener("click", () => sendUserResetLink(p));
+    row.querySelector('[data-act="avatar"]')?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      pickUserAvatar(p);
+    });
+    row.querySelector('[data-act="avatar-del"]')?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      removeUserAvatar(p);
+    });
 
     row.querySelectorAll(".admin-flag").forEach((b) => {
       if (isSelf) {
@@ -1104,6 +1124,126 @@ async function changeMyPassword() {
 // ---------------------------------------------------------------
 // كلمة مرور المستخدمين (المشرف العام فقط)
 // ---------------------------------------------------------------
+
+// ---------------------------------------------------------------
+// صور المستخدمين (المشرف العام فقط)
+// ---------------------------------------------------------------
+
+// تصغير الصورة داخل المتصفح قبل إرسالها: 512 بكسل كحد أقصى و JPEG مضغوط.
+// هذا يحفظ سرعة الإرسال ويُبقي الصور خفيفة على القاعدة.
+function fileToResizedDataUrl(file, max = 512, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith("image/")) {
+      reject(new Error("الملف المختار ليس صورة"));
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("تعذّر قراءة الملف"));
+
+    reader.onload = () => {
+      const img = new Image();
+
+      img.onerror = () => reject(new Error("تعذّر فتح الصورة — جرّب صورة أخرى"));
+
+      img.onload = () => {
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext("2d");
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, width, height);
+
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+
+      img.src = reader.result;
+    };
+
+    reader.readAsDataURL(file);
+  });
+}
+
+function pickUserAvatar(profile) {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.style.display = "none";
+
+  input.addEventListener("change", async () => {
+    const file = input.files?.[0];
+    input.remove();
+    if (!file) return;
+    await changeUserAvatar(profile, file);
+  });
+
+  document.body.appendChild(input);
+  input.click();
+}
+
+async function changeUserAvatar(profile, file) {
+  const status = $("#admin-manage-status");
+  const who = profile.display_name || profile.email || "المستخدم";
+
+  try {
+    setAdminStatusText(status, `جارٍ تجهيز صورة «${who}»…`);
+
+    const dataUrl = await fileToResizedDataUrl(file);
+
+    setAdminStatusText(status, "جارٍ الرفع…");
+
+    const { data, error } = await supabase.functions.invoke("admin-set-avatar", {
+      body: { userId: profile.id, dataUrl },
+    });
+
+    if (error || data?.error) {
+      throw new Error(data?.error || error?.message || "خطأ غير معروف");
+    }
+
+    profile.avatar_url = data.url;
+
+    setAdminStatusText(status, `✔ تم تحديث صورة «${who}».`);
+
+    await loadAdminUsers();
+
+    // تحديث قائمة المحادثات وصورة المستخدم في الواجهة فوراً
+    await loadContacts();
+  } catch (error) {
+    setAdminStatusText(status, "تعذّر تحديث الصورة: " + (error?.message || "خطأ غير معروف"), "err");
+  }
+}
+
+async function removeUserAvatar(profile) {
+  const status = $("#admin-manage-status");
+  const who = profile.display_name || profile.email || "المستخدم";
+
+  if (!window.confirm(`حذف الصورة الشخصية لـ «${who}»؟`)) return;
+
+  setAdminStatusText(status, "جارٍ الحذف…");
+
+  const { data, error } = await supabase.functions.invoke("admin-set-avatar", {
+    body: { userId: profile.id, remove: true },
+  });
+
+  if (error || data?.error) {
+    setAdminStatusText(status, "تعذّر الحذف: " + (data?.error || error?.message || ""), "err");
+    return;
+  }
+
+  profile.avatar_url = null;
+
+  setAdminStatusText(status, `✔ تم حذف صورة «${who}».`);
+
+  await loadAdminUsers();
+  await loadContacts();
+}
 
 async function setUserPassword(profile) {
   const status = $("#admin-manage-status");
