@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v6";  // رُفع بعد تغيير إعدادات Firebase في js/push.js
+const CACHE_NAME = "wa-clone-shell-v8";  // رُفع بعد إصلاح مسارات Service Worker
 const APP_SHELL = [
   "./",
   "./index.html",

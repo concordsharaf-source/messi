@@ -30,13 +30,18 @@ const firebaseConfig = {
 // VAPID PUBLIC KEY
 // ---------------------------------------------------------------
 
-// ⛔ TODO: ضع هنا مفتاح VAPID الجديد من
-//    Firebase Console → Project settings → Cloud Messaging → Web Push certificates
-//    (لم يصل بعد — الإشعارات لا تعمل حتى يُضاف)
-const VAPID_KEY = "";  // ← الصق المفتاح بين العلامتين
+const VAPID_KEY =
+  "BBzoS91LbqCEcVJ7IekA-K4C6hOHugdeXSfrnameZwG5zdgqaTjXDNM95vpkv4zkyldlF9wSekB8zcBh4FtElk4";
 
-const FIREBASE_SW_PATH = "/firebase-messaging-sw.js";
-const FIREBASE_SW_SCOPE = "/firebase-cloud-messaging-push-scope/";
+// ⚠️ مسارات مطلقة هنا كانت تُفشل الإشعارات على GitHub Pages تماماً:
+//    التطبيق يُنشر تحت /messi/ لا في الجذر، فـ "/firebase-messaging-sw.js"
+//    يشير إلى نطاق حسابك الجذري (ملف غير موجود) → 404، ثم طلب نطاق
+//    "/firebase-cloud-messaging-push-scope/" خارج المسموح → SecurityError
+//    → فشل التسجيل كلياً: لا رمز FCM ولا إشعارات.
+//    الحل: اشتقاق المسارين من قاعدة النشر نفسها فيعملان في الحالتين.
+const APP_BASE = new URL("./", window.location.href);
+const FIREBASE_SW_PATH = new URL("firebase-messaging-sw.js", APP_BASE).href;
+const FIREBASE_SW_SCOPE = new URL("firebase-cloud-messaging-push-scope/", APP_BASE).href;
 
 // ---------------------------------------------------------------
 // Firebase Initialization
@@ -76,7 +81,7 @@ async function registerFirebaseServiceWorker() {
   // الرئيسي في root. هذا أمر حاسم لأن المتصفح يسمح فقط بعمل worker واحد لكل scope.
   const registration =
     (await navigator.serviceWorker.getRegistrations()).find(
-      (candidate) => candidate.scope === new URL(FIREBASE_SW_SCOPE, window.location.origin).href
+      (candidate) => candidate.scope === FIREBASE_SW_SCOPE
     ) ||
     (await navigator.serviceWorker.register(FIREBASE_SW_PATH, {
       scope: FIREBASE_SW_SCOPE,
