@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient.js";
 import { signUp, signIn, signOut, getCurrentProfile } from "./auth.js";
 import { applyLanguage } from "./i18n.js";
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import {
   cacheMessages,
   deleteCachedMessage,
@@ -1371,9 +1372,63 @@ function wirePreferences() {
 // الدخول بواسطة جوجل + الدخول السريع
 // ===============================================================
 
+// فحص سريع قبل تحويل الصفحة: هل مزوّد جوجل مهيّأ في المشروع؟
+// (يمنع ظهور صفحة خطأ JSON خام للمستخدم)
+async function isGoogleProviderReady() {
+  try {
+    const url =
+      `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=` +
+      encodeURIComponent(`${window.location.origin}${window.location.pathname}`);
+
+    const response = await fetch(url, {
+      headers: { apikey: SUPABASE_ANON_KEY },
+      redirect: "follow",
+    });
+
+    if (response.status === 400) {
+      const data = await response.json().catch(() => null);
+
+      if (data && String(data.error_code || "").includes("validation_failed")) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    // التوجيه إلى صفحة جوجل يمنع قراءة الرد (CORS) => المزوّد يعمل
+    return true;
+  }
+}
+
+function showGoogleSetupNote() {
+  let box = $("#google-setup-note");
+
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "google-setup-note";
+    box.className = "auth-setup-note";
+    box.innerHTML =
+      "<b>دخول جوجل غير مُفعَّل بعد على المشروع</b>" +
+      "<span>يحتاج مفتاح جوجل (Client ID + Secret) يُضاف من إعدادات المشروع. " +
+      "بعد إضافته يعمل الزر مباشرةً دون أي تغيير آخر — أو استخدم البريد وكلمة المرور الآن.</span>";
+
+    $("#btn-google")?.insertAdjacentElement("afterend", box);
+  }
+
+  box.classList.remove("hidden");
+}
+
 async function signInWithGoogle() {
   const btn = $("#btn-google");
   if (btn) btn.disabled = true;
+
+  const ready = await isGoogleProviderReady();
+
+  if (!ready) {
+    if (btn) btn.disabled = false;
+    showGoogleSetupNote();
+    return;
+  }
 
   const { error } = await supabase.auth.signInWithOAuth({
     provider: "google",

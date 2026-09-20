@@ -5189,3 +5189,28 @@ body[data-theme="light"] .pwa-install-btn {
   color: var(--wa-accent);
   flex: 0 0 auto;
 }
+
+/* ---- تنبيه إعداد دخول جوجل في شاشة الدخول ---- */
+.auth-setup-note {
+  margin: 10px auto 0;
+  width: min(380px, 100%);
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(234, 179, 8, 0.45);
+  background: rgba(234, 179, 8, 0.10);
+  text-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.auth-setup-note b {
+  font-size: calc(13.5px * var(--wa-font-scale));
+  color: #fbbf24;
+}
+
+.auth-setup-note span {
+  font-size: calc(12px * var(--wa-font-scale));
+  line-height: 1.7;
+  color: var(--wa-text-secondary);
+}
