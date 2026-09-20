@@ -77,6 +77,9 @@ const $ = (sel) => document.querySelector(sel);
 async function boot() {
   document.body.setAttribute("data-theme", state.theme);
 
+  // حجم الخط المختار يُطبَّق قبل ظهور أي شيء
+  applyFontScale();
+
   setupPWAInstallPrompt();
 
   await loadChatPanelPartial();
@@ -294,6 +297,10 @@ async function enterApp() {
 
   applyThemeVars();
 
+  // بعد الدخول نعرف الخلفية المرفوعة للمستخدم فنُحدِّث اللوحة
+  renderWallpaperGrid();
+  renderToneList();
+
   await touchLastSeen(true);
   startHeartbeat();
 
@@ -307,6 +314,7 @@ async function enterApp() {
     try {
       state.foregroundMessagesUnsub =
         listenForForegroundMessages({
+          soundUrl: toneUrl(),
           onNotification: handleForegroundNotification,
         });
     } catch (err) {
@@ -751,7 +759,14 @@ async function loadAdminUsers() {
               title="تبديل صفة المشرف">مشرف</button>
       <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
               title="تبديل صفة المشرف العام">عام</button>
+      ${isSelf ? "" : `
+        <button class="admin-key" data-act="pass" type="button" title="تعيين كلمة مرور جديدة">🔑</button>
+        <button class="admin-key" data-act="reset-link" type="button" title="إرسال رابط استعادة بالبريد">✉️</button>
+      `}
     `;
+
+    row.querySelector('[data-act="pass"]')?.addEventListener("click", () => setUserPassword(p));
+    row.querySelector('[data-act="reset-link"]')?.addEventListener("click", () => sendUserResetLink(p));
 
     row.querySelectorAll(".admin-flag").forEach((b) => {
       if (isSelf) {
@@ -845,6 +860,378 @@ function wireAdminTools() {
 // CHROME
 // ===============================================================
 
+// ===============================================================
+// تفضيلات المستخدم: حجم الخط · خلفية الدردشة · نغمة الإشعارات
+// ===============================================================
+
+const FONT_SIZES = [
+  { value: "0.88", label: "صغير" },
+  { value: "1", label: "عادي" },
+  { value: "1.15", label: "كبير" },
+  { value: "1.3", label: "كبير جداً" },
+];
+
+// خلفيات جاهزة: نُبقي نقشة واتساب ونغيّر لونها فقط.
+const CHAT_WALLPAPERS = [
+  { id: "default", label: "افتراضي", color: "" },
+  { id: "mint", label: "نعناعي", color: "#d8f0e6" },
+  { id: "sky", label: "سماوي", color: "#cfe4f5" },
+  { id: "rose", label: "وردي", color: "#f7dde1" },
+  { id: "sand", label: "رملي", color: "#efe3cf" },
+  { id: "grape", label: "بنفسجي", color: "#e2dbf2" },
+  { id: "graphite", label: "رمادي", color: "#222e35" },
+  { id: "night", label: "ليلي", color: "#0d1f26" },
+];
+
+const NOTIF_TONES = [
+  { id: "default", label: "الافتراضية", url: "./icons/notify.mp3" },
+  { id: "bell", label: "جرس", url: "./sounds/bell.wav" },
+  { id: "chime", label: "نغمة هادئة", url: "./sounds/chime.wav" },
+  { id: "pop", label: "نبضة", url: "./sounds/pop.wav" },
+  { id: "knock", label: "دقّة", url: "./sounds/knock.wav" },
+  { id: "silent", label: "صامت (بدون صوت)", url: "" },
+];
+
+const prefs = {
+  fontSize: localStorage.getItem("wa_fontscale") || "1",
+  chatBg: localStorage.getItem("wa_chatbg") || "default",
+  tone: localStorage.getItem("wa_tone") || "default",
+};
+
+function currentTone() {
+  return NOTIF_TONES.find((t) => t.id === prefs.tone) || NOTIF_TONES[0];
+}
+
+function toneUrl() {
+  return currentTone().url;
+}
+
+// ---------------------------------------------------------------
+// حجم الخط
+// ---------------------------------------------------------------
+
+function applyFontScale() {
+  document.documentElement.style.setProperty("--wa-font-scale", prefs.fontSize);
+}
+
+function renderFontSizeChoices() {
+  const box = $("#font-size-choices");
+  if (!box) return;
+
+  box.innerHTML = "";
+
+  FONT_SIZES.forEach((f) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "settings-choice" + (prefs.fontSize === f.value ? " active" : "");
+    btn.textContent = f.label;
+    btn.style.fontSize = `${13 * Number(f.value)}px`;
+
+    btn.addEventListener("click", () => {
+      prefs.fontSize = f.value;
+      localStorage.setItem("wa_fontscale", f.value);
+      applyFontScale();
+      renderFontSizeChoices();
+    });
+
+    box.appendChild(btn);
+  });
+}
+
+// ---------------------------------------------------------------
+// خلفية الدردشة
+// ---------------------------------------------------------------
+
+function applyChatBackground() {
+  const box = $("#chat-messages");
+  if (!box) return;
+
+  // الخلفية المرفوعة من المستخدم لها الأولوية
+  if (state.me?.wallpaper_url) {
+    box.style.backgroundImage = `url("${state.me.wallpaper_url}")`;
+    box.style.backgroundSize = "cover";
+    box.style.backgroundPosition = "center";
+    box.style.backgroundRepeat = "no-repeat";
+    box.style.backgroundColor = "";
+    return;
+  }
+
+  const preset =
+    CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg) || CHAT_WALLPAPERS[0];
+
+  // نُفرِّغ التنسيقات السطرية ليعود النمط الافتراضي من CSS (النقشة)
+  box.style.backgroundImage = "";
+  box.style.backgroundSize = "";
+  box.style.backgroundPosition = "";
+  box.style.backgroundRepeat = "";
+  box.style.backgroundColor = preset.color || "";
+}
+
+function renderWallpaperGrid() {
+  const grid = $("#wallpaper-grid");
+  if (!grid) return;
+
+  grid.innerHTML = "";
+
+  const active = state.me?.wallpaper_url ? "custom" : prefs.chatBg;
+
+  CHAT_WALLPAPERS.forEach((w) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "wallpaper-swatch" + (active === w.id ? " active" : "");
+    btn.title = w.label;
+    btn.dataset.wp = w.id;
+
+    if (w.color) {
+      btn.style.backgroundColor = w.color;
+    } else {
+      btn.classList.add("wp-default");
+    }
+
+    btn.addEventListener("click", async () => {
+      // اختيار خلفية جاهزة يُلغي الخلفية المرفوعة
+      if (state.me?.wallpaper_url) {
+        const previous = state.me.wallpaper_url;
+
+        const { error } = await supabase
+          .from("profiles")
+          .update({ wallpaper_url: null })
+          .eq("id", state.me.id);
+
+        if (!error) {
+          state.me.wallpaper_url = null;
+          await removeStorageFile("wallpapers", previous);
+        }
+      }
+
+      prefs.chatBg = w.id;
+      localStorage.setItem("wa_chatbg", w.id);
+      applyChatBackground();
+      renderWallpaperGrid();
+    });
+
+    const label = document.createElement("span");
+    label.textContent = w.label;
+    btn.appendChild(label);
+
+    grid.appendChild(btn);
+  });
+}
+
+// ---------------------------------------------------------------
+// نغمة الإشعارات
+// ---------------------------------------------------------------
+
+function playTone(tone) {
+  if (!tone?.url) return;
+
+  const audio = new Audio(tone.url);
+  audio.volume = 1;
+  audio.play().catch(() => {
+    showAuthError("تعذّر تشغيل النغمة — اسمح بالصوت في المتصفح.");
+  });
+}
+
+function renderToneList() {
+  const box = $("#tone-list");
+  if (!box) return;
+
+  box.innerHTML = "";
+
+  NOTIF_TONES.forEach((t) => {
+    const row = document.createElement("div");
+    row.className = "tone-row" + (prefs.tone === t.id ? " active" : "");
+
+    row.innerHTML = `
+      <span class="tone-name">${t.label}</span>
+      <button type="button" class="tone-play" ${t.url ? "" : "disabled"} title="تجربة النغمة">▶</button>
+      <span class="tone-check">${prefs.tone === t.id ? "✓" : ""}</span>
+    `;
+
+    row.querySelector(".tone-play").addEventListener("click", (event) => {
+      event.stopPropagation();
+      playTone(t);
+    });
+
+    row.addEventListener("click", () => {
+      prefs.tone = t.id;
+      localStorage.setItem("wa_tone", t.id);
+      renderToneList();
+      if (t.url) playTone(t);
+    });
+
+    box.appendChild(row);
+  });
+}
+
+// ---------------------------------------------------------------
+// كلمة المرور (للمستخدم نفسه)
+// ---------------------------------------------------------------
+
+async function changeMyPassword() {
+  const first = $("#new-password");
+  const second = $("#new-password-confirm");
+  const status = $("#password-status");
+
+  const p1 = first?.value || "";
+  const p2 = second?.value || "";
+
+  if (p1.length < 6) {
+    setAdminStatusText(status, "كلمة المرور قصيرة — 6 أحرف على الأقل.", "err");
+    return;
+  }
+
+  if (p1 !== p2) {
+    setAdminStatusText(status, "الكلمتان غير متطابقتين.", "err");
+    return;
+  }
+
+  setAdminStatusText(status, "جارٍ تحديث كلمة المرور…");
+
+  const { error } = await supabase.auth.updateUser({ password: p1 });
+
+  if (error) {
+    setAdminStatusText(status, "تعذّر التحديث: " + error.message, "err");
+    return;
+  }
+
+  if (first) first.value = "";
+  if (second) second.value = "";
+
+  setAdminStatusText(status, "✔ تم تغيير كلمة المرور بنجاح.");
+}
+
+// ---------------------------------------------------------------
+// كلمة مرور المستخدمين (المشرف العام فقط)
+// ---------------------------------------------------------------
+
+async function setUserPassword(profile) {
+  const status = $("#admin-manage-status");
+  const who = profile.display_name || profile.email || "المستخدم";
+
+  const password = window.prompt(
+    `كلمة مرور جديدة لـ «${who}»\n(6 أحرف على الأقل، اتركها فارغة للإلغاء)`
+  );
+
+  if (!password) return;
+
+  if (password.length < 6) {
+    setAdminStatusText(status, "كلمة المرور قصيرة — 6 أحرف على الأقل.", "err");
+    return;
+  }
+
+  setAdminStatusText(status, "جارٍ التعيين…");
+
+  const { data, error } = await supabase.functions.invoke("admin-set-password", {
+    body: { userId: profile.id, password },
+  });
+
+  if (error || data?.error) {
+    setAdminStatusText(status, "تعذّر: " + (data?.error || error?.message || ""), "err");
+    return;
+  }
+
+  setAdminStatusText(status, `✔ تم تعيين كلمة مرور جديدة لـ «${who}».`);
+}
+
+async function sendUserResetLink(profile) {
+  const status = $("#admin-manage-status");
+  const who = profile.display_name || profile.email || "المستخدم";
+
+  setAdminStatusText(status, "جارٍ الإرسال…");
+
+  const { data, error } = await supabase.functions.invoke("admin-set-password", {
+    body: { userId: profile.id, action: "reset-link" },
+  });
+
+  if (error || data?.error) {
+    setAdminStatusText(status, "تعذّر: " + (data?.error || error?.message || ""), "err");
+    return;
+  }
+
+  setAdminStatusText(status, `✔ ${data?.message || "أُرسل رابط الاستعادة"} لـ «${who}».`);
+}
+
+// ---------------------------------------------------------------
+// الربط
+// ---------------------------------------------------------------
+
+function wirePreferences() {
+  renderFontSizeChoices();
+  renderWallpaperGrid();
+  renderToneList();
+
+  if ($("#btn-change-password")?.dataset.wired !== "1") {
+    $("#btn-change-password").dataset.wired = "1";
+    $("#btn-change-password").addEventListener("click", changeMyPassword);
+  }
+
+  if ($("#btn-close-settings")?.dataset.wired !== "1") {
+    $("#btn-close-settings").dataset.wired = "1";
+    $("#btn-close-settings").addEventListener("click", () => {
+      $("#settings-panel")?.classList.add("hidden");
+    });
+  }
+}
+
+// ===============================================================
+// الدخول بواسطة جوجل + الدخول السريع
+// ===============================================================
+
+async function signInWithGoogle() {
+  const btn = $("#btn-google");
+  if (btn) btn.disabled = true;
+
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${window.location.origin}${window.location.pathname}`,
+      queryParams: { prompt: "select_account" },
+    },
+  });
+
+  if (error) {
+    if (btn) btn.disabled = false;
+
+    const message = /provider is not enabled|Unsupported provider/i.test(error.message)
+      ? "الدخول بجوجل غير مُفعَّل بعد على الخادم — استخدم البريد أو الدخول السريع."
+      : "تعذّر الدخول بجوجل: " + error.message;
+
+    showAuthError(message);
+  }
+}
+
+async function signInAsGuest() {
+  const btn = $("#btn-guest");
+  if (btn) btn.disabled = true;
+
+  const { error } = await supabase.auth.signInAnonymously({
+    options: { data: { display_name: `زائر ${Math.floor(1000 + Math.random() * 8999)}` } },
+  });
+
+  if (error) {
+    if (btn) btn.disabled = false;
+
+    const message = /anonymous/i.test(error.message)
+      ? "الدخول السريع غير مُفعَّل — فعّله من إعدادات المشروع."
+      : "تعذّر الدخول السريع: " + error.message;
+
+    showAuthError(message);
+    return;
+  }
+
+  window.location.reload();
+}
+
+function wireQuickAuth() {
+  $("#btn-google")?.addEventListener("click", signInWithGoogle);
+  $("#btn-guest")?.addEventListener("click", signInAsGuest);
+}
+
+// ===============================================================
+// CHROME
+// ===============================================================
+
 function wireChrome() {
   $("#btn-settings")?.addEventListener("click", () => {
     const panel = $("#settings-panel");
@@ -854,6 +1241,8 @@ function wireChrome() {
   });
 
   wireAdminTools();
+  wirePreferences();
+  wireQuickAuth();
 
   $("#btn-logout")?.addEventListener("click", async () => {
     await signOut(state.me?.id);
@@ -1046,14 +1435,8 @@ function wireMediaViewer() {
 // ===============================================================
 
 function applyThemeVars() {
-  if (state.me?.wallpaper_url) {
-    const chatMessages = $("#chat-messages");
-
-    if (chatMessages) {
-      chatMessages.style.backgroundImage =
-        `url("${state.me.wallpaper_url}")`;
-    }
-  }
+  // الخلفية تتبع تفضيل المستخدم (جاهزة أو مرفوعة) — التفاصيل في applyChatBackground
+  applyChatBackground();
 }
 
 // ===============================================================
@@ -1965,23 +2348,208 @@ function renderMessages() {
 
   if (!box) return;
 
-  box.innerHTML = "";
+  // ---------------------------------------------------------------
+  // رسم تزايدي (Reconciling render)
+  //
+  // سابقاً كانت القائمة تُفرَّغ بالكامل ثم تُبنى من جديد عند كل تحديث،
+  // وهذا كان يسبب "وميض/غمزة" في النصوص والصور: كل فقاعة كانت تعيد
+  // تشغيل حركة الدخول، والصور تُحمَّل من جديد، والتمرير يقفز للأسفل.
+  // الآن نبني الفقاعة مرة واحدة ونُحدِّث ما تغيّر فقط.
+  // ---------------------------------------------------------------
 
   if (!state.messages.length) {
-    box.innerHTML =
-      `<div class="empty-chat">${state.t.no_messages}</div>`;
+    if (box.dataset.mode !== "empty") {
+      box.innerHTML =
+        `<div class="empty-chat">${state.t.no_messages}</div>`;
+
+      box.dataset.mode = "empty";
+    }
 
     return;
   }
 
+  if (box.dataset.mode === "empty") {
+    box.innerHTML = "";
+  }
+
+  box.dataset.mode = "list";
+
+  // لا نقفز للأسفل إلا إذا كان المستخدم عند آخر الرسائل فعلاً.
+  const nearBottom =
+    box.scrollHeight - box.scrollTop - box.clientHeight < 140;
+
+  let prev = null;
+  const seen = new Set();
+
   state.messages.forEach((m) => {
-    box.appendChild(
-      buildMessageBubble(m)
-    );
+    const sig = messageSignature(m);
+    seen.add(m.id);
+
+    let el =
+      box.querySelector(`[data-message-id="${m.id}"]`);
+
+    if (el) {
+      if (el.dataset.sig !== sig) {
+        refreshMessageBubble(el, m);
+        el.dataset.sig = sig;
+      }
+    } else {
+      el = buildMessageBubble(m);
+      el.dataset.sig = sig;
+
+      // الحركة للرسائل الجديدة الواردة فقط، لا لكل الرسائل.
+      if (state.animateId === m.id) {
+        el.classList.add("is-new");
+      }
+
+      if (prev) {
+        box.insertBefore(el, prev.nextSibling);
+      } else {
+        box.insertBefore(el, box.firstChild);
+      }
+    }
+
+    prev = el;
   });
 
-  box.scrollTop =
-    box.scrollHeight;
+  // إزالة ما لم يعد موجوداً (رسالة محذوفة).
+  Array.from(box.children).forEach((child) => {
+    const id = child.dataset?.messageId;
+    if (id && !seen.has(id)) {
+      child.remove();
+    }
+  });
+
+  // ذيل الفقاعة لآخر رسالة في كل مجموعة (مثل واتساب)
+  const rows = Array.from(box.querySelectorAll(".bubble-row"));
+
+  rows.forEach((row, i) => {
+    const side = row.classList.contains("admin-side") ? "admin" : "user";
+    const next = rows[i + 1];
+    const prev = rows[i - 1];
+
+    const nextSide = next ? (next.classList.contains("admin-side") ? "admin" : "user") : null;
+    const prevSide = prev ? (prev.classList.contains("admin-side") ? "admin" : "user") : null;
+
+    row.classList.toggle("tail", nextSide !== side);
+    row.classList.toggle("first-of-group", prevSide !== side);
+  });
+
+  state.animateId = null;
+
+  if (nearBottom) {
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+function messageSignature(m) {
+  const reactions =
+    state.reactions[m.id] || [];
+
+  const grouped = {};
+
+  reactions.forEach((r) => {
+    grouped[r.emoji] =
+      (grouped[r.emoji] || 0) + 1;
+  });
+
+  return [
+    m.status || "",
+    m._pending ? "1" : "0",
+    state.clickedWelcomeButtons.has(m.id) ? "1" : "0",
+    Object.keys(grouped).sort().join(","),
+  ].join("|");
+}
+
+function formatBubbleTime(m) {
+  return new Date(m.created_at).toLocaleTimeString(
+    state.lang === "ar" ? "ar-SA" : "en-US",
+    { hour: "2-digit", minute: "2-digit" }
+  );
+}
+
+function buildTicksHtml(m) {
+  if (!isMessageMine(m)) return "";
+
+  if (m._pending) {
+    return '<span class="ticks">🕓</span>';
+  }
+
+  return renderTicks(m.status);
+}
+
+function buildReactionsHtml(m) {
+  const reactions =
+    state.reactions[m.id] || [];
+
+  const grouped = {};
+
+  reactions.forEach((r) => {
+    grouped[r.emoji] =
+      grouped[r.emoji] || { count: 0, mine: false };
+
+    grouped[r.emoji].count += 1;
+
+    if (r.user_id === state.me.id) {
+      grouped[r.emoji].mine = true;
+    }
+  });
+
+  if (!Object.keys(grouped).length) return "";
+
+  return `
+    <div class="reaction-bar">
+      ${Object.entries(grouped)
+        .map(
+          ([emoji, g]) => `
+            <span class="reaction-chip ${g.mine ? "mine" : ""}" data-emoji="${escapeHtml(emoji)}">
+              ${emoji} ${g.count}
+            </span>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+// تحديث موضعي لمحتوى فقاعة قائمة: يمسّ ما تغيّر فقط،
+// فلا تُفقد الصور والفيديو ولا يومض النص.
+function refreshMessageBubble(el, m) {
+  const bubble =
+    el.querySelector(".bubble");
+
+  if (!bubble) return;
+
+  const meta =
+    bubble.querySelector(".bubble-meta");
+
+  if (meta) {
+    meta.innerHTML =
+      `<span class="bubble-time">${formatBubbleTime(m)}</span>${buildTicksHtml(m)}`;
+  }
+
+  const reactionsHtml =
+    buildReactionsHtml(m);
+
+  const current =
+    bubble.querySelector(".reaction-bar");
+
+  if (reactionsHtml) {
+    if (current) {
+      current.outerHTML = reactionsHtml;
+    } else {
+      bubble.insertAdjacentHTML("beforeend", reactionsHtml);
+    }
+  } else if (current) {
+    current.remove();
+  }
+
+  const used =
+    state.clickedWelcomeButtons.has(m.id);
+
+  bubble.querySelectorAll(".msg-btn").forEach((btn) => {
+    btn.disabled = used || btn.disabled;
+  });
 }
 
 function findMessageById(id) {
@@ -2052,24 +2620,10 @@ function buildMessageBubble(m) {
     m.id;
 
   const time =
-    new Date(
-      m.created_at
-    ).toLocaleTimeString(
-      state.lang === "ar"
-        ? "ar-SA"
-        : "en-US",
-      {
-        hour: "2-digit",
-        minute: "2-digit",
-      }
-    );
+    formatBubbleTime(m);
 
   const ticks =
-    mine
-      ? m._pending
-        ? '<span class="ticks">🕓</span>'
-        : renderTicks(m.status)
-      : "";
+    buildTicksHtml(m);
 
   const quoted =
     m.reply_to_id
@@ -2138,47 +2692,8 @@ function buildMessageBubble(m) {
     }
   }
 
-  const reactions =
-    state.reactions[m.id] || [];
-
-  const grouped = {};
-
-  reactions.forEach((r) => {
-    grouped[r.emoji] =
-      grouped[r.emoji] || {
-        count: 0,
-        mine: false,
-      };
-
-    grouped[r.emoji].count += 1;
-
-    if (r.user_id === state.me.id) {
-      grouped[r.emoji].mine = true;
-    }
-  });
-
   const reactionsHtml =
-    Object.keys(grouped).length
-      ? `
-        <div class="reaction-bar">
-          ${Object.entries(grouped)
-            .map(
-              ([emoji, g]) =>
-                `
-                <span
-                  class="reaction-chip ${
-                    g.mine ? "mine" : ""
-                  }"
-                  data-emoji="${escapeHtml(emoji)}"
-                >
-                  ${emoji} ${g.count}
-                </span>
-              `
-            )
-            .join("")}
-        </div>
-      `
-      : "";
+    buildReactionsHtml(m);
 
   let buttonsHtml = "";
   const canDeleteMessage = Boolean(isActiveChatModerator() && !m._pending);
@@ -3935,6 +4450,8 @@ function subscribeToConversation(
           if (!exists) {
             state.messages.push(receivedMessage);
 
+            state.animateId = receivedMessage.id;
+
             renderMessages();
 
             await cacheMessages(
@@ -4543,12 +5060,24 @@ function subscribeGlobalMessageWatch() {
 // ===============================================================
 
 function playNotificationSound() {
-  const audio =
-    $("#notification-sound");
+  const url = toneUrl();
 
-  audio
-    ?.play()
-    .catch(() => {});
+  // «صامت» = لا نشغّل شيئاً
+  if (!url) return;
+
+  const audio = $("#notification-sound");
+  if (!audio) return;
+
+  if (audio.dataset.tone !== url) {
+    audio.dataset.tone = url;
+    audio.src = url;
+  }
+
+  try {
+    audio.currentTime = 0;
+  } catch (_) {}
+
+  audio.play().catch(() => {});
 }
 
 // ===============================================================

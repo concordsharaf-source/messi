@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v9";  // رُفع بعد لوحة المشرف + المراجعة اللغوية
+const CACHE_NAME = "wa-clone-shell-v10";  // رُفع بعد إصلاح الوميض ومطابقة واتساب والإعدادات الجديدة
 const APP_SHELL = [
   "./",
   "./index.html",

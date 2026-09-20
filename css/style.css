@@ -1436,9 +1436,6 @@ body[data-theme="light"] .chat-header {
 
   box-shadow:
     0 2px 6px rgba(0, 0, 0, 0.12);
-
-  animation:
-    bubble-in 0.12s ease-out;
 }
 
 body[data-theme="light"] .bubble {
@@ -3424,3 +3421,1005 @@ body[data-theme="light"] .in-app-notification { background: #fff; }
   color: #9df0c0;
 }
 .admin-flag:disabled { opacity: .45; cursor: default; }
+
+
+/* =========================================================
+   إصلاح الوميض: الحركة للرسائل الجديدة الواردة فقط
+   (كانت مطبقة على كل فقاعة، فتُعاد عند كل إعادة رسم = غمزة)
+   ========================================================= */
+
+.bubble-row.is-new .bubble {
+  animation: bubble-in 0.16s ease-out;
+}
+
+/* منع إعادة حساب التخطيط داخل قائمة الرسائل، لتقليل الوميض */
+.chat-messages {
+  overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+
+/* ################################################################
+   ##                                                            ##
+   ##   طبقة المطابقة الكاملة مع واتساب + تكبير الخط              ##
+   ##   تُقرأ هذه الطبقة بعد كل ما سبق، فهي المرجع النهائي        ##
+   ##                                                            ##
+   ################################################################ */
+
+:root {
+  /* نقشة خلفية الدردشة (دُودل واتساب) */
+  --wa-doodle-dark: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='384' height='384' viewBox='0 0 384 384'><defs><g id='heart'>M12 21s-7-4.4-9-8.8C1.5 8.8 4 5 7.5 5c2 0 3.6 1.1 4.5 2.8C13 6.1 14.5 5 16.5 5 20 5 22.5 8.8 21 12.2 19 16.6 12 21 12 21z</g><g id='chat'>M4 5h16v11H10l-6 4z</g><g id='phone'>M6 3h3l2 5-2 1.2c1 3 3 5 6 6l1.2-2 5 2v3c0 1-1 2-2 2C10 20.2 3.8 14 3.8 5c0-1 1.2-2 2.2-2z</g><g id='coffee'>M5 8h11v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4zM16 9.5h1.5a2.5 2.5 0 0 1 0 5H16M6 4.5V6M10 4v1.5M14 4.5V6</g><g id='music'>M9 18V6l9-2v12M9 18a2.4 2.4 0 1 1-4.8 0 2.4 2.4 0 0 1 4.8 0zM18 16a2.4 2.4 0 1 1-4.8 0 2.4 2.4 0 0 1 4.8 0z</g><g id='camera'>M4 8h4l1.8-2h4.4L16 8h4v10H4zM12 16.2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z</g><g id='plane'>M3 12.5l18-8-6.5 18-3.2-7.3z</g><g id='star'>M12 3.2l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6L3.4 9.5l6-.8z</g><g id='clock'>M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.2V12l3 2</g><g id='leaf'>M20 4C10.5 4 5.5 9 5.5 15.8c0 2 .8 3.7.8 3.7s8.7.4 11.8-5.4C20.2 10 20 4 20 4zM6.5 19.5C8.5 13.5 12.5 9.5 17 7.5</g><g id='balloon'>M12 3a6 6 0 0 1 6 6c0 4-4 6.8-6 8.8-2-2-6-4.8-6-8.8a6 6 0 0 1 6-6zM12 18v3</g><g id='gift'>M4 10h16v10H4zM4 10l2-4h12l2 4M12 6v14</g><g id='sun'>M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2</g><g id='book'>M4 5c3-1.5 6-1.5 8 0 2-1.5 5-1.5 8 0v13c-3-1.5-6-1.5-8 0-2-1.5-5-1.5-8 0zM12 5v13</g></defs><g fill='none' stroke='%2523ffffff' stroke-width='1.15' stroke-linecap='round' stroke-linejoin='round'><use href='%23heart' transform='translate(18,14) scale(1.5) rotate(0,12,12)'/><use href='%23chat' transform='translate(150,10) scale(1.3) rotate(-14,12,12)'/><use href='%23phone' transform='translate(272,26) scale(1.6) rotate(9,12,12)'/><use href='%23coffee' transform='translate(24,132) scale(1.4) rotate(12,12,12)'/><use href='%23music' transform='translate(140,120) scale(1.7) rotate(-8,12,12)'/><use href='%23camera' transform='translate(268,140) scale(1.35) rotate(18,12,12)'/><use href='%23plane' transform='translate(16,252) scale(1.55) rotate(-10,12,12)'/><use href='%23star' transform='translate(132,258) scale(1.4) rotate(7,12,12)'/><use href='%23clock' transform='translate(262,250) scale(1.5) rotate(-16,12,12)'/><use href='%23leaf' transform='translate(72,72) scale(1.15) rotate(22,12,12)'/><use href='%23balloon' transform='translate(210,80) scale(1.1) rotate(-22,12,12)'/><use href='%23gift' transform='translate(196,196) scale(1.2) rotate(15,12,12)'/></g></svg>");
+  --wa-doodle-light: url("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='384' height='384' viewBox='0 0 384 384'><defs><g id='heart'>M12 21s-7-4.4-9-8.8C1.5 8.8 4 5 7.5 5c2 0 3.6 1.1 4.5 2.8C13 6.1 14.5 5 16.5 5 20 5 22.5 8.8 21 12.2 19 16.6 12 21 12 21z</g><g id='chat'>M4 5h16v11H10l-6 4z</g><g id='phone'>M6 3h3l2 5-2 1.2c1 3 3 5 6 6l1.2-2 5 2v3c0 1-1 2-2 2C10 20.2 3.8 14 3.8 5c0-1 1.2-2 2.2-2z</g><g id='coffee'>M5 8h11v6a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4zM16 9.5h1.5a2.5 2.5 0 0 1 0 5H16M6 4.5V6M10 4v1.5M14 4.5V6</g><g id='music'>M9 18V6l9-2v12M9 18a2.4 2.4 0 1 1-4.8 0 2.4 2.4 0 0 1 4.8 0zM18 16a2.4 2.4 0 1 1-4.8 0 2.4 2.4 0 0 1 4.8 0z</g><g id='camera'>M4 8h4l1.8-2h4.4L16 8h4v10H4zM12 16.2a3 3 0 1 0 0-6 3 3 0 0 0 0 6z</g><g id='plane'>M3 12.5l18-8-6.5 18-3.2-7.3z</g><g id='star'>M12 3.2l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6L3.4 9.5l6-.8z</g><g id='clock'>M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7.2V12l3 2</g><g id='leaf'>M20 4C10.5 4 5.5 9 5.5 15.8c0 2 .8 3.7.8 3.7s8.7.4 11.8-5.4C20.2 10 20 4 20 4zM6.5 19.5C8.5 13.5 12.5 9.5 17 7.5</g><g id='balloon'>M12 3a6 6 0 0 1 6 6c0 4-4 6.8-6 8.8-2-2-6-4.8-6-8.8a6 6 0 0 1 6-6zM12 18v3</g><g id='gift'>M4 10h16v10H4zM4 10l2-4h12l2 4M12 6v14</g><g id='sun'>M12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zM12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2</g><g id='book'>M4 5c3-1.5 6-1.5 8 0 2-1.5 5-1.5 8 0v13c-3-1.5-6-1.5-8 0-2-1.5-5-1.5-8 0zM12 5v13</g></defs><g fill='none' stroke='%2523000000' stroke-width='1.15' stroke-linecap='round' stroke-linejoin='round'><use href='%23heart' transform='translate(18,14) scale(1.5) rotate(0,12,12)'/><use href='%23chat' transform='translate(150,10) scale(1.3) rotate(-14,12,12)'/><use href='%23phone' transform='translate(272,26) scale(1.6) rotate(9,12,12)'/><use href='%23coffee' transform='translate(24,132) scale(1.4) rotate(12,12,12)'/><use href='%23music' transform='translate(140,120) scale(1.7) rotate(-8,12,12)'/><use href='%23camera' transform='translate(268,140) scale(1.35) rotate(18,12,12)'/><use href='%23plane' transform='translate(16,252) scale(1.55) rotate(-10,12,12)'/><use href='%23star' transform='translate(132,258) scale(1.4) rotate(7,12,12)'/><use href='%23clock' transform='translate(262,250) scale(1.5) rotate(-16,12,12)'/><use href='%23leaf' transform='translate(72,72) scale(1.15) rotate(22,12,12)'/><use href='%23balloon' transform='translate(210,80) scale(1.1) rotate(-22,12,12)'/><use href='%23gift' transform='translate(196,196) scale(1.2) rotate(15,12,12)'/></g></svg>");
+
+  /* مقياس الخط — يتحكم به المستخدم من الإعدادات */
+  --wa-font-scale: 1;
+
+  /* ألوان واتساب الرسمية */
+  --wa-accent: #00a884;
+  --wa-accent-strong: #008069;
+  --wa-tick-read: #53bdeb;
+
+  --wa-in-dark: #202c33;
+  --wa-out-dark: #005c4b;
+  --wa-pane-dark: #111b21;
+  --wa-header-dark: #202c33;
+  --wa-hover-dark: #182229;
+
+  --wa-in-light: #ffffff;
+  --wa-out-light: #d9fdd3;
+  --wa-pane-light: #ffffff;
+  --wa-header-light: #f0f2f5;
+  --wa-hover-light: #f5f6f6;
+
+  --wa-meta-dark: #8696a0;
+  --wa-meta-light: #667781;
+}
+
+/* =============================================================
+   1) خلفية الدردشة
+   ============================================================= */
+
+body[data-theme="dark"] .chat-messages {
+  background-color: #0b141a;
+  background-image: var(--wa-doodle-dark);
+  background-size: 384px 384px;
+  background-blend-mode: overlay;
+}
+
+body[data-theme="light"] .chat-messages {
+  background-color: #efeae2;
+  background-image: var(--wa-doodle-light);
+  background-size: 384px 384px;
+}
+
+/* =============================================================
+   2) الفقاعات — الشكل والحجم
+   ============================================================= */
+
+.bubble {
+  font-size: calc(16.5px * var(--wa-font-scale));
+  line-height: 1.48;
+  padding: 7px 9px 8px 10px;
+  border-radius: 10px;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  max-width: min(78%, 620px);
+}
+
+.bubble-text {
+  font-size: calc(16.5px * var(--wa-font-scale));
+}
+
+/* الزوايا المنطقية: تتبع اتجاه اللغة تلقائياً */
+.bubble-row.user-side .bubble {
+  border-start-start-radius: 10px;
+  border-start-end-radius: 10px;
+  border-end-start-radius: 10px;
+  border-end-end-radius: 10px;
+}
+
+.bubble-row.tail.user-side .bubble {
+  border-end-start-radius: 2px;
+}
+
+.bubble-row.tail.admin-side .bubble {
+  border-end-end-radius: 2px;
+}
+
+/* ذيل الفقاعة — مثل واتساب */
+.bubble-row.tail .bubble::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  width: 8px;
+  height: 13px;
+}
+
+.bubble-row.tail.user-side .bubble::after {
+  inset-inline-start: -8px;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+
+.bubble-row.tail.admin-side .bubble::after {
+  inset-inline-end: -8px;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+body[data-theme="dark"] .bubble-row.user-side .bubble,
+body[data-theme="dark"] .bubble-row.user-side .bubble::after {
+  background: var(--wa-in-dark);
+}
+
+body[data-theme="dark"] .bubble-row.admin-side .bubble,
+body[data-theme="dark"] .bubble-row.admin-side .bubble::after {
+  background: var(--wa-out-dark);
+}
+
+body[data-theme="light"] .bubble-row.user-side .bubble,
+body[data-theme="light"] .bubble-row.user-side .bubble::after {
+  background: var(--wa-in-light);
+}
+
+body[data-theme="light"] .bubble-row.admin-side .bubble,
+body[data-theme="light"] .bubble-row.admin-side .bubble::after {
+  background: var(--wa-out-light);
+}
+
+/* تقارب الرسائل المتتابعة من نفس الطرف (مثل واتساب) */
+.bubble-row {
+  margin: 1.5px 0;
+}
+
+.bubble-row.first-of-group {
+  margin-top: 11px;
+}
+
+/* =============================================================
+   3) بيانات الرسالة (الوقت + علامات القراءة)
+   ============================================================= */
+
+.bubble-meta {
+  font-size: calc(11.5px * var(--wa-font-scale));
+  margin-top: 3px;
+  gap: 4px;
+}
+
+body[data-theme="dark"] .bubble-meta,
+body[data-theme="dark"] .bubble-time {
+  color: var(--wa-meta-dark);
+}
+
+body[data-theme="light"] .bubble-meta,
+body[data-theme="light"] .bubble-time {
+  color: var(--wa-meta-light);
+}
+
+.ticks {
+  letter-spacing: -3px;
+  padding-inline-end: 3px;
+  font-size: calc(12.5px * var(--wa-font-scale));
+}
+
+.ticks-read {
+  color: var(--wa-tick-read) !important;
+}
+
+/* =============================================================
+   4) عرض الوسائط داخل الفقاعة
+   ============================================================= */
+
+.msg-image,
+.msg-video {
+  border-radius: 8px;
+  max-width: 100%;
+}
+
+.media-save-hint {
+  opacity: 0.55;
+  font-size: calc(10px * var(--wa-font-scale));
+  margin-top: 2px;
+}
+
+/* الاقتباس داخل الفقاعة (الرد) */
+.quoted-reply {
+  border-inline-start: 4px solid var(--wa-accent);
+  border-radius: 5px;
+  padding: 5px 9px;
+  margin-bottom: 4px;
+  font-size: calc(13.5px * var(--wa-font-scale));
+}
+
+body[data-theme="dark"] .quoted-reply {
+  background: rgba(255, 255, 255, 0.06);
+  color: #cfd8dd;
+}
+
+body[data-theme="light"] .quoted-reply {
+  background: rgba(0, 0, 0, 0.05);
+  color: #54656f;
+}
+
+/* شريحة التفاعل (الإيموجي) */
+.reaction-chip {
+  font-size: calc(12px * var(--wa-font-scale));
+  border-radius: 11px;
+  padding: 2px 7px;
+}
+
+/* أزرار الرد الجاهزة داخل رسالة الترحيب */
+.msg-btn {
+  font-size: calc(15px * var(--wa-font-scale));
+  border-radius: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--wa-accent);
+  color: var(--wa-accent);
+  font-weight: 600;
+}
+
+/* =============================================================
+   5) رأس الدردشة
+   ============================================================= */
+
+.chat-header {
+  padding: 0 16px;
+  gap: 14px;
+}
+
+body[data-theme="dark"] .chat-header {
+  background: var(--wa-header-dark);
+  border-bottom: 1px solid rgba(134, 150, 160, 0.15);
+}
+
+body[data-theme="light"] .chat-header {
+  background: var(--wa-header-light);
+  border-bottom: 1px solid #e9edef;
+}
+
+.chat-header-name {
+  font-size: calc(17px * var(--wa-font-scale));
+  font-weight: 500;
+}
+
+.chat-header-status,
+.typing-indicator {
+  font-size: calc(13.5px * var(--wa-font-scale));
+}
+
+body[data-theme="dark"] .chat-header-status,
+body[data-theme="dark"] .typing-indicator {
+  color: var(--wa-meta-dark);
+}
+
+body[data-theme="light"] .chat-header-status,
+body[data-theme="light"] .typing-indicator {
+  color: var(--wa-meta-light);
+}
+
+.typing-indicator {
+  color: var(--wa-accent) !important;
+}
+
+.chat-header button,
+.back-btn {
+  font-size: calc(19px * var(--wa-font-scale));
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+}
+
+/* قائمة خيارات المحادثة — منسدلة واتساب */
+.chat-options-menu {
+  border-radius: 4px;
+  padding: 6px 0;
+  min-width: 200px;
+  box-shadow: 0 2px 12px rgba(11, 20, 26, 0.35);
+  border: none;
+}
+
+body[data-theme="dark"] .chat-options-menu {
+  background: #233138;
+}
+
+body[data-theme="light"] .chat-options-menu {
+  background: #ffffff;
+}
+
+.chat-options-menu button {
+  width: 100%;
+  text-align: start;
+  padding: 12px 20px;
+  font-size: calc(15px * var(--wa-font-scale));
+  border-radius: 0;
+  border: none;
+  background: none;
+}
+
+.chat-options-menu button:hover {
+  background: rgba(134, 150, 160, 0.16);
+}
+
+.chat-option-danger {
+  color: #ea0038 !important;
+}
+
+/* =============================================================
+   6) شريط الكتابة (Composer)
+   ============================================================= */
+
+.composer {
+  padding: 8px 16px;
+  gap: 8px;
+}
+
+body[data-theme="dark"] .composer {
+  background: var(--wa-header-dark);
+}
+
+body[data-theme="light"] .composer {
+  background: var(--wa-header-light);
+}
+
+.composer input[type="text"] {
+  font-size: calc(16.5px * var(--wa-font-scale));
+  border-radius: 9px;
+  padding: 11px 14px;
+  border: none;
+  outline: none;
+}
+
+body[data-theme="dark"] .composer input[type="text"] {
+  background: #2a3942;
+  color: #d1d7db;
+}
+
+body[data-theme="dark"] .composer input[type="text"]::placeholder {
+  color: #8696a0;
+}
+
+body[data-theme="light"] .composer input[type="text"] {
+  background: #ffffff;
+  color: #111b21;
+}
+
+body[data-theme="light"] .composer input[type="text"]::placeholder {
+  color: #8696a0;
+}
+
+.composer button {
+  font-size: calc(21px * var(--wa-font-scale));
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  display: grid;
+  place-items: center;
+  color: var(--wa-meta-dark);
+}
+
+body[data-theme="light"] .composer button {
+  color: #8696a0;
+}
+
+.send-btn {
+  font-size: calc(19px * var(--wa-font-scale)) !important;
+  background: var(--wa-accent) !important;
+  color: #ffffff !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 50% !important;
+}
+
+.send-btn:hover {
+  background: var(--wa-accent-strong) !important;
+}
+
+/* لوحة الإيموجي */
+.emoji-panel {
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 4px 20px rgba(11, 20, 26, 0.35);
+  border: none;
+}
+
+body[data-theme="dark"] .emoji-panel {
+  background: #233138;
+}
+
+body[data-theme="light"] .emoji-panel {
+  background: #ffffff;
+}
+
+.emoji-opt {
+  font-size: calc(24px * var(--wa-font-scale));
+  border-radius: 8px;
+}
+
+.quick-react-opt {
+  font-size: calc(23px * var(--wa-font-scale));
+}
+
+/* =============================================================
+   7) قائمة المحادثات (Sidebar)
+   ============================================================= */
+
+.contact-row {
+  min-height: 74px;
+  padding: 8px 14px;
+  border-radius: 0;
+  gap: 14px;
+  border-bottom: 1px solid rgba(134, 150, 160, 0.12);
+}
+
+body[data-theme="dark"] .contact-row:hover {
+  background: var(--wa-hover-dark);
+}
+
+body[data-theme="light"] .contact-row:hover {
+  background: var(--wa-hover-light);
+}
+
+.contact-row .avatar {
+  width: 49px;
+  height: 49px;
+  flex: 0 0 49px;
+  font-size: calc(19px * var(--wa-font-scale));
+}
+
+.contact-name {
+  font-size: calc(17px * var(--wa-font-scale));
+  font-weight: 500;
+}
+
+.contact-sub {
+  font-size: calc(14.5px * var(--wa-font-scale));
+  margin-top: 2px;
+}
+
+body[data-theme="dark"] .contact-sub {
+  color: var(--wa-meta-dark);
+}
+
+body[data-theme="light"] .contact-sub {
+  color: var(--wa-meta-light);
+}
+
+.contact-row.active,
+.contact-row.selected {
+  background: rgba(0, 168, 132, 0.12);
+}
+
+/* شارة غير المقروء */
+.unread-badge {
+  background: var(--wa-accent);
+  color: #111b21;
+  font-size: calc(12px * var(--wa-font-scale));
+  font-weight: 700;
+  min-width: 21px;
+  height: 21px;
+  border-radius: 11px;
+  padding: 0 6px;
+  display: grid;
+  place-items: center;
+}
+
+.section-heading {
+  font-size: calc(13.5px * var(--wa-font-scale));
+  font-weight: 600;
+  color: var(--wa-accent) !important;
+  padding: 10px 16px 6px;
+  background: none;
+}
+
+/* رأس القائمة الجانبية */
+.sidebar-header {
+  padding: 0 16px;
+}
+
+body[data-theme="dark"] .sidebar-header {
+  background: var(--wa-header-dark);
+  border-bottom: 1px solid rgba(134, 150, 160, 0.15);
+}
+
+body[data-theme="light"] .sidebar-header {
+  background: var(--wa-header-light);
+  border-bottom: 1px solid #e9edef;
+}
+
+#my-name {
+  font-size: calc(17px * var(--wa-font-scale));
+  font-weight: 500;
+}
+
+.sidebar-actions button,
+.sidebar-header button {
+  font-size: calc(19px * var(--wa-font-scale));
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  display: grid;
+  place-items: center;
+  color: #8696a0;
+}
+
+/* صندوق البحث */
+.search-box {
+  padding: 8px 12px;
+}
+
+.search-box input {
+  font-size: calc(15px * var(--wa-font-scale));
+  border-radius: 8px;
+  padding: 9px 14px;
+  border: none;
+  outline: none;
+  width: 100%;
+}
+
+body[data-theme="dark"] .search-box input {
+  background: #202c33;
+  color: #d1d7db;
+}
+
+body[data-theme="light"] .search-box input {
+  background: #f0f2f5;
+  color: #111b21;
+}
+
+/* =============================================================
+   8) الشاشات الفارغة + المؤشرات
+   ============================================================= */
+
+.chat-empty-state {
+  text-align: center;
+  padding: 0 40px;
+}
+
+.chat-empty-state p {
+  font-size: calc(19px * var(--wa-font-scale));
+  color: var(--wa-meta-dark);
+  margin-top: 14px;
+}
+
+.chat-empty-icon {
+  font-size: 64px;
+  opacity: 0.25;
+}
+
+.empty-chat {
+  font-size: calc(14px * var(--wa-font-scale));
+  color: var(--wa-meta-light);
+  text-align: center;
+  padding: 24px;
+  margin: auto;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  max-width: 380px;
+}
+
+body[data-theme="dark"] .empty-chat {
+  background: rgba(32, 44, 51, 0.85);
+  color: var(--wa-meta-dark);
+}
+
+/* =============================================================
+   9) الإعدادات — بشكل صفحة واتساب
+   ============================================================= */
+
+.settings-panel {
+  padding: 8px 14px 20px;
+}
+
+body[data-theme="dark"] .settings-panel {
+  background: var(--wa-pane-dark);
+}
+
+body[data-theme="light"] .settings-panel {
+  background: var(--wa-pane-light);
+}
+
+.settings-panel > label,
+.settings-panel label {
+  font-size: calc(14px * var(--wa-font-scale));
+  color: var(--wa-accent) !important;
+  font-weight: 600;
+  margin: 16px 0 6px;
+  display: block;
+}
+
+.settings-panel input[type="file"] {
+  font-size: calc(13px * var(--wa-font-scale));
+  width: 100%;
+}
+
+.settings-panel button {
+  font-size: calc(15px * var(--wa-font-scale));
+  border-radius: 8px;
+  padding: 11px 14px;
+  min-height: 44px;
+}
+
+.settings-danger {
+  border-radius: 8px;
+  font-weight: 600;
+}
+
+/* =============================================================
+   10) النوافذ والتنبيهات
+   ============================================================= */
+
+.global-toast {
+  border-radius: 8px;
+  font-size: calc(14.5px * var(--wa-font-scale));
+  padding: 12px 22px;
+  background: #111b21;
+  color: #e9edef;
+  box-shadow: 0 4px 16px rgba(11, 20, 26, 0.4);
+}
+
+.media-viewer-modal {
+  background: rgba(11, 20, 26, 0.97);
+}
+
+.media-viewer-modal img,
+.media-viewer-modal video {
+  border-radius: 6px;
+  max-height: 92vh;
+}
+
+.media-viewer-close {
+  font-size: 26px;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.in-app-notification {
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(11, 20, 26, 0.4);
+}
+
+.in-app-notification strong {
+  font-size: calc(14.5px * var(--wa-font-scale));
+}
+
+.in-app-notification span {
+  font-size: calc(13.5px * var(--wa-font-scale));
+}
+
+/* =============================================================
+   11) شاشة الدخول
+   ============================================================= */
+
+.auth-card {
+  border-radius: 12px;
+  padding: 32px 28px;
+  box-shadow: 0 8px 32px rgba(11, 20, 26, 0.25);
+}
+
+body[data-theme="light"] .auth-card {
+  background: #ffffff;
+}
+
+body[data-theme="dark"] .auth-card {
+  background: #111b21;
+  border: 1px solid #202c33;
+}
+
+.auth-logo {
+  font-size: calc(26px * var(--wa-font-scale));
+  color: var(--wa-accent) !important;
+}
+
+.auth-tabs button {
+  font-size: calc(15px * var(--wa-font-scale));
+  padding: 10px;
+}
+
+.auth-tabs button.active {
+  color: var(--wa-accent) !important;
+  border-bottom: 3px solid var(--wa-accent) !important;
+}
+
+.auth-form input {
+  font-size: calc(16px * var(--wa-font-scale));
+  border-radius: 8px;
+  padding: 13px 15px;
+}
+
+.auth-form button[type="submit"] {
+  font-size: calc(16.5px * var(--wa-font-scale));
+  border-radius: 24px;
+  padding: 13px;
+  font-weight: 600;
+}
+
+.auth-error {
+  font-size: calc(14px * var(--wa-font-scale));
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+/* =============================================================
+   12) أشرطة التمرير — مثل واتساب
+   ============================================================= */
+
+.chat-messages::-webkit-scrollbar,
+#contact-list-wrap::-webkit-scrollbar,
+.settings-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-messages::-webkit-scrollbar-thumb,
+#contact-list-wrap::-webkit-scrollbar-thumb,
+.settings-panel::-webkit-scrollbar-thumb {
+  background: rgba(134, 150, 160, 0.35);
+  border-radius: 3px;
+}
+
+.chat-messages::-webkit-scrollbar-track,
+#contact-list-wrap::-webkit-scrollbar-track,
+.settings-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+
+/* =============================================================
+   13) الخط — أقرب ما يكون لواتساب مع دعم عربي أوضح
+   ============================================================= */
+
+body {
+  font-family:
+    "Segoe UI",
+    "Helvetica Neue",
+    "Noto Naskh Arabic",
+    "Tahoma",
+    Roboto,
+    Arial,
+    sans-serif;
+  font-size: calc(15px * var(--wa-font-scale));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+
+/* =============================================================
+   14) عناصر الإعدادات الجديدة + شاشة الدخول
+   ============================================================= */
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px 12px;
+  font-size: calc(18px * var(--wa-font-scale));
+  font-weight: 600;
+  color: var(--wa-accent);
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+body[data-theme="dark"] .settings-head { background: var(--wa-pane-dark); }
+body[data-theme="light"] .settings-head { background: var(--wa-pane-light); }
+
+.settings-head button {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(134, 150, 160, 0.16);
+  color: inherit;
+  font-size: 17px;
+  cursor: pointer;
+}
+
+.settings-hint {
+  font-size: calc(12.5px * var(--wa-font-scale));
+  color: var(--wa-meta-dark);
+  margin: 6px 0 2px;
+  line-height: 1.6;
+}
+
+.settings-hint.err { color: #ff7a7a; }
+.settings-hint.ok { color: var(--wa-accent); }
+
+/* اختيار حجم الخط */
+.settings-choices {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 6px 0;
+}
+
+.settings-choice {
+  border: 1px solid rgba(134, 150, 160, 0.35);
+  background: transparent;
+  color: inherit;
+  border-radius: 8px;
+  padding: 12px 2px;
+  cursor: pointer;
+  min-height: 46px;
+}
+
+.settings-choice.active {
+  border-color: var(--wa-accent);
+  background: rgba(0, 168, 132, 0.16);
+  color: var(--wa-accent);
+  font-weight: 700;
+}
+
+/* شبكة الخلفيات */
+.wallpaper-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 8px 0 6px;
+}
+
+.wallpaper-swatch {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  background: var(--wa-panel-dark);
+}
+
+.wallpaper-swatch.active { border-color: var(--wa-accent); }
+
+.wallpaper-swatch span {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  font-size: 9.5px;
+  padding: 3px 2px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  text-align: center;
+}
+
+.wallpaper-swatch.wp-default {
+  background-color: #0b141a;
+  background-image: var(--wa-doodle-dark);
+  background-size: 72px 72px;
+}
+
+/* قائمة النغمات */
+.tone-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tone-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.tone-row:hover { background: rgba(134, 150, 160, 0.12); }
+.tone-row.active { background: rgba(0, 168, 132, 0.16); }
+
+.tone-name {
+  flex: 1;
+  font-size: calc(14.5px * var(--wa-font-scale));
+  font-weight: 500;
+}
+
+.tone-play {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(134, 150, 160, 0.2);
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tone-row.active .tone-play {
+  background: var(--wa-accent);
+  color: #fff;
+}
+
+.tone-play:disabled { opacity: 0.35; cursor: default; }
+
+.tone-check {
+  width: 20px;
+  text-align: center;
+  color: var(--wa-accent);
+  font-weight: 700;
+  font-size: 17px;
+}
+
+/* أزرار كلمة المرور في إدارة المشرفين */
+.admin-key {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid rgba(134, 150, 160, 0.3);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.admin-key:hover { background: rgba(0, 168, 132, 0.18); }
+
+/* ---- شاشة الدخول: جوجل والدخول السريع ---- */
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 14px;
+  color: var(--wa-meta-dark);
+  font-size: calc(13px * var(--wa-font-scale));
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(134, 150, 160, 0.3);
+}
+
+.auth-oauth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px;
+  border-radius: 24px;
+  border: 1px solid rgba(134, 150, 160, 0.4);
+  background: #ffffff;
+  color: #3c4043;
+  font-size: calc(15px * var(--wa-font-scale));
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: 10px;
+  font-family: inherit;
+}
+
+.auth-oauth svg { flex: 0 0 19px; }
+
+.auth-oauth:hover { filter: brightness(0.95); }
+.auth-oauth:disabled { opacity: 0.6; cursor: default; }
+
+body[data-theme="dark"] .auth-oauth {
+  background: #2a3942;
+  color: #e9edef;
+  border-color: transparent;
+}
+
+.auth-oauth.ghost,
+body[data-theme="dark"] .auth-oauth.ghost {
+  background: transparent;
+  color: var(--wa-accent);
+  border-color: rgba(0, 168, 132, 0.5);
+}
+
+.auth-hint {
+  font-size: calc(12px * var(--wa-font-scale));
+  color: var(--wa-meta-dark);
+  text-align: center;
+  margin-top: 10px;
+  line-height: 1.7;
+}

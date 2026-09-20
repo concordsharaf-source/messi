@@ -56,6 +56,27 @@
       <input id="signup-password" type="password" required minlength="6" data-i18n-placeholder="password" placeholder="كلمة المرور" />
       <button type="submit" data-i18n="signup_btn">إنشاء الحساب</button>
     </form>
+
+    <!-- ============ الدخول السريع ============ -->
+    <div class="auth-divider"><span data-i18n="or">أو</span></div>
+
+    <button id="btn-google" type="button" class="auth-oauth">
+      <svg viewBox="0 0 48 48" width="19" height="19" aria-hidden="true">
+        <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.3 17.7 9.5 24 9.5z"/>
+        <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-2.8-.4-4H24v8.4h12.4c-.3 2.1-1.6 5.2-4.6 7.3l7.6 5.9c4.4-4.1 6.7-10.1 6.7-17.6z"/>
+        <path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.7s.3-3.3.8-4.7l-7.8-6.1C1 16.2 0 19.9 0 24s1 7.8 2.6 10.8l7.8-6.1z"/>
+        <path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.4-5.6l-7.6-5.9c-2 1.4-4.7 2.4-7.8 2.4-6.3 0-11.7-3.8-13.6-9.8l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/>
+      </svg>
+      <span data-i18n="continue_google">المتابعة بواسطة جوجل</span>
+    </button>
+
+    <button id="btn-guest" type="button" class="auth-oauth ghost">
+      ⚡ <span data-i18n="guest_entry">دخول سريع بدون تسجيل بيانات</span>
+    </button>
+
+    <p class="auth-hint" data-i18n="oauth_hint">
+      الدخول بجوجل يستخدم حسابك مباشرةً — لا نطلب بيانات ولا كلمة مرور.
+    </p>
   </div>
 </div>
 
@@ -81,13 +102,55 @@
     </header>
 
     <div id="settings-panel" class="settings-panel hidden">
-      <label data-i18n="profile_picture">الصورة الشخصية</label>
-      <input id="avatar-input" type="file" accept="image/*" />
-      <button id="btn-remove-avatar" class="settings-danger" type="button">حذف الصورة الشخصية</button>
-      <label data-i18n="wallpaper">خلفية الدردشة</label>
-      <input id="wallpaper-input" type="file" accept="image/*" />
-      <button id="btn-remove-wallpaper" class="settings-danger" type="button">حذف خلفية الدردشة</button>
+      <div class="settings-head">
+        <button id="btn-close-settings" type="button" title="إغلاق">✕</button>
+        <span data-i18n="settings">الإعدادات</span>
+      </div>
+
+      <!-- ============ الملف الشخصي ============ -->
+      <details class="admin-block" open>
+        <summary>👤 <span data-i18n="profile">الملف الشخصي</span></summary>
+        <label data-i18n="profile_picture">الصورة الشخصية</label>
+        <input id="avatar-input" type="file" accept="image/*" />
+        <button id="btn-remove-avatar" class="settings-danger" type="button">حذف الصورة الشخصية</button>
+      </details>
+
+      <!-- ============ المظهر وحجم الخط ============ -->
+      <details class="admin-block" open>
+        <summary>🎨 <span data-i18n="appearance">المظهر وحجم الخط</span></summary>
+        <label data-i18n="font_size">حجم الخط</label>
+        <div id="font-size-choices" class="settings-choices"></div>
+        <div class="settings-hint" data-i18n="font_size_hint">يُطبَّق فوراً على كل التطبيق.</div>
+      </details>
+
+      <!-- ============ خلفية الدردشة ============ -->
+      <details class="admin-block" open>
+        <summary>🖼️ <span data-i18n="wallpaper">خلفية الدردشة</span></summary>
+        <div id="wallpaper-grid" class="wallpaper-grid"></div>
+        <label data-i18n="wallpaper_custom">خلفية خاصة من جهازك</label>
+        <input id="wallpaper-input" type="file" accept="image/*" />
+        <button id="btn-remove-wallpaper" class="settings-danger" type="button">إزالة الخلفية الخاصة</button>
+      </details>
+
+      <!-- ============ نغمة الإشعارات ============ -->
+      <details class="admin-block" open>
+        <summary>🔔 <span data-i18n="notif_tone">نغمة الإشعارات</span></summary>
+        <div id="tone-list" class="tone-list"></div>
+      </details>
+
+      <!-- ============ الأمان ============ -->
+      <details class="admin-block">
+        <summary>🔐 <span data-i18n="security">الأمان</span></summary>
+        <label data-i18n="change_password">تغيير كلمة المرور</label>
+        <input id="new-password" type="password" autocomplete="new-password" placeholder="كلمة المرور الجديدة" />
+        <input id="new-password-confirm" type="password" autocomplete="new-password" placeholder="تأكيد كلمة المرور الجديدة" />
+        <button id="btn-change-password" type="button" class="admin-btn-primary">💾 تغيير كلمة المرور</button>
+        <div id="password-status" class="settings-hint"></div>
+        <div class="settings-hint">لا تُرسل كلمة المرور لأي جهة — التغيير يتم مباشرةً في خدمة المصادقة.</div>
+      </details>
+
       <button id="btn-enable-push" type="button" data-i18n="enable_push">تفعيل إشعارات الجهاز</button>
+
       <!-- ============================================================ -->
       <!-- لوحة المشرف — تظهر للمشرفين، وقسم الإدارة للمشرف العام فقط   -->
       <!-- ============================================================ -->
@@ -106,7 +169,7 @@
           </label>
 
           <label for="auto-reply-greeting">نص رسالة الترحيب</label>
-          <textarea id="auto-reply-greeting" rows="3" maxlength="400" placeholder="مرحباً 👋 كيف يمكننا مساعدتك؟"></textarea>
+          <textarea id="auto-reply-greeting" rows="3" maxlength="400" placeholder="مرحباً بك 👋 كيف يمكننا مساعدتك؟"></textarea>
 
           <label>الأزرار الجاهزة <span class="admin-hint">(تظهر أسفل الرسالة)</span></label>
           <div id="auto-reply-buttons"></div>
@@ -122,7 +185,7 @@
 
         <details class="admin-block hidden" id="admin-manage-block">
           <summary>👥 إدارة المشرفين</summary>
-          <div class="admin-hint">اضغط على «مشرف» أو «مشرف عام» لتبديل الصلاحية.</div>
+          <div class="admin-hint">اضغط على «مشرف» أو «مشرف عام» لتبديل الصلاحية. «🔑» لتعيين كلمة مرور، و«✉️» لإرسال رابط استعادة.</div>
           <div id="admin-users-list" class="admin-users"></div>
           <div id="admin-manage-status" class="admin-hint"></div>
         </details>
