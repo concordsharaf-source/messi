@@ -1,5 +1,15 @@
 # تطبيق المحادثات (WhatsApp-style PWA) — دليل الإعداد
 
+> ## 📚 أدلة إضافية (مضافة حديثاً)
+> | الدليل | المحتوى |
+> |---|---|
+> | [`docs/SWITCH_TO_YOUR_ACCOUNTS.md`](./docs/SWITCH_TO_YOUR_ACCOUNTS.md) | **خريطة تدفق البيانات** + كل نقطة اتصال خارجية + جدول التغيير خطوة بخطوة لنقل التطبيق إلى حساباتك في Supabase وFirebase |
+> | [`docs/BUILD_FROM_SCRATCH.md`](./docs/BUILD_FROM_SCRATCH.md) | **تعليم من الصفر**: كيف تبني تطبيقاً بنفس هذه الآلية البرمجية، مع شرح «لماذا» خلف كل قرار تصميمي |
+> | [`sql/schema.sql`](./sql/schema.sql) | المخطط الأساسي الذي كان **مفقوداً** من الأرشيف — أُعيد بناؤه من تحليل الكود (profiles + FKs بالأسماء المطلوبة + Trigger + RLS + Buckets + Realtime) |
+
+> ⚠️ **مهم:** نفّذ `sql/schema.sql` **قبل** `sql/fcm_and_rls.sql` — لأن `chat_members`
+> في الملف الثاني يعمل FOREIGN KEY على `public.profiles` الذي يُنشأ في الأول.
+
 ## 1. إعداد Supabase
 1. أنشئ مشروعاً جديداً على https://supabase.com
 2. اذهب إلى **SQL Editor** وشغّل محتوى الملف `sql/schema.sql` بالكامل. هذا سينشئ:
