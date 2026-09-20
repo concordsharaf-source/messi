@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v13";  // نافذة الإعدادات الجديدة وأزرار المشرفين
+const CACHE_NAME = "wa-clone-shell-v14";  // شاشة المحادثة الجديدة + اسم التطبيق واتساب الوليد
 const APP_SHELL = [
   "./",
   "./index.html",

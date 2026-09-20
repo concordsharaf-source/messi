@@ -1,7 +1,7 @@
 export const STR = {
   ar: {
     dir: "rtl",
-    app_name: "محادثات",
+    app_name: "واتساب الوليد",
     login: "تسجيل الدخول",
     signup: "إنشاء حساب",
     email: "البريد الإلكتروني",
@@ -56,7 +56,7 @@ export const STR = {
   },
   en: {
     dir: "ltr",
-    app_name: "Chats",
+    app_name: "Waleed WhatsApp",
     login: "Log in",
     signup: "Sign up",
     email: "Email",

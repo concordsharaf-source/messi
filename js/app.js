@@ -187,7 +187,7 @@ async function boot() {
   });
 
   document.addEventListener("click", (e) => {
-    if (e.target.closest("#back-to-list")) {
+    if (e.target.closest("#back-to-list, .js-back")) {
       if (history.state && history.state.waChat) {
         history.back();
       } else {
@@ -1418,7 +1418,8 @@ async function signInAsGuest() {
 
 function wireQuickAuth() {
   $("#btn-google")?.addEventListener("click", signInWithGoogle);
-  $("#btn-guest")?.addEventListener("click", signInAsGuest);
+  // زر «الدخول كزائر» أُزيل بطلب من المالك.
+  // لدالة signInAsGuest() بقيت في الكود — لإرجاع الزر يكفي سطر واحد في index.html.
 }
 
 // ===============================================================
@@ -2397,6 +2398,13 @@ function wireAdminFeatures() {
   wireMessageSearch();
   wireNotesPanel();
   wireThemeMode();
+
+  // أي نقرة على عنصر في قائمة الثلاث نقاط تُغلق القائمة
+  $("#chat-options-menu")?.addEventListener("click", (event) => {
+    if (event.target.closest("button")) {
+      $("#chat-options-menu")?.classList.add("hidden");
+    }
+  });
 
   $("#btn-refresh-activity")?.addEventListener("click", renderActivityFeed);
   $("#btn-refresh-summary")?.addEventListener("click", renderDailySummary);
@@ -6458,7 +6466,12 @@ function getOrCreatePWAInstallButton() {
         id="install-app-btn"
         class="pwa-install-btn hidden"
       >
-        📲 تثبيت التطبيق
+        <span class="pwa-install-icon">📲</span>
+        <span class="pwa-install-text">
+          <b>ثبّت واتساب الوليد</b>
+          <small>افتحه كتطبيق مستقل على جهازك</small>
+        </span>
+        <span class="pwa-install-arrow">⤓</span>
       </button>
     `;
 
@@ -6500,8 +6513,9 @@ function refreshPWAInstallButton() {
   const installed =
     isPWAInstalled();
 
-  const canInstall =
-    !!state.deferredInstallPrompt;
+  // نُظهر البطاقة دائماً قبل التثبيت: إن توفّرت نافذة المتصفح نستخدمها،
+  // وإلا نعرض إرشادات التثبيت اليدوية (سفاري مثلاً).
+  const canInstall = !installed;
 
   const authVisible =
     !$("#auth-screen")?.classList.contains(
@@ -6518,6 +6532,9 @@ function refreshPWAInstallButton() {
     );
 
     button.disabled = false;
+
+    const subtitle = button.querySelector("small");
+    if (subtitle) subtitle.textContent = "افتحه كتطبيق مستقل على جهازك";
 
     button.setAttribute(
       "aria-label",
@@ -6565,17 +6582,31 @@ async function installPWA() {
   const prompt =
     state.deferredInstallPrompt;
 
-  if (!prompt) return;
-
   const button =
     state.installButton ||
     getOrCreatePWAInstallButton();
 
+  // سفاري على الآيفون لا يدعم النافذة التلقائية — نُرشد المستخدم
+  if (!prompt) {
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+    showAuthError(
+      isIOS
+        ? "للتثبيت على الآيفون: اضغط زر المشاركة ⤴ في سفاري ثم «إضافة إلى الشاشة الرئيسية»."
+        : "لتثبيت التطبيق: من قائمة المتصفح ⋮ اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»."
+    );
+
+    return;
+  }
+
   if (button) {
     button.disabled = true;
 
-    button.textContent =
-      "جارٍ فتح نافذة التثبيت…";
+    const subtitle = button.querySelector("small");
+
+    if (subtitle) subtitle.textContent = "جارٍ فتح نافذة التثبيت…";
+    else button.textContent = "جارٍ فتح نافذة التثبيت…";
   }
 
   try {

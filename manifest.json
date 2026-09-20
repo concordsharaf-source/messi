@@ -1,6 +1,6 @@
 {
-  "short_name": "فريق الدعم",
-  "name": "خدمة تواصل - فريق الدعم",
+  "short_name": "واتساب الوليد",
+  "name": "واتساب الوليد",
   "icons": [
     {
       "src": "icons/icon.png",
@@ -14,7 +14,8 @@
     }
   ],
   "start_url": "/index.html",
-  "background_color": "#0d3b66",
+  "background_color": "#111b21",
   "display": "standalone",
-  "theme_color": "#0d3b66"
+  "theme_color": "#111b21",
+  "description": "تطبيق محادثات ومتابعة طلبات العملاء"
 }
