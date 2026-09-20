@@ -184,14 +184,25 @@ expect_ok   "المشرف يحذف ملف مستخدم عادي" \
             "$(as_user "$A" "delete from public.profiles where id='$O';")"
 as_root "insert into auth.users (id,email,raw_user_meta_data) values ('$O','outsider.three@test.local','{}'::jsonb) on conflict (id) do nothing;" >/dev/null
 
-hdr "9) المشرف العام عبر البريد (سلوك الـ Trigger)"
+hdr "9) بريد المشرف لا يمنح صلاحيات تلقائياً (إصلاح أمني)"
 as_root "insert into auth.users (id,email,raw_user_meta_data) values ('$S','super.admin@test.local','{}'::jsonb) on conflict (id) do update set email=excluded.email;" >/dev/null
-expect "البريد المعرّف كمشرف عام يأخذ is_super_admin=true" "t" \
+expect "التسجيل ببريد المشرف العام لا يمنح is_super_admin" "f" \
        "$(as_root "select is_super_admin from public.profiles where id='$S';")"
-expect "ويأخذ is_admin=true أيضاً" "t" \
+expect "ولا يمنح is_admin" "f" \
        "$(as_root "select is_admin from public.profiles where id='$S';")"
+expect "لكن الحساب أُنشئ في profiles طبيعياً" "1" \
+       "$(as_root "select count(*) from public.profiles where id='$S';")"
 
-hdr "9.b) المشرف العام يرى محادثات الجميع"
+hdr "9.b) الترقية اليدوية (الطريقة الصحيحة) تعمل"
+as_root "update public.profiles set is_admin = public.is_admin_email(email), is_super_admin = public.is_super_admin_email(email) where id in ('$S','$A');" >/dev/null
+expect "المشرف العام صار is_super_admin=true" "t" \
+       "$(as_root "select is_super_admin from public.profiles where id='$S';")"
+expect "ويأخذ is_admin=true" "t" \
+       "$(as_root "select is_admin from public.profiles where id='$S';")"
+expect "المستخدم العادي لم يتغيّر" "f" \
+       "$(as_root "select is_admin from public.profiles where id='$U';")"
+
+hdr "9.c) المشرف العام يرى محادثات الجميع"
 expect "المشرف العام يرى المحادثة" "1" \
        "$(as_user "$S" "select count(*) from public.conversations where id='$CONV';")"
 

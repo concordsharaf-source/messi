@@ -130,6 +130,17 @@ $$;
 -- 6) Trigger: إنشاء صف profiles تلقائياً عند كل تسجيل حساب جديد
 --    (js/auth.js يعمل upsert احتياطياً أيضاً، فلا تعارض بينهما)
 -- ============================================================================
+-- ⚠️⚠️ لا تُمنح صلاحيات المشرف هنا — وهذا قرار أمني مقصود.
+--
+--    السبب: هذا التطبيق يعمل بـ «تأكيد البريد مُطفأ» (إلزامي، لأن js/app.js:476
+--    ينفّذ signUp ثم signIn فوراً). ومع إطفائه يستطيع أي شخص التسجيل بأي بريد
+--    دون إثبات ملكيته. لو كان هذا البريد مكتوباً في قائمة المشرفين، لصار
+--    «مشرفاً عاماً» بمجرد التسجيل — أي استيلاء كامل على المحادثات.
+--    والمهاجم لا يحتاج حتى موقعك: يكفي المفتاح العام ومعرّف المشروع (وكلاهما
+--    منشور في هذا المستودع العام) للنداء على /auth/v1/signup مباشرةً.
+--
+--    ✅ الطريقة الصحيحة: يسجّل الشخص حسابه أولاً، ثم يُرقّى عبر
+--       sql/promote_admins.sql (استعلام واحد).
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -141,19 +152,16 @@ declare
 begin
   v_email := lower(coalesce(new.email, ''));
 
-  insert into public.profiles (id, email, display_name, phone, is_admin, is_super_admin)
+  insert into public.profiles (id, email, display_name, phone)
   values (
     new.id,
     new.email,
     coalesce(new.raw_user_meta_data ->> 'display_name', split_part(v_email, '@', 1)),
-    new.raw_user_meta_data ->> 'phone',
-    public.is_admin_email(v_email),
-    public.is_super_admin_email(v_email)
+    new.raw_user_meta_data ->> 'phone'
   )
   on conflict (id) do update
-    set email          = excluded.email,
-        is_admin       = public.is_admin_email(v_email),
-        is_super_admin = public.is_super_admin_email(v_email);
+    set email        = coalesce(excluded.email, public.profiles.email),
+        display_name = coalesce(excluded.display_name, public.profiles.display_name);
 
   return new;
 end;
