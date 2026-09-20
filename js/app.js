@@ -1400,50 +1400,50 @@ async function isGoogleProviderReady() {
   }
 }
 
-function showGoogleSetupNote() {
-  let box = $("#google-setup-note");
-
-  if (!box) {
-    box = document.createElement("div");
-    box.id = "google-setup-note";
-    box.className = "auth-setup-note";
-    box.innerHTML =
-      "<b>دخول جوجل غير مُفعَّل بعد على المشروع</b>" +
-      "<span>يحتاج مفتاح جوجل (Client ID + Secret) يُضاف من إعدادات المشروع. " +
-      "بعد إضافته يعمل الزر مباشرةً دون أي تغيير آخر — أو استخدم البريد وكلمة المرور الآن.</span>";
-
-    $("#btn-google")?.insertAdjacentElement("afterend", box);
-  }
-
-  box.classList.remove("hidden");
-}
-
 async function signInWithGoogle() {
   const btn = $("#btn-google");
   if (btn) btn.disabled = true;
 
-  const ready = await isGoogleProviderReady();
+  let bridge = null;
 
-  if (!ready) {
+  try {
+    // الطريق الأول: مزوّد جوجل الأصلي في Supabase
+    // (يُستخدم تلقائياً متى أُضيف مفتاح جوجل في إعدادات المشروع)
+    if (await isGoogleProviderReady()) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}${window.location.pathname}`,
+          queryParams: { prompt: "select_account" },
+        },
+      });
+
+      if (!error) return;
+    }
+
+    // الطريق الثاني: الجسر عبر Firebase — يعمل بلا أي مفتاح في Supabase
+    try {
+      bridge = await import("./google-signin.js");
+    } catch (loadError) {
+      if (btn) btn.disabled = false;
+
+      showAuthError(
+        "تعذّر تحميل مكوّن الدخول بجوجل — تحقّق من الاتصال بالإنترنت ثم أعد المحاولة."
+      );
+
+      return;
+    }
+
+    const done = await bridge.signInWithGoogleBridge();
+
+    // إن جرى التوجيه الكامل إلى جوجل فالصفحة تغادر الآن — لا إعادة تحميل
+    if (!done || !done.redirected) window.location.reload();
+  } catch (error) {
     if (btn) btn.disabled = false;
-    showGoogleSetupNote();
-    return;
-  }
 
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${window.location.origin}${window.location.pathname}`,
-      queryParams: { prompt: "select_account" },
-    },
-  });
-
-  if (error) {
-    if (btn) btn.disabled = false;
-
-    const message = /provider is not enabled|Unsupported provider/i.test(error.message)
-      ? "الدخول بجوجل غير مُفعَّل بعد على الخادم — استخدم البريد أو الدخول السريع."
-      : "تعذّر الدخول بجوجل: " + error.message;
+    const message = bridge && bridge.googleErrorMessage
+      ? bridge.googleErrorMessage(error)
+      : "تعذّر الدخول بجوجل — أعد المحاولة.";
 
     showAuthError(message);
   }
@@ -1471,10 +1471,26 @@ async function signInAsGuest() {
   window.location.reload();
 }
 
+// إكمال الدخول بجوجل عند العودة من صفحة جوجل (المسار البديل للتوجيه الكامل)
+async function completeGoogleRedirectIfPending() {
+  // نفس العلامة المستخدمة في js/google-signin.js — الفحص قبل الاستيراد
+  if (localStorage.getItem("wa_google_redirect") !== "1") return;
+
+  try {
+    const bridge = await import("./google-signin.js");
+
+    if (await bridge.completeGoogleRedirect()) window.location.reload();
+  } catch (error) {
+    // تجاهل — يمكن للمستخدم المتابعة بالبريد أو إعادة المحاولة
+  }
+}
+
 function wireQuickAuth() {
   $("#btn-google")?.addEventListener("click", signInWithGoogle);
   // زر «الدخول كزائر» أُزيل بطلب من المالك.
   // لدالة signInAsGuest() بقيت في الكود — لإرجاع الزر يكفي سطر واحد في index.html.
+
+  completeGoogleRedirectIfPending();
 }
 
 // ===============================================================

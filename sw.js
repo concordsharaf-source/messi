@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v14";  // شاشة المحادثة الجديدة + اسم التطبيق واتساب الوليد
+const CACHE_NAME = "wa-clone-shell-v15";  // الدخول بجوجل + رسائل أوضح
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const APP_SHELL = [
   "./js/supabaseClient.js",
   "./js/db.js",
   "./js/push.js",
+  "./js/google-signin.js",
   "./manifest.json",
   "./icons/icon.png",
   "./icons/notify.mp3",
