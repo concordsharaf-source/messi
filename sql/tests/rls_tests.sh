@@ -98,6 +98,19 @@ expect "الغريب لا يرى المحادثة" "0" "$(as_user "$O" "select c
 expect_fail "الغريب لا يستطيع إنشاء محادثة منتحلاً المستخدم" \
             "$(as_user "$O" "insert into public.conversations (id,user_id,admin_id) values ('bbbbbbbb-0000-0000-0000-000000000002','$U','$A');")"
 
+hdr "3.b) منع الترقية الذاتية في chat_members (ثغرة مؤكدة)"
+expect_fail "الغريب لا ينضم لمحادثة ليست له بدور member" \
+            "$(as_user "$O" "insert into public.chat_members (conversation_id,user_id,role) values ('$CONV','$O','member');")"
+expect_fail "الغريب لا ينضم إليها بدور admin" \
+            "$(as_user "$O" "insert into public.chat_members (conversation_id,user_id,role) values ('$CONV','$O','admin');")"
+as_root "delete from public.chat_members where conversation_id='$CONV' and user_id='$U';" >/dev/null
+expect_fail "الطرف لا يرقّي نفسه إلى admin (حتى لو كانت عضويته محذوفة)" \
+            "$(as_user "$U" "insert into public.chat_members (conversation_id,user_id,role) values ('$CONV','$U','admin');")"
+expect_ok   "الطرف يعيد إدخال عضويته بدور member فقط" \
+            "$(as_user_do "$U" "insert into public.chat_members (conversation_id,user_id,role) values ('$CONV','$U','member');")"
+expect "دور العضو بعد المحاولات لم يصر admin" "member" \
+       "$(as_root "select role from public.chat_members where conversation_id='$CONV' and user_id='$U';")"
+
 hdr "4) الرسائل"
 MSG="cccccccc-0000-0000-0000-000000000001"
 expect_ok "المستخدم يرسل رسالة في محادثته" \

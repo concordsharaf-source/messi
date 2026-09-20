@@ -314,11 +314,26 @@ create policy "Members can read their own chat membership"
   for select
   using (auth.uid() = user_id);
 
+-- ⚠️ السياسة السابقة كانت: with check (auth.uid() = user_id)
+--    وهذا يسمح لأي مستخدم بإدخال نفسه في *أي* محادثة يعرف معرّفها بدور 'admin'
+--    → فيحصل على حذف الرسائل (is_chat_moderator) وقراءة المحادثة والرسائل
+--    (سياسات القراءة المبنية على chat_members). العضوية تُنشأ أصلاً آلياً عبر
+--    الـ Trigger sync_conversation_members بصلاحيات definer، والكود لا يُدخل
+--    صفوفاً هنا إطلاقاً (يقرأ الدور فقط: js/app.js:1398 و 1412).
+--    السياسة الجديدة تمنع الترقية الذاتية وتمنع الانضمام لمحادثة لست طرفاً فيها.
 drop policy if exists "Users can insert their own chat membership" on public.chat_members;
 create policy "Users can insert their own chat membership"
   on public.chat_members
-  for insert
-  with check (auth.uid() = user_id);
+  for insert to authenticated
+  with check (
+    auth.uid() = user_id
+    and role = 'member'                      -- لا يمنح أحدٌ نفسه admin/moderator
+    and exists (
+      select 1 from public.conversations c
+       where c.id = chat_members.conversation_id
+         and (c.user_id = auth.uid() or c.admin_id = auth.uid())
+    )
+  );
 
 -- 11) RLS Policies for messages
  drop policy if exists "Users can read messages from their conversations" on public.messages;

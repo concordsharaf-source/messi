@@ -199,6 +199,13 @@ update public.profiles set is_admin = true, is_super_admin = true
 منع تصعيد الصلاحيات، عزل التخزين، حماية الرموز، سلوك الزوار). التفاصيل
 وطريقة إعادة التشغيل في `sql/tests/README.md`.
 
+> 🛡️ **ثغرة ترقية صلاحيات كانت مكتشفة ومُغلقة:** سياسة `chat_members` الأصلية
+> كانت تسمح لأي مستخدم مصادَق عليه بإدخال نفسه في أي محادثة **بدور `admin`**
+> بمجرد معرفة معرّفها (`with check (auth.uid() = user_id)` فقط، والعمود `role`
+> بلا قيد). النتيجة: `is_chat_moderator()` ترجع true → حذف رسائل المحادثة
+> وقراءتها. الإصلاح في `sql/fcm_and_rls.sql` يشترط `role = 'member'` وكون
+> المستخدم طرفاً في المحادثة.
+
 ### 3.4 الخطوة 3 — اضبط Authentication
 
 **Authentication → Sign In / Providers → Email** :
