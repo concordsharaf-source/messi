@@ -1,0 +1,20 @@
+# الاعتماديات — تُثبَّت عبر: npm install
+node_modules/
+
+# الأسرار والبيئات
+.env
+.env.*
+!.env.example
+*.pem
+*-service-account*.json
+
+# أنظمة التشغيل والمحررات
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+
+# مخرجات البناء
+dist/
+build/
+.vercel/

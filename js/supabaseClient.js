@@ -1,0 +1,7 @@
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
+
+// يعتمد على مكتبة supabase-js المحمّلة عبر CDN في index.html (window.supabase)
+export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true },
+  realtime: { params: { eventsPerSecond: 10 } },
+});
