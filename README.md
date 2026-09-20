@@ -7,7 +7,9 @@
 > | [`docs/BUILD_FROM_SCRATCH.md`](./docs/BUILD_FROM_SCRATCH.md) | **تعليم من الصفر**: كيف تبني تطبيقاً بنفس هذه الآلية البرمجية، مع شرح «لماذا» خلف كل قرار تصميمي |
 > | [`sql/schema.sql`](./sql/schema.sql) | المخطط الأساسي الذي كان **مفقوداً** من الأرشيف — أُعيد بناؤه من تحليل الكود (profiles + FKs بالأسماء المطلوبة + Trigger + RLS + Buckets + Realtime) |
 
-> ⚠️ **مهم:** نفّذ `sql/schema.sql` **قبل** `sql/fcm_and_rls.sql` — لأن `chat_members`
+> | [`sql/auto_reply.sql`](./sql/auto_reply.sql) | **الرد التلقائي**: رسالة ترحيب بأزرار جاهزة تُرسل آلياً عند إنشاء محادثة جديدة |
+>
+> ⚠️ **مهم:** نفّذ `sql/schema.sql` **قبل** `sql/fcm_and_rls.sql` **وقبل** `sql/auto_reply.sql` — لأن `chat_members`
 > في الملف الثاني يعمل FOREIGN KEY على `public.profiles` الذي يُنشأ في الأول.
 
 ## 🧪 اختبار المخطط قبل التنفيذ
@@ -17,7 +19,7 @@
 
 ```bash
 bash sql/tests/local_pg_up.sh      # بيئة اختبار محلية
-bash sql/tests/run_schema_test.sh  # تنفيذ schema.sql ثم fcm_and_rls.sql
+bash sql/tests/run_schema_test.sh  # تنفيذ الملفات الثلاثة بالترتيب الصحيح
 bash sql/tests/rls_tests.sh        # اختبارات الأمان والعزل
 ```
 

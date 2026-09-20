@@ -25,6 +25,7 @@ run_file() {
 
 run_file "1) schema.sql"      "$REPO/sql/schema.sql";      S=$?
 run_file "2) fcm_and_rls.sql" "$REPO/sql/fcm_and_rls.sql"; F=$?
+run_file "3) auto_reply.sql"  "$REPO/sql/auto_reply.sql";  A=$?
 
 echo
 echo "──────────── الحالة النهائية ────────────"
@@ -56,4 +57,9 @@ select t.tgname as \"Trigger على auth.users\"
 
 $PSQL -q -t -c "select count(*)||' جدول في بث Realtime' from pg_publication_tables where pubname='supabase_realtime' and schemaname='public';"
 
-echo "schema.sql=$S fcm_and_rls.sql=$F"
+$PSQL -q -c "select is_enabled as \"الرد التلقائي مُفعَّل\",
+       jsonb_array_length(buttons) as \"عدد الأزرار\",
+       greeting as \"نص الترحيب\"
+  from public.auto_reply_settings;"
+
+echo "schema.sql=$S fcm_and_rls.sql=$F auto_reply.sql=$A"

@@ -140,7 +140,7 @@ hdr "4) الرسائل"
 MSG="cccccccc-0000-0000-0000-000000000001"
 expect_ok "المستخدم يرسل رسالة في محادثته" \
           "$(as_user_do "$U" "insert into public.messages (id,conversation_id,sender_id,content) values ('$MSG','$CONV','$U','مرحبا');")"
-expect "المشرف يرى الرسالة" "1" "$(as_user "$A" "select count(*) from public.messages where conversation_id='$CONV';")"
+expect "المشرف يرى رسالة المستخدم" "1" "$(as_user "$A" "select count(*) from public.messages where conversation_id='$CONV' and sender_id='$U';")"
 expect "الغريب لا يرى الرسالة" "0" "$(as_user "$O" "select count(*) from public.messages where conversation_id='$CONV';")"
 expect "الزائر anon لا يرى الرسالة" "0" "$(as_anon "select count(*) from public.messages;")"
 expect_fail "الغريب لا يرسل رسالة في محادثة ليست له" \
@@ -228,6 +228,52 @@ as_root "delete from public.profiles where id='$S';" >/dev/null
 expect_ok "المشرف المُعلَن يستطيع إدخال صفّه مع is_admin=true" \
   "$(as_user_json '{"sub":"'"$S"'","role":"authenticated","email":"super.admin@test.local"}' \
      "insert into public.profiles (id,email,is_admin) values ('$S','super.admin@test.local',true);")"
+
+hdr "13) الرد التلقائي — رسالة الترحيب بالأزرار"
+# ملاحظة: ننشئ محادثة جديدة هنا (U ↔ S) لأن محادثة القسم 3 تُحذف لاحقاً في القسم 12
+as_user_do "$U" "insert into public.conversations (user_id,admin_id) values ('$U','$S');" >/dev/null
+GOK=$(as_root "select count(*) from public.messages m join public.conversations c on c.id=m.conversation_id where c.user_id='$U' and c.admin_id='$S' and m.buttons is not null;")
+expect "الترحيب أُرسل تلقائياً عند إنشاء المحادثة" "1" "$GOK"
+expect "مرسل الترحيب هو المشرف صاحب المحادثة" "1" \
+       "$(as_root "select count(*) from public.messages m join public.conversations c on c.id=m.conversation_id where c.user_id='$U' and c.admin_id='$S' and m.sender_id='$S' and m.buttons is not null;")"
+expect "نص الترحيب مطابق لما في الإعدادات" "t" \
+       "$(as_root "select (m.content = st.greeting) from public.messages m cross join public.auto_reply_settings st where m.buttons is not null limit 1;")"
+expect "الأزرار مصفوفة غير فارغة" "t" \
+       "$(as_root "select jsonb_array_length(buttons) >= 1 from public.messages where buttons is not null limit 1;")"
+expect "لكل زر label و value" "t" \
+       "$(as_root "select bool_and(x ? 'label' and x ? 'value') from public.messages m, jsonb_array_elements(m.buttons) x where m.buttons is not null;")"
+expect "المستخدم العادي يرى الترحيب في محادثته" "1" \
+       "$(as_user "$U" "select count(*) from public.messages m join public.conversations c on c.id=m.conversation_id where c.user_id='$U' and c.admin_id='$S' and m.buttons is not null;")"
+expect "ولا يرى ترحيب محادثة غيره" "0" \
+       "$(as_user "$U" "select count(*) from public.messages m join public.conversations c on c.id=m.conversation_id where c.user_id <> '$U' and m.buttons is not null;")"
+expect "ملخّص المحادثة حُدِّث بالترحيب" "t" \
+       "$(as_root "select last_message is not null from public.conversations where user_id='$U' and admin_id='$S';")"
+
+hdr "13.b) لا ترحيب في محادثة بين مشرفين"
+as_user_do "$A" "insert into public.conversations (user_id,admin_id) values ('$A','$S');" >/dev/null
+expect "محادثة مشرف↔مشرف بلا ترحيب" "0" \
+       "$(as_root "select count(*) from public.messages m join public.conversations c on c.id=m.conversation_id where c.user_id='$A' and m.buttons is not null;")"
+
+hdr "13.c) العميل لا يستطيع إرفاق أزرار برسالته"
+expect_fail "المستخدم لا يرسل رسالة تحمل أزرار" \
+  "$(as_user "$U" "insert into public.messages (conversation_id,sender_id,content,buttons) values ('$CONV','$U','نص', jsonb_build_array(jsonb_build_object('label','زر','value','قيمة')));")"
+
+hdr "13.d) إيقاف الرد التلقائي من الإعدادات يعمل فوراً"
+BEFORE=$(as_root "select count(*) from public.messages where buttons is not null;")
+as_root "update public.auto_reply_settings set is_enabled = false, updated_at = now();" >/dev/null
+as_user_do "$O" "insert into public.conversations (user_id,admin_id) values ('$O','$A');" >/dev/null
+expect "بعد الإيقاف: لا ترحيب للمحادثة الجديدة" "$BEFORE" \
+       "$(as_root "select count(*) from public.messages where buttons is not null;")"
+as_root "update public.auto_reply_settings set is_enabled = true, updated_at = now();" >/dev/null
+as_user_do "$O" "insert into public.conversations (user_id,admin_id) values ('$O','$S');" >/dev/null
+expect "بعد إعادة التفعيل: الترحيب يعود" "$((BEFORE+1))" \
+       "$(as_root "select count(*) from public.messages where buttons is not null;")"
+
+hdr "13.e) الحماية: غير المشرف لا يعدّل نص الترحيب"
+expect "المستخدم العادي لا يعدّل الإعدادات (0 صفوف)" "0" \
+       "$(as_user "$U" "with x as (update public.auto_reply_settings set greeting='اختراق' returning 1) select count(*) from x;")"
+expect "النص لم يتغيّر فعلاً" "t" \
+       "$(as_root "select greeting <> 'اختراق' from public.auto_reply_settings limit 1;")"
 
 hdr "12) حذف مستخدم أرسل رسائل (كان يفشل قبل الإصلاح)"
 expect "قبل الحذف: للمستخدم رسائل" "1" \
