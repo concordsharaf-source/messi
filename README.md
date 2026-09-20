@@ -10,6 +10,19 @@
 > ⚠️ **مهم:** نفّذ `sql/schema.sql` **قبل** `sql/fcm_and_rls.sql` — لأن `chat_members`
 > في الملف الثاني يعمل FOREIGN KEY على `public.profiles` الذي يُنشأ في الأول.
 
+## 🧪 اختبار المخطط قبل التنفيذ
+
+ملفات SQL مُختبرة على PostgreSQL 17 بمحاكاة كاملة لبيئة Supabase، مع **43 اختباراً
+سلوكياً** لسياسات RLS:
+
+```bash
+bash sql/tests/local_pg_up.sh      # بيئة اختبار محلية
+bash sql/tests/run_schema_test.sh  # تنفيذ schema.sql ثم fcm_and_rls.sql
+bash sql/tests/rls_tests.sh        # اختبارات الأمان والعزل
+```
+
+التفاصيل: [`sql/tests/README.md`](sql/tests/README.md)
+
 ## 1. إعداد Supabase
 1. أنشئ مشروعاً جديداً على https://supabase.com
 2. اذهب إلى **SQL Editor** وشغّل محتوى الملف `sql/schema.sql` بالكامل. هذا سينشئ:

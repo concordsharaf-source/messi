@@ -32,6 +32,17 @@ create table if not exists public.typing_status (
 
 create index if not exists typing_status_conversation_idx on public.typing_status(conversation_id);
 
+-- typing_status يُنشأ هنا (لا في schema.sql) لذلك يُضاف إلى publication هنا.
+-- بدونه لا تصل أحداث «يكتب الآن» إلى js/app.js:3739.
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.typing_status;
+  exception when duplicate_object then
+    null;  -- مضافة مسبقاً
+  end;
+end $$;
+
 -- 4) Support table for conversations/messages if missing
 -- These are expected by the app, but if they already exist they are left alone.
 create table if not exists public.conversations (
@@ -149,26 +160,26 @@ alter table public.chat_members enable row level security;
 drop policy if exists "Users can read own fcm token" on public.fcm_tokens;
 create policy "Users can read own fcm token"
   on public.fcm_tokens
-  for select
+  for select to authenticated
   using (auth.uid() = user_id or user_id is null);
 
 drop policy if exists "Users can upsert own fcm token" on public.fcm_tokens;
 create policy "Users can upsert own fcm token"
   on public.fcm_tokens
-  for insert
+  for insert to authenticated
   with check (auth.uid() = user_id or user_id is null);
 
 drop policy if exists "Users can update own fcm token" on public.fcm_tokens;
 create policy "Users can update own fcm token"
   on public.fcm_tokens
-  for update
+  for update to authenticated
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
 drop policy if exists "Users can delete own fcm token" on public.fcm_tokens;
 create policy "Users can delete own fcm token"
   on public.fcm_tokens
-  for delete
+  for delete to authenticated
   using (auth.uid() = user_id);
 
 -- تبديل ملكية رمز الجهاز بين حسابين لا يمكن تنفيذه بأمان عبر RLS وحدها،

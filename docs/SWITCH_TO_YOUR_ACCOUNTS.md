@@ -160,19 +160,57 @@
 **لماذا الترتيب مهم؟** `chat_members` في الملف الثاني يعمل `references public.profiles(id)`،
 و`profiles` يُنشأ في الملف الأول. لو عكست الترتيب يفشل التنفيذ.
 
-ثم **عدّل قائمة المشرفين** في دالتي `is_admin_email` و`is_super_admin_email` داخل
-`sql/schema.sql` إلى إيميلاتك قبل التشغيل — أو شغّل بعدها:
+> 🔴 **قبل التشغيل أو بعده مباشرةً — لا تترك قائمة المشرفين القديمة.**
+> الملف يحتوي على **إيميلات المالك السابق** داخل `is_admin_email` و
+> `is_super_admin_email`، ومنها `almgawell17@gmail.com` كـ **مشرف عام**.
+> من يسجّل بأحد هذه الإيميلات في مشروعك يصبح مشرفاً تلقائياً. استبدلها بإيميلاتك:
 
 ```sql
-update public.profiles set is_admin = true where lower(email) in ('بريدك@مثال.com');
-update public.profiles set is_admin = true, is_super_admin = true where lower(email) = 'بريدك@مثال.com';
+-- استبدل القائمة بإيميلاتك أنت
+create or replace function public.is_admin_email(p_email text)
+returns boolean language sql immutable as $$
+  select lower(coalesce(p_email, '')) in (
+    'admin1@example.com',
+    'admin2@example.com'
+  );
+$$;
+
+create or replace function public.is_super_admin_email(p_email text)
+returns boolean language sql immutable as $$
+  select lower(coalesce(p_email, '')) = 'admin1@example.com';
+$$;
 ```
+
+وإن سبق أن سجّلت حسابات، ثبّت الصلاحيات على صفوفها مباشرةً:
+
+```sql
+update public.profiles set is_admin = true where lower(email) in ('admin1@example.com');
+update public.profiles set is_admin = true, is_super_admin = true
+ where lower(email) = 'admin1@example.com';
+```
+
+> ⚠️ ولا تنسَ تعديل نفس الإيميل في الكود: `js/auth.js` السطر **97**
+> (الثابت `SUPER_ADMIN_EMAIL`) — وإلا بقيت واجهتك تعتبر إيميلاً آخر مشرفاً عاماً.
+
+### ✅ الملفات مُختبرة فعلياً
+
+`sql/schema.sql` و`sql/fcm_and_rls.sql` شُغِّلا ونُفِّذا على PostgreSQL 17 مع
+محاكاة كاملة لبيئة Supabase، واجتازا **43 اختباراً سلوكياً** (عزل المحادثات،
+منع تصعيد الصلاحيات، عزل التخزين، حماية الرموز، سلوك الزوار). التفاصيل
+وطريقة إعادة التشغيل في `sql/tests/README.md`.
 
 ### 3.4 الخطوة 3 — اضبط Authentication
 
 **Authentication → Sign In / Providers → Email** :
 - ✅ فعّل **Email** provider
-- أثناء التطوير: أطفئ **Confirm email** حتى لا تحتاج تحقق بريد لكل حساب تجريبي
+- 🔴 **أطفئ «Confirm email» — إلزامي لهذا التطبيق بالذات.**
+  السبب في الكود: `js/app.js:476` ينفّذ `signUp` ثم `signIn` **فوراً**.
+  وبما أن التأكيد مفعّل افتراضياً في أي مشروع جديد، يفشل `signIn` بخطأ
+  `Email not confirmed` → **كل مستخدم جديد يرى التطبيق معطوباً.**
+  والأسوأ: بريد Supabase المدمج محدود ببضع رسائل في الساعة، فلا يصلح لتأكيد
+  حسابات مجموعة. (البديل إن أردت التأكيد: SMTP مخصّص عبر Resend/Brevo المجاني،
+  مع تعديل الكود ليعرض «راجع بريدك» بدل تسجيل الدخول الفوري.)
+- أثناء التطوير فقط: عطّل **Rate limits** إن ظهرت أخطاء عند التجربة المتكررة
 - **Authentication → URL Configuration**: ضع `Site URL` = نطاق نشرك النهائي
   (مثلاً `https://username.github.io/messi/`)، وأضف Redirect URLs إن لزم
 

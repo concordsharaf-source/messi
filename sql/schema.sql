@@ -230,7 +230,7 @@ $$;
 -- ---------- profiles ----------
 drop policy if exists "profiles_select_own_or_admin" on public.profiles;
 create policy "profiles_select_own_or_admin"
-  on public.profiles for select
+  on public.profiles for select to authenticated
   using (
     id = auth.uid()
     or is_admin = true
@@ -393,12 +393,16 @@ create policy "public_read_media"
 -- 9) Realtime — إضافة الجداول إلى publication حتى تعمل قنوات postgres_changes
 --    (js/app.js يشترك في: messages, conversations, typing_status,
 --     message_reactions)
+--
+--    ⚠️ typing_status غير مذكور هنا عن قصد: يُنشأ في sql/fcm_and_rls.sql،
+--       ويُضاف إلى الـ publication هناك. إضافته هنا تُفشل السكربت بخطأ
+--       «relation public.typing_status does not exist» على مشروع جديد.
 -- ============================================================================
 do $$
 declare
   t text;
 begin
-  foreach t in array array['profiles','conversations','messages','message_reactions','typing_status']
+  foreach t in array array['profiles','conversations','messages','message_reactions']
   loop
     begin
       execute format('alter publication supabase_realtime add table public.%I', t);
