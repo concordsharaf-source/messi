@@ -7,6 +7,16 @@
 # ============================================================================
 PORT=5433
 PSQL="/usr/bin/psql -h 127.0.0.1 -p $PORT -U postgres -d postgres -X -q -t -A"
+
+# ── تصفير تلقائي: هذه الاختبارات تفترض قاعدة نظيفة. وفّر SKIP_RESET=1 للتخطي ──
+if [ "${SKIP_RESET:-0}" != "1" ]; then
+  HERE="$(cd "$(dirname "$0")" && pwd)"
+  echo "↻ تصفير القاعدة المحلية وإعادة تثبيت المخطط…"
+  bash "$HERE/local_pg_up.sh" >/dev/null 2>&1
+  if ! bash "$HERE/run_schema_test.sh" 2>&1 | grep -q "schema.sql=0 fcm_and_rls.sql=0"; then
+    echo "✖ فشل تثبيت المخطط — راجع run_schema_test.sh أولاً"; exit 2
+  fi
+fi
 BASE="begin; set local role authenticated; set local search_path = public, storage, auth;"
 
 U="${U:-11111111-1111-1111-1111-111111111111}"   # مستخدم عادي
@@ -22,6 +32,10 @@ hdr() { printf "\n\033[1m══ %s\033[0m\n" "$1"; }
 # ينفّذ استعلاماً بدور مستخدم مصادَق عليه
 as_user() {
   $PSQL -c "$BASE set local request.jwt.claims = '{\"sub\":\"$1\",\"role\":\"authenticated\"}'; $2; rollback;" 2>&1 | grep -vE "^\s*$"
+}
+# ينفّذ بـ claims كاملة مخصّصة (لاختبار البريد داخل التوكن)
+as_user_json() {
+  $PSQL -c "begin; set local role authenticated; set local search_path = public, storage, auth; set local request.jwt.claims = '$1'; $2; commit;" 2>&1 | grep -vE "^\s*$"
 }
 # ينفّذ عملية بدور مستخدم مصادَق عليه وتُحفظ فعلاً (commit لا rollback)
 as_user_do() {
@@ -51,7 +65,18 @@ echo " اختبارات RLS — $(date -u '+%Y-%m-%d %H:%M UTC')"
 echo "════════════════════════════════════════════════════════════"
 
 # ---------------------------------------------------------------- التجهيز ----
-hdr "0) التجهيز: إنشاء 3 حسابات عبر auth.users (يختبر الـ Trigger)"
+hdr "0) التجهيز: تهيئة قوائم المشرفين للاختبار"
+as_root "create or replace function public.is_admin_email(p_email text)
+  returns boolean language sql immutable as \$\$
+    select lower(coalesce(p_email,'')) in ('admin.two@test.local','super.admin@test.local');
+  \$\$;
+  create or replace function public.is_super_admin_email(p_email text)
+  returns boolean language sql immutable as \$\$
+    select lower(coalesce(p_email,'')) = 'super.admin@test.local';
+  \$\$;" >/dev/null
+expect "دالة المشرفين تعمل" "t" "$(as_root "select public.is_admin_email('admin.two@test.local');")"
+
+hdr "0) إنشاء 3 حسابات عبر auth.users (يختبر الـ Trigger)"
 as_root "insert into auth.users (id,email,raw_user_meta_data) values
   ('$U','user.one@test.local','{\"display_name\":\"المستخدم الأول\"}'),
   ('$A','admin.two@test.local','{\"display_name\":\"المشرف الثاني\"}'),
@@ -160,19 +185,38 @@ expect_ok   "المشرف يحذف ملف مستخدم عادي" \
 as_root "insert into auth.users (id,email,raw_user_meta_data) values ('$O','outsider.three@test.local','{}'::jsonb) on conflict (id) do nothing;" >/dev/null
 
 hdr "9) المشرف العام عبر البريد (سلوك الـ Trigger)"
-as_root "insert into auth.users (id,email,raw_user_meta_data) values ('$S','almgawell17@gmail.com','{}'::jsonb) on conflict (id) do update set email=excluded.email;" >/dev/null
+as_root "insert into auth.users (id,email,raw_user_meta_data) values ('$S','super.admin@test.local','{}'::jsonb) on conflict (id) do update set email=excluded.email;" >/dev/null
 expect "البريد المعرّف كمشرف عام يأخذ is_super_admin=true" "t" \
        "$(as_root "select is_super_admin from public.profiles where id='$S';")"
 expect "ويأخذ is_admin=true أيضاً" "t" \
        "$(as_root "select is_admin from public.profiles where id='$S';")"
 
 hdr "9.b) المشرف العام يرى محادثات الجميع"
-expect "المشرف العام (almgawell17) يرى المحادثة" "1" \
+expect "المشرف العام يرى المحادثة" "1" \
        "$(as_user "$S" "select count(*) from public.conversations where id='$CONV';")"
 
 hdr "10) منحة RPC الحسّاسة لا تُنفَّذ لغير صاحبها"
 expect_fail "delete_message_as_moderator ترفض غير المشرف" \
             "$(as_user "$U" "select public.delete_message_as_moderator('$MSG');")"
+
+hdr "11) منع ادّعاء الصلاحيات عند إنشاء الصف الشخصي"
+as_root "delete from public.profiles where id='$O';" >/dev/null
+expect_fail "لا يستطيع إدخال صفّه مع is_admin=true" \
+  "$(as_user "$O" "insert into public.profiles (id,email,is_admin) values ('$O','outsider.three@test.local',true);")"
+expect_fail "ولا مع is_super_admin=true" \
+  "$(as_user "$O" "insert into public.profiles (id,email,is_super_admin) values ('$O','outsider.three@test.local',true);")"
+expect_ok   "يستطيع إدخال صفّه الطبيعي (بلا صلاحيات)" \
+  "$(as_user_do "$O" "insert into public.profiles (id,email) values ('$O','outsider.three@test.local');")"
+expect "صلاحياته بقيت false/false" "false|false" \
+  "$(as_root "select is_admin::text||'|'||is_super_admin::text from public.profiles where id='$O';")"
+expect_fail "ولا يستطيع إدخال صفٍّ لمستخدم آخر" \
+  "$(as_user "$O" "insert into public.profiles (id,email) values ('$U','x@test.local');")"
+
+hdr "11.b) المسار المسموح: بريد مُعلَن في دالة المشرفين"
+as_root "delete from public.profiles where id='$S';" >/dev/null
+expect_ok "المشرف المُعلَن يستطيع إدخال صفّه مع is_admin=true" \
+  "$(as_user_json '{"sub":"'"$S"'","role":"authenticated","email":"super.admin@test.local"}' \
+     "insert into public.profiles (id,email,is_admin) values ('$S','super.admin@test.local',true);")"
 
 echo
 echo "════════════════════════════════════════════════════════════"

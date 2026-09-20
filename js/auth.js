@@ -1,5 +1,4 @@
 import { supabase } from "./supabaseClient.js";
-import { isAdminEmail } from "./config.js";
 import { removeFcmToken } from "./push.js";
 
 export async function signUp({ email, password, displayName, phone }) {
@@ -25,7 +24,8 @@ export async function signUp({ email, password, displayName, phone }) {
             email: normalizedEmail,
             display_name: displayName,
             phone: phone || null,
-            is_admin: isAdminEmail(normalizedEmail),
+            // لا تُرسل is_admin من الواجهة: الصلاحية تُحدَّد في قاعدة البيانات
+            // (handle_new_user + is_admin_email) وهي المصدر الوحيد الموثوق.
           },
           { onConflict: "id" }
         );
@@ -98,8 +98,9 @@ export async function getCurrentProfile() {
 
     return {
       ...profile,
-      is_admin: Boolean(profile.is_admin || isAdminEmail(normalizedEmail)),
-      is_super_admin: Boolean(profile.is_super_admin || (normalizedEmail === "almgawell17@gmail.com")),
+      // الصلاحيات من قاعدة البيانات فقط — لا قوائم ثابتة في الواجهة
+      is_admin: Boolean(profile.is_admin),
+      is_super_admin: Boolean(profile.is_super_admin),
     };
   } catch (err) {
     console.error("getCurrentProfile error:", err);

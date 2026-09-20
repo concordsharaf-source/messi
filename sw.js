@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v4";
+const CACHE_NAME = "wa-clone-shell-v5";  // رُفع بعد تغيير js/config.js
 const APP_SHELL = [
   "./",
   "./index.html",

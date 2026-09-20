@@ -1,6 +1,5 @@
 import { supabase } from "./supabaseClient.js";
 import { signUp, signIn, signOut, getCurrentProfile } from "./auth.js";
-import { ADMINS } from "./config.js";
 import { applyLanguage } from "./i18n.js";
 import {
   cacheMessages,
@@ -879,10 +878,7 @@ async function loadContactsFromNetwork() {
       supabase
         .from("profiles")
         .select("*")
-        .in(
-          "email",
-          ADMINS.map((a) => a.email)
-        ),
+        .eq("is_admin", true),
       supabase
         .from("conversations")
         .select("*")

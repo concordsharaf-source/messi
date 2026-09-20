@@ -110,14 +110,9 @@ returns boolean
 language sql
 immutable
 as $$
-  select lower(coalesce(p_email, '')) in (
-    'aabntlal680@gmail.com',
-    'almgawell17@gmail.com',
-    'almgawell@gmail.com',
-    'almgawell1992@gmail.com',
-    'almgawell1121@gmail.com',
-    'almgawell1212@gmail.com'
-  );
+  -- 🔴 ضع إيميلات المشرفين داخل المصفوفة التالية (الفارغة = لا أحد مشرف).
+  --    مثال:  array['admin1@example.com','admin2@example.com']::text[]
+  select lower(coalesce(p_email, '')) = any (array[]::text[]);
 $$;
 
 -- المشرف العام (Super Admin) — يطابق الشرط المكتوب في js/auth.js
@@ -126,9 +121,9 @@ returns boolean
 language sql
 immutable
 as $$
-  select lower(coalesce(p_email, '')) in (
-    'almgawell17@gmail.com'
-  );
+  -- 🔴 المشرف العام (يرى كل المحادثات). ضع إيميلاً واحداً في المصفوفة.
+  --    مثال:  array['admin1@example.com']::text[]
+  select lower(coalesce(p_email, '')) = any (array[]::text[]);
 $$;
 
 -- ============================================================================
@@ -237,10 +232,20 @@ create policy "profiles_select_own_or_admin"
     or public.current_is_super_admin()
   );
 
+-- ⚠️ تشديد: صفّك الشخصي فقط، ولا ادّعاء صلاحيات.
+--    بدون هذا الشرط كان بإمكان أي مستخدم — لو غاب صفّه لأي سبب (فشل الـ trigger
+--    مثلاً) — إدخال صفّه بنفسه وكتابة is_admin = true داخله.
 drop policy if exists "profiles_insert_self" on public.profiles;
 create policy "profiles_insert_self"
-  on public.profiles for insert
-  with check (id = auth.uid());
+  on public.profiles for insert to authenticated
+  with check (
+    id = auth.uid()
+    and is_super_admin = false
+    and (
+      is_admin = false
+      or public.is_admin_email(coalesce(auth.jwt() ->> 'email', ''))
+    )
+  );
 
 -- تحديث بياناتك فقط + منع تصعيد الصلاحيات ذاتياً
 drop policy if exists "profiles_update_self_no_escalation" on public.profiles;

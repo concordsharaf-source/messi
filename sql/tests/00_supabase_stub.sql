@@ -62,6 +62,25 @@ begin
 end;
 $$;
 
+-- auth.jwt(): يُرجع claims التوكن كـ jsonb (نفس دلالة Supabase)
+create or replace function auth.jwt()
+returns jsonb
+language plpgsql
+stable
+as $$
+declare
+  v text;
+begin
+  v := current_setting('request.jwt.claims', true);
+  if v is null or v = '' then
+    return '{}'::jsonb;
+  end if;
+  return v::jsonb;
+exception when others then
+  return '{}'::jsonb;
+end;
+$$;
+
 create or replace function auth.role()
 returns text
 language sql
