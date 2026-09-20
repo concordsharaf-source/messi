@@ -18,20 +18,22 @@ import {
 // ---------------------------------------------------------------
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDeg6RBNC9bWw1QYxBkYtCuMMFPBzxpw4o",
-  authDomain: "studio-6422025604-b97aa.firebaseapp.com",
-  projectId: "studio-6422025604-b97aa",
-  storageBucket: "studio-6422025604-b97aa.firebasestorage.app",
-  messagingSenderId: "599267399266",
-  appId: "1:599267399266:web:329e49e24298af60f5e33b"
+  apiKey: "AIzaSyBwKUp6U1TdatxX20rPQSFdGUyPUHAksYw",
+  authDomain: "messenger-4f50d.firebaseapp.com",
+  projectId: "messenger-4f50d",
+  storageBucket: "messenger-4f50d.firebasestorage.app",
+  messagingSenderId: "553556100673",
+  appId: "1:553556100673:web:ebf30e8bbcc35870b9a8c0"
 };
 
 // ---------------------------------------------------------------
 // VAPID PUBLIC KEY
 // ---------------------------------------------------------------
 
-const VAPID_KEY =
-  "BGKcsJH4YH7vV384UCmx_FKD0xGiWTNuMA7skLLUWzIodKXTSFLRleq1K0ttPMnXZfzQO42bQig8nSKTSIw1jts";
+// ⛔ TODO: ضع هنا مفتاح VAPID الجديد من
+//    Firebase Console → Project settings → Cloud Messaging → Web Push certificates
+//    (لم يصل بعد — الإشعارات لا تعمل حتى يُضاف)
+const VAPID_KEY = "";  // ← الصق المفتاح بين العلامتين
 
 const FIREBASE_SW_PATH = "/firebase-messaging-sw.js";
 const FIREBASE_SW_SCOPE = "/firebase-cloud-messaging-push-scope/";

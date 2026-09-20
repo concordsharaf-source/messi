@@ -63,13 +63,19 @@ create index if not exists conversations_last_message_at_idx
 
 -- ============================================================================
 -- 3) جدول الرسائل messages
---    sender_id بدون ON DELETE CASCADE عمداً: وظيفة admin-delete-user تحذف
---    الرسائل يدوياً قبل حذف الحساب، حتى لا يفشل الحذف بترتيب FK.
+--    ⚠️ sender_id مع ON DELETE CASCADE ليتسق مع بقية القيود في هذا المخطط.
+--    لماذا؟ كان NO ACTION (وهو الافتراضي) يمنع حذف أي مستخدم أرسل رسالة،
+--    فيفشل الحذف من لوحة Supabase (Authentication → Users → Delete user)
+--    برسالة غامضة: «Database error deleting user» — لأن حذف auth.users
+--    يتسلسل إلى profiles ثم يتوقف عند القيد. أما وظيفة admin-delete-user
+--    فتحذف الرسائل صراحةً أولاً، لذا لا تتأثر بهذا التغيير إطلاقاً.
+--    والنتيجة السلوكية واحدة: حذف المستخدم يحذف رسائله (وهو ما تفعله
+--    وظيفة الإدارة أصلاً).
 -- ============================================================================
 create table if not exists public.messages (
   id               uuid primary key default gen_random_uuid(),
   conversation_id  uuid not null references public.conversations(id) on delete cascade,
-  sender_id        uuid not null references public.profiles(id),
+  sender_id        uuid not null references public.profiles(id) on delete cascade,
   content          text,
   attachment_url   text,
   attachment_type  text check (attachment_type is null

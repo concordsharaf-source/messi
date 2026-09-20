@@ -229,6 +229,23 @@ expect_ok "المشرف المُعلَن يستطيع إدخال صفّه مع i
   "$(as_user_json '{"sub":"'"$S"'","role":"authenticated","email":"super.admin@test.local"}' \
      "insert into public.profiles (id,email,is_admin) values ('$S','super.admin@test.local',true);")"
 
+hdr "12) حذف مستخدم أرسل رسائل (كان يفشل قبل الإصلاح)"
+expect "قبل الحذف: للمستخدم رسائل" "1" \
+       "$(as_root "select count(*) from public.messages where sender_id='$U';")"
+as_root "delete from auth.users where id='$U';" >/dev/null
+expect "بعد حذف الحساب: صف profiles اختفى" "0" \
+       "$(as_root "select count(*) from public.profiles where id='$U';")"
+expect "ورسائله اختفت معه (CASCADE)" "0" \
+       "$(as_root "select count(*) from public.messages where sender_id='$U';")"
+expect "وعضويته في المحادثات اختفت" "0" \
+       "$(as_root "select count(*) from public.chat_members where user_id='$U';")"
+expect "والمحادثة نفسها اختفت (لأنها تخصّه)" "0" \
+       "$(as_root "select count(*) from public.conversations where id='$CONV';")"
+expect "فلم تبقَ عضويات معلّقة" "0" \
+       "$(as_root "select count(*) from public.chat_members where conversation_id='$CONV';")"
+expect "وحساب المشرف لم يُحذف" "1" \
+       "$(as_root "select count(*) from public.profiles where id='$A';")"
+
 echo
 echo "════════════════════════════════════════════════════════════"
 printf " النتيجة: \033[32m%d ناجح\033[0m / \033[31m%d فاشل\033[0m\n" "$PASS" "$FAIL"
