@@ -482,3 +482,64 @@ select
   (select count(*) from public.admin_activity)                                 as "أحداث_النشاط",
   (select count(*) from information_schema.columns
     where table_schema='public' and table_name='profiles' and column_name='signature') as "عمود_التوقيع";
+
+
+-- ===============================================================
+-- إعادة تسمية مستخدم (للمشرفين فقط)
+-- ===============================================================
+-- سياسة profiles_update_self_no_escalation تسمح لكل مستخدم بتعديل ملفه
+-- الشخصي وحده: using (id = auth.uid()). لذلك لا يستطيع المشرف إعادة
+-- تسمية غيره من المتصفح. هذه الدالة تتجاوز السياسة بأمان بعد التحقق
+-- من صفة المنادي (مشرف أو مشرف عام).
+-- ===============================================================
+
+create or replace function public.admin_rename_user(p_user uuid, p_new_name text)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_name    text := btrim(coalesce(p_new_name, ''));
+  v_allowed boolean;
+  v_old     text;
+begin
+  if auth.uid() is null then
+    raise exception 'يجب تسجيل الدخول أولاً' using errcode = '42501';
+  end if;
+
+  select (is_admin or is_super_admin) into v_allowed
+    from public.profiles
+   where id = auth.uid();
+
+  if coalesce(v_allowed, false) = false then
+    raise exception 'هذه العملية للمشرفين فقط' using errcode = '42501';
+  end if;
+
+  if p_user is null then
+    raise exception 'حدّد المستخدم المطلوب';
+  end if;
+
+  if v_name = '' then
+    raise exception 'الاسم لا يمكن أن يكون فارغاً';
+  end if;
+
+  if length(v_name) > 40 then
+    raise exception 'الاسم يجب أن يكون 40 حرفاً أو أقل';
+  end if;
+
+  select display_name into v_old from public.profiles where id = p_user;
+
+  if not found then
+    raise exception 'المستخدم غير موجود';
+  end if;
+
+  update public.profiles
+     set display_name = v_name
+   where id = p_user;
+
+  return v_name;
+end;
+$$;
+
+grant execute on function public.admin_rename_user(uuid, text) to authenticated;

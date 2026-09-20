@@ -787,11 +787,21 @@ async function loadAdminUsers() {
         ${p.is_super_admin ? '<span class="admin-crown" title="مشرف عام">👑</span>' : ""}
       </div>
 
+      <div class="admin-rename hidden">
+        <input class="admin-rename-input" type="text" maxlength="40"
+               value="${escapeHtml(p.display_name || "")}" placeholder="الاسم الجديد" />
+        <button class="admin-key ok" data-act="rename-save" type="button">✔ حفظ</button>
+        <button class="admin-key" data-act="rename-cancel" type="button">✕</button>
+      </div>
+
       <div class="admin-user-actions">
         <button class="admin-flag ${p.is_admin ? "on" : ""}" data-act="admin" type="button"
                 title="تبديل صفة المشرف">${p.is_admin ? "✔ مشرف" : "مشرف"}</button>
         <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
                 title="تبديل صفة المشرف العام">${p.is_super_admin ? "✔ مشرف عام" : "مشرف عام"}</button>
+
+        <button class="admin-key" data-act="rename" type="button"
+                title="إعادة تسمية المستخدم">✏️ الاسم</button>
 
         <button class="admin-key actor-avatar" data-act="avatar" type="button"
                 title="تغيير الصورة الشخصية">📷 تغيير الصورة</button>
@@ -807,6 +817,36 @@ async function loadAdminUsers() {
         `}
       </div>
     `;
+
+    const renameBox = row.querySelector(".admin-rename");
+    const renameInput = row.querySelector(".admin-rename-input");
+    const saveRename = () => renameUser(p, renameInput?.value, renameBox);
+
+    row.querySelector('[data-act="rename"]')?.addEventListener("click", () => {
+      renameBox?.classList.toggle("hidden");
+
+      if (renameBox && !renameBox.classList.contains("hidden")) {
+        renameInput.focus();
+        renameInput.select();
+      }
+    });
+
+    row.querySelector('[data-act="rename-cancel"]')?.addEventListener("click", () => {
+      renameBox?.classList.add("hidden");
+      if (renameInput) renameInput.value = p.display_name || "";
+    });
+
+    row.querySelector('[data-act="rename-save"]')?.addEventListener("click", saveRename);
+
+    renameInput?.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        saveRename();
+      }
+
+      if (event.key === "Escape") renameBox?.classList.add("hidden");
+    });
 
     row.querySelector('[data-act="pass"]')?.addEventListener("click", () => setUserPassword(p));
     row.querySelector('[data-act="reset-link"]')?.addEventListener("click", () => sendUserResetLink(p));
@@ -830,6 +870,48 @@ async function loadAdminUsers() {
 
     list.appendChild(row);
   });
+}
+
+async function renameUser(profile, rawName, box) {
+  const status = $("#admin-manage-status");
+  const who = profile.display_name || profile.email || "المستخدم";
+  const name = String(rawName || "").trim();
+
+  if (!name) {
+    setAdminStatusText(status, "اكتب الاسم الجديد أولاً.", "err");
+    return;
+  }
+
+  if (name.length > 40) {
+    setAdminStatusText(status, "الاسم يجب أن يكون 40 حرفاً أو أقل.", "err");
+    return;
+  }
+
+  if (name === (profile.display_name || "")) {
+    box?.classList.add("hidden");
+    return;
+  }
+
+  setAdminStatusText(status, `جارٍ إعادة تسمية «${who}»…`);
+
+  const { data, error } = await supabase.rpc("admin_rename_user", {
+    p_user: profile.id,
+    p_new_name: name,
+  });
+
+  if (error) {
+    setAdminStatusText(status, "تعذّرت إعادة التسمية: " + error.message, "err");
+    return;
+  }
+
+  profile.display_name = data || name;
+
+  box?.classList.add("hidden");
+
+  setAdminStatusText(status, `✔ صار الاسم الجديد «${profile.display_name}».`);
+
+  await loadAdminUsers();
+  await loadContacts();
 }
 
 async function toggleAdminFlag(profile, act, row) {
@@ -2630,16 +2712,35 @@ function wireChatPanel() {
 
       input.value = "";
 
+      autoGrowComposer();
+      updateComposerButtons();
+
       await sendMessage({
         content: text,
       });
     }
   );
 
-  $("#composer-input")?.addEventListener(
-    "input",
-    handleTypingInput
-  );
+  $("#composer-input")?.addEventListener("input", () => {
+    handleTypingInput();
+    autoGrowComposer();
+    updateComposerButtons();
+  });
+
+  // كما في واتساب: Enter يُنزل سطراً جديداً، والإرسال بزر الإرسال
+  // (Ctrl+Enter أو ⌘+Enter إرسال سريع لمن يحب)
+  $("#composer-input")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+
+    if (event.ctrlKey || event.metaKey) {
+      event.preventDefault();
+      submitComposer();
+      return;
+    }
+
+    // السطر الجديد سلوك textarea الافتراضي — نُحدّث الارتفاع بعده
+    setTimeout(autoGrowComposer, 0);
+  });
 
   $("#attach-input")?.addEventListener(
     "change",
@@ -2660,6 +2761,47 @@ function wireChatPanel() {
     "click",
     cancelRecording
   );
+
+  autoGrowComposer();
+  updateComposerButtons();
+}
+
+function submitComposer() {
+  const form = $("#composer-form");
+  if (!form) return;
+
+  if (typeof form.requestSubmit === "function") form.requestSubmit();
+  else form.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+}
+
+// توسيع حقل الكتابة تلقائياً مع كل سطر جديد — حتى حدّ أقصى ثم تمرير داخلي
+function autoGrowComposer() {
+  const box = $("#composer-input");
+  if (!box || box.tagName !== "TEXTAREA") return;
+
+  const MAX_HEIGHT = 132;
+
+  box.style.height = "auto";
+
+  box.style.height = Math.min(box.scrollHeight, MAX_HEIGHT) + "px";
+  box.classList.toggle("composer-grown", box.scrollHeight > MAX_HEIGHT);
+}
+
+// مثل واتساب: 🎤 والحقل فارغ، و➤ عند الكتابة
+function updateComposerButtons() {
+  const box = $("#composer-input");
+  const send = $("#send-btn");
+  const mic = $("#mic-btn");
+
+  if (!box || !send || !mic) return;
+
+  // أثناء التسجيل الصوتي لا نلمس الأزرار (الحقل مخفي والمايك صار زر إيقاف)
+  if (box.classList.contains("hidden")) return;
+
+  const hasText = box.value.trim().length > 0;
+
+  mic.classList.toggle("hidden", hasText);
+  send.classList.toggle("hidden", !hasText);
 }
 
 function wireConversationOptions() {
@@ -6441,6 +6583,9 @@ function wireEmojiPicker() {
       ) {
         $("#composer-input").value +=
           e.target.textContent;
+
+        autoGrowComposer();
+        updateComposerButtons();
 
         panel.classList.add(
           "hidden"

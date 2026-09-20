@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v15";  // الدخول بجوجل + رسائل أوضح
+const CACHE_NAME = "wa-clone-shell-v16";  // شاشة كتابة كواتساب + إعادة تسمية المستخدم
 const APP_SHELL = [
   "./",
   "./index.html",
