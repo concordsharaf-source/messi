@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v16";  // شاشة كتابة كواتساب + إعادة تسمية المستخدم
+const CACHE_NAME = "wa-clone-shell-v17";  // إرشادات تثبيت الآيفون + إشعارات افتراضية
 const APP_SHELL = [
   "./",
   "./index.html",

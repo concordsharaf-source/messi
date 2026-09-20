@@ -129,7 +129,7 @@ async function boot() {
         (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
         session?.user
       ) {
-        await registerFcmToken(session.user.id);
+        await autoEnableNotifications(session.user.id);
         return;
       }
 
@@ -2641,6 +2641,15 @@ function wireChrome() {
     handleWallpaperUpload
   );
 
+  // سطر حالة الإشعارات أسفل زر التفعيل
+  if ($("#btn-enable-push") && !$("#push-status")) {
+    const status = document.createElement("div");
+    status.id = "push-status";
+    status.className = "settings-hint";
+    status.textContent = pushPermissionLabel();
+    $("#btn-enable-push").insertAdjacentElement("afterend", status);
+  }
+
   $("#btn-enable-push")?.addEventListener(
     "click",
     async () => {
@@ -2649,6 +2658,8 @@ function wireChrome() {
       const ok = await enablePushNotifications(
         state.me.id
       );
+
+      renderPushStatus(ok ? "الإشعارات مُشغَّلة ✔" : pushPermissionLabel());
 
       showAuthError(
         ok
@@ -6794,6 +6805,230 @@ function isPWAInstalled() {
   );
 }
 
+// =================================================================
+// إرشادات إضافة التطبيق إلى الشاشة الرئيسية
+// -----------------------------------------------------------------
+//  الآيفون لا يدعم نافذة التثبيت التلقائية إطلاقاً، ولا يُثبَّت التطبيق
+//  إلا يدوياً: «إضافة إلى الشاشة الرئيسية» من سفاري. لذلك نعرض خطوات
+//  بأيقونات حقيقية بدل رسالة عابرة. وعلى الآيفون لا تعمل إشعارات الويب
+//  إلا بعد التثبيت — فالإرشاد هو الطريق إلى الإشعارات أيضاً.
+// =================================================================
+
+function isIOSDevice() {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+function isSafariBrowser() {
+  const ua = navigator.userAgent;
+
+  return /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|GSA|DuckDuckGo/.test(ua);
+}
+
+const IOS_SHARE_ICON =
+  '<svg viewBox="0 0 24 24" width="25" height="25" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 15.5V3.5"/><path d="M8 7.2l4-3.7 4 3.7"/>' +
+  '<path d="M5 12.5v6.5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6.5"/></svg>';
+
+function installGuideContent() {
+  if (isIOSDevice()) {
+    if (!isSafariBrowser()) {
+      return {
+        title: "ثبّت التطبيق على الآيفون",
+        note:
+          "متصفحك الحالي لا يدعم التثبيت على الآيفون — <b>افتح الموقع في سفاري</b> ثم اضغط زر التثبيت مرة أخرى.",
+        accent: "warn",
+        steps: [
+          { icon: "🧭", text: "انسخ رابط الموقع من شريط العنوان" },
+          { icon: "🧭", text: "افتح تطبيق <b>سفاري</b> والصق الرابط فيه" },
+          { icon: "📲", text: "ثم اضغط <b>زر التثبيت</b> وستظهر لك الخطوات" },
+        ],
+      };
+    }
+
+    return {
+      title: "أضف واتساب الوليد إلى شاشة الآيفون",
+      note: "أربع لمسات من سفاري — <b>وبعد الإضافة تعمل الإشعارات أيضاً</b>.",
+      accent: "ok",
+      steps: [
+        { icon: "__SHARE__", text: "اضغط زر <b>المشاركة</b> في شريط سفاري السفلي" },
+        { icon: "➕", text: "اسحب القائمة واختر <b>«إضافة إلى الشاشة الرئيسية»</b>" },
+        { icon: "✔", text: "اضغط <b>«إضافة»</b> في أعلى الشاشة" },
+        { icon: "📱", text: "افتح التطبيق من آيقونته الجديدة" },
+      ],
+    };
+  }
+
+  if (/Android/i.test(navigator.userAgent)) {
+    return {
+      title: "أضف واتساب الوليد إلى شاشتك",
+      note: "ثلاث لمسات من متصفح الجهاز.",
+      accent: "ok",
+      steps: [
+        { icon: "⋮", text: "اضغط قائمة المتصفح في أعلى الشاشة" },
+        { icon: "➕", text: "اختر <b>«تثبيت التطبيق»</b> أو <b>«إضافة إلى الشاشة الرئيسية»</b>" },
+        { icon: "✔", text: "أكّد بالضغط على <b>«تثبيت»</b>" },
+      ],
+    };
+  }
+
+  return {
+    title: "ثبّت واتساب الوليد على جهازك",
+    note: "يعمل كبرنامج مستقل وله أيقونة خاصة.",
+    accent: "ok",
+    steps: [
+      { icon: "⧉", text: "ابحث عن أيقونة <b>التثبيت</b> في شريط العنوان" },
+      { icon: "⋮", text: "أو من قائمة المتصفح اختر <b>«تثبيت التطبيق»</b>" },
+      { icon: "✔", text: "أكّد بالضغط على <b>«تثبيت»</b>" },
+    ],
+  };
+}
+
+function openInstallGuide() {
+  let guide = $("#install-guide");
+
+  if (!guide) {
+    guide = document.createElement("div");
+    guide.id = "install-guide";
+    guide.className = "install-guide hidden";
+    guide.innerHTML = `
+      <div class="install-guide-backdrop" data-close="1"></div>
+
+      <div class="install-guide-card" role="dialog" aria-modal="true" aria-labelledby="install-guide-title">
+        <button class="install-guide-close" type="button" data-close="1" aria-label="إغلاق">✕</button>
+
+        <div class="install-guide-badge">📲</div>
+        <h2 id="install-guide-title"></h2>
+        <p id="install-guide-note" class="install-guide-note"></p>
+        <ol id="install-guide-steps" class="install-guide-steps"></ol>
+
+        <button class="install-guide-ok" type="button" data-close="1">فهمت ✔</button>
+      </div>
+    `;
+
+    document.body.appendChild(guide);
+
+    guide.addEventListener("click", (event) => {
+      if (event.target.closest("[data-close]")) closeInstallGuide();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeInstallGuide();
+    });
+  }
+
+  const content = installGuideContent();
+
+  $("#install-guide-title").textContent = content.title;
+  $("#install-guide-note").innerHTML = content.note;
+
+  const list = $("#install-guide-steps");
+  list.innerHTML = "";
+
+  content.steps.forEach((step) => {
+    const item = document.createElement("li");
+
+    const badge = document.createElement("span");
+    badge.className = "install-guide-step-icon";
+    badge.innerHTML =
+      step.icon === "__SHARE__" ? IOS_SHARE_ICON : escapeHtml(step.icon);
+
+    const text = document.createElement("span");
+    text.className = "install-guide-step-text";
+    text.innerHTML = step.text;
+
+    item.appendChild(badge);
+    item.appendChild(text);
+    list.appendChild(item);
+  });
+
+  guide
+    .querySelector(".install-guide-card")
+    .classList.toggle("warn", content.accent === "warn");
+
+  guide.classList.remove("hidden");
+}
+
+function closeInstallGuide() {
+  $("#install-guide")?.classList.add("hidden");
+}
+
+// =================================================================
+// الإشعارات مُشغَّلة افتراضياً
+// -----------------------------------------------------------------
+//  لا نُجبر المستخدم على البحث عن زر التفعيل:
+//   • الإذن ممنوح سابقاً → نُسجّل رمز الجهاز بصمت مع كل دخول
+//   • لم يُطلب بعد        → نطلبه عند أول لمسة/نقرة (شرط في سفاري)
+//   • محجوب               → لا نُزعج المستخدم برسائل متكررة
+// =================================================================
+
+function pushPermissionLabel() {
+  if (!("Notification" in window)) return "الإشعارات غير مدعومة في هذا المتصفح";
+
+  if (Notification.permission === "granted") return "الإشعارات مُشغَّلة ✔";
+
+  if (Notification.permission === "denied") {
+    return "الإشعارات محجوبة — اسمح بها من إعدادات المتصفح لهذا الموقع";
+  }
+
+  return "لم يُطلب إذن الإشعارات بعد";
+}
+
+function renderPushStatus(message) {
+  const el = $("#push-status");
+  if (el) el.textContent = message || pushPermissionLabel();
+}
+
+let pushAutoAsked = false;
+
+async function autoEnableNotifications(userId = null) {
+  const uid = userId || state.me?.id;
+
+  if (!uid) return false;
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return false;
+
+  if (Notification.permission === "granted") {
+    const ok = await registerFcmToken(uid);
+    renderPushStatus();
+    return ok;
+  }
+
+  if (Notification.permission === "denied") {
+    renderPushStatus();
+    return false;
+  }
+
+  if (pushAutoAsked) return false;
+
+  pushAutoAsked = true;
+
+  const ask = async () => {
+    document.removeEventListener("pointerdown", ask, true);
+    document.removeEventListener("keydown", ask, true);
+
+    try {
+      const permission = await Notification.requestPermission();
+
+      if (permission === "granted") {
+        const ok = await registerFcmToken(uid);
+        renderPushStatus(ok ? "الإشعارات مُشغَّلة ✔" : pushPermissionLabel());
+      } else {
+        renderPushStatus();
+      }
+    } catch (error) {
+      console.warn("[FCM] auto permission request failed:", error);
+    }
+  };
+
+  document.addEventListener("pointerdown", ask, true);
+  document.addEventListener("keydown", ask, true);
+
+  return false;
+}
+
 async function installPWA() {
   const prompt =
     state.deferredInstallPrompt;
@@ -6802,17 +7037,10 @@ async function installPWA() {
     state.installButton ||
     getOrCreatePWAInstallButton();
 
-  // سفاري على الآيفون لا يدعم النافذة التلقائية — نُرشد المستخدم
+  // لا تتوفر نافذة التثبيت التلقائية (سفاري/آيفون أو متصفح لم يوفّرها بعد)
+  // فنعرض إرشادات خطوة بخطوة بدل رسالة عابرة تختفي بسرعة.
   if (!prompt) {
-    const isIOS =
-      /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-
-    showAuthError(
-      isIOS
-        ? "للتثبيت على الآيفون: اضغط زر المشاركة ⤴ في سفاري ثم «إضافة إلى الشاشة الرئيسية»."
-        : "لتثبيت التطبيق: من قائمة المتصفح ⋮ اختر «تثبيت التطبيق» أو «إضافة إلى الشاشة الرئيسية»."
-    );
-
+    openInstallGuide();
     return;
   }
 
