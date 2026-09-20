@@ -26,6 +26,7 @@ run_file() {
 run_file "1) schema.sql"      "$REPO/sql/schema.sql";      S=$?
 run_file "2) fcm_and_rls.sql" "$REPO/sql/fcm_and_rls.sql"; F=$?
 run_file "3) auto_reply.sql"  "$REPO/sql/auto_reply.sql";  A=$?
+run_file "4) admin_tools.sql" "$REPO/sql/admin_tools.sql"; T=$?
 
 echo
 echo "──────────── الحالة النهائية ────────────"
@@ -62,4 +63,4 @@ $PSQL -q -c "select is_enabled as \"الرد التلقائي مُفعَّل\",
        greeting as \"نص الترحيب\"
   from public.auto_reply_settings;"
 
-echo "schema.sql=$S fcm_and_rls.sql=$F auto_reply.sql=$A"
+echo "schema.sql=$S fcm_and_rls.sql=$F auto_reply.sql=$A admin_tools.sql=$T"

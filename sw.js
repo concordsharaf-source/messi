@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v8";  // رُفع بعد إصلاح مسارات Service Worker
+const CACHE_NAME = "wa-clone-shell-v9";  // رُفع بعد لوحة المشرف + المراجعة اللغوية
 const APP_SHELL = [
   "./",
   "./index.html",

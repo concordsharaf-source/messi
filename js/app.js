@@ -551,14 +551,309 @@ function showAuthError(msg) {
   }, 5000);
 }
 
+// =================================================================
+// لوحة المشرف — إعدادات إدارية داخل لوحة الإعدادات
+// -----------------------------------------------------------------
+//  · الرد التلقائي (نص الترحيب + الأزرار) ← للمشرفين
+//  · إدارة المشرفين وترقيتهم             ← للمشرف العام فقط
+//  · إحصائيات سريعة                      ← للمشرف العام فقط
+//
+//  كل الكتابة تمرّ عبر دوال SQL محمية (security definer) تتحقق من
+//  هوية المنادي داخل القاعدة، فلا يمكن تجاوزها من الواجهة ولا من الـ API.
+// =================================================================
+
+const MAX_REPLY_BUTTONS = 6;
+
+function setAdminStatusText(el, msg, kind = "") {
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "admin-hint" + (kind ? " " + kind : "");
+}
+
+function addReplyButtonRow(label = "", value = "") {
+  const wrap = $("#auto-reply-buttons");
+  if (!wrap) return;
+
+  if (wrap.children.length >= MAX_REPLY_BUTTONS) {
+    setAdminStatusText($("#auto-reply-status"), `الحد الأقصى ${MAX_REPLY_BUTTONS} أزرار`, "err");
+    return;
+  }
+
+  const row = document.createElement("div");
+  row.className = "reply-btn-row";
+  row.innerHTML = `
+    <input class="rb-label" type="text" maxlength="40" placeholder="نص الزر" />
+    <input class="rb-value" type="text" maxlength="200" placeholder="ما يُرسل عند الضغط" />
+    <button class="rb-remove" type="button" title="حذف الزر">✕</button>
+  `;
+  row.querySelector(".rb-label").value = label;
+  row.querySelector(".rb-value").value = value;
+  wrap.appendChild(row);
+}
+
+function collectReplyButtons() {
+  const rows = $("#auto-reply-buttons")?.children || [];
+  const out = [];
+  for (const row of rows) {
+    const label = row.querySelector(".rb-label")?.value.trim() || "";
+    const value = row.querySelector(".rb-value")?.value.trim() || "";
+    if (!label && !value) continue;   // صف فارغ يُتجاهل
+    out.push({ label, value });       // التحقق النهائي يتم في قاعدة البيانات
+  }
+  return out;
+}
+
+function renderReplyPreview() {
+  const box = $("#auto-reply-preview");
+  if (!box) return;
+
+  const greeting = $("#auto-reply-greeting")?.value.trim() || "(لا يوجد نص)";
+  const buttons = collectReplyButtons();
+
+  box.innerHTML =
+    `<div>${escapeHtml(greeting)}</div>` +
+    buttons
+      .map((b) => `<div class="pv-btn">${escapeHtml(b.label || b.value)}</div>`)
+      .join("");
+  box.classList.remove("hidden");
+}
+
+async function loadAutoReplySettings() {
+  const { data, error } = await supabase
+    .from("auto_reply_settings")
+    .select("greeting, buttons, is_enabled")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const wrap = $("#auto-reply-buttons");
+  if (wrap) wrap.innerHTML = "";
+
+  if (error) {
+    setAdminStatusText($("#auto-reply-status"), "تعذّر تحميل الإعدادات: " + error.message, "err");
+    return;
+  }
+
+  if (!data) {
+    addReplyButtonRow("🛠️ طلب دعم فني", "طلب دعم فني");
+    setAdminStatusText($("#auto-reply-status"), "لا توجد إعدادات محفوظة بعد");
+    return;
+  }
+
+  const greetingEl = $("#auto-reply-greeting");
+  if (greetingEl) greetingEl.value = data.greeting || "";
+
+  const enabledEl = $("#auto-reply-enabled");
+  if (enabledEl) enabledEl.checked = Boolean(data.is_enabled);
+
+  const list = Array.isArray(data.buttons) ? data.buttons : [];
+  list.forEach((b) => addReplyButtonRow(b?.label || "", b?.value || ""));
+
+  setAdminStatusText($("#auto-reply-status"), "");
+}
+
+async function saveAutoReplySettings() {
+  const btn = $("#btn-save-auto-reply");
+  const greeting = $("#auto-reply-greeting")?.value.trim() || "";
+  const buttons = collectReplyButtons();
+  const enabled = Boolean($("#auto-reply-enabled")?.checked);
+
+  if (!greeting) {
+    setAdminStatusText($("#auto-reply-status"), "نص الترحيب لا يمكن أن يكون فارغاً", "err");
+    $("#auto-reply-greeting")?.focus();
+    return;
+  }
+
+  if (btn) btn.disabled = true;
+  setAdminStatusText($("#auto-reply-status"), "جارٍ الحفظ…");
+
+  const { error } = await supabase.rpc("update_auto_reply", {
+    p_greeting: greeting,
+    p_buttons: buttons,
+    p_enabled: enabled,
+  });
+
+  if (btn) btn.disabled = false;
+
+  if (error) {
+    setAdminStatusText($("#auto-reply-status"), "تعذّر الحفظ: " + error.message, "err");
+    return;
+  }
+
+  setAdminStatusText(
+    $("#auto-reply-status"),
+    enabled ? "تم الحفظ ✅ الرد التلقائي مُفعَّل" : "تم الحفظ ✅ الرد التلقائي مُوقَف",
+    "ok"
+  );
+  renderReplyPreview();
+}
+
+async function loadAdminStats() {
+  const box = $("#admin-stats");
+  if (!box || !state.me?.is_super_admin) return;
+
+  const { data, error } = await supabase.rpc("admin_stats");
+  if (error || !data) {
+    box.classList.add("hidden");
+    return;
+  }
+
+  const items = [
+    ["المستخدمون", data.users],
+    ["المشرفون", data.admins],
+    ["المحادثات", data.conversations],
+    ["الرسائل", data.messages],
+    ["رسائل اليوم", data.today_messages],
+    ["أجهزة الإشعارات", data.devices],
+  ];
+
+  box.innerHTML = items
+    .map(
+      ([label, value]) =>
+        `<div class="admin-stat"><b>${Number(value) || 0}</b><span>${escapeHtml(label)}</span></div>`
+    )
+    .join("");
+  box.classList.remove("hidden");
+}
+
+async function loadAdminUsers() {
+  const list = $("#admin-users-list");
+  const block = $("#admin-manage-block");
+  if (!list || !state.me?.is_super_admin) return;
+
+  block?.classList.remove("hidden");
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email, display_name, is_admin, is_super_admin")
+    .order("is_super_admin", { ascending: false })
+    .order("is_admin", { ascending: false })
+    .order("email", { ascending: true });
+
+  if (error) {
+    list.innerHTML =
+      `<div class="admin-hint err">تعذّر تحميل القائمة: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  list.innerHTML = "";
+
+  (data || []).forEach((p) => {
+    const isSelf = p.id === state.me.id;
+    const row = document.createElement("div");
+    row.className = "admin-user";
+    row.innerHTML = `
+      <div class="admin-user-info">
+        <b>${escapeHtml(p.display_name || "بدون اسم")}</b>
+        <span>${escapeHtml(p.email || "")}</span>
+      </div>
+      <button class="admin-flag ${p.is_admin ? "on" : ""}" data-act="admin" type="button"
+              title="تبديل صفة المشرف">مشرف</button>
+      <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
+              title="تبديل صفة المشرف العام">عام</button>
+    `;
+
+    row.querySelectorAll(".admin-flag").forEach((b) => {
+      if (isSelf) {
+        b.disabled = true;
+        b.title = "لا يمكنك تغيير صلاحيات حسابك";
+      } else {
+        b.addEventListener("click", () => toggleAdminFlag(p, b.dataset.act, row));
+      }
+    });
+
+    list.appendChild(row);
+  });
+}
+
+async function toggleAdminFlag(profile, act, row) {
+  const status = $("#admin-manage-status");
+  const flagButtons = row.querySelectorAll(".admin-flag");
+
+  const nextAdmin =
+    act === "admin" ? !profile.is_admin : true;   // منح «عام» يمنح «مشرف» تلقائياً
+  const nextSuper =
+    act === "super" ? !profile.is_super_admin : Boolean(profile.is_super_admin);
+
+  const what =
+    act === "super"
+      ? (nextSuper ? "تعيين مشرفاً عاماً" : "إزالة صفة المشرف العام")
+      : (nextAdmin ? "ترقية إلى مشرف" : "إزالة الإشراف");
+
+  if (!window.confirm(`${what}: ${profile.display_name || profile.email}؟`)) return;
+
+  flagButtons.forEach((b) => (b.disabled = true));
+  setAdminStatusText(status, "جارٍ التنفيذ…");
+
+  const { error } = await supabase.rpc("set_admin_status", {
+    p_user_id: profile.id,
+    p_is_admin: nextAdmin,
+    p_is_super_admin: nextSuper,
+  });
+
+  if (error) {
+    setAdminStatusText(status, "تعذّر: " + error.message, "err");
+    flagButtons.forEach((b) => (b.disabled = false));
+    return;
+  }
+
+  setAdminStatusText(status, `تم: ${what} ✅`, "ok");
+  await Promise.all([loadAdminUsers(), loadAdminStats()]);
+}
+
+async function renderAdminTools() {
+  const box = $("#admin-tools");
+  if (!box) return;
+
+  // المشرف فقط يرى اللوحة — وإلا تبقى مخفية تماماً
+  if (!state.me?.is_admin) {
+    box.classList.add("hidden");
+    return;
+  }
+
+  box.classList.remove("hidden");
+  await loadAutoReplySettings();
+  renderReplyPreview();
+
+  if (state.me.is_super_admin) {
+    await Promise.all([loadAdminStats(), loadAdminUsers()]);
+  } else {
+    $("#admin-stats")?.classList.add("hidden");
+    $("#admin-manage-block")?.classList.add("hidden");
+  }
+}
+
+function wireAdminTools() {
+  $("#btn-add-reply-button")?.addEventListener("click", () => addReplyButtonRow());
+  $("#btn-save-auto-reply")?.addEventListener("click", saveAutoReplySettings);
+  $("#btn-preview-auto-reply")?.addEventListener("click", renderReplyPreview);
+
+  // حذف زر من المحرّر — تفويض الحدث لأن الصفوف تُضاف ديناميكياً
+  $("#auto-reply-buttons")?.addEventListener("click", (event) => {
+    const btn = event.target.closest(".rb-remove");
+    if (btn) btn.closest(".reply-btn-row")?.remove();
+  });
+
+  // تحديث المعاينة أثناء الكتابة
+  $("#auto-reply-greeting")?.addEventListener("input", () => {
+    const pv = $("#auto-reply-preview");
+    if (pv && !pv.classList.contains("hidden")) renderReplyPreview();
+  });
+}
+
 // ===============================================================
 // CHROME
 // ===============================================================
 
 function wireChrome() {
   $("#btn-settings")?.addEventListener("click", () => {
-    $("#settings-panel")?.classList.toggle("hidden");
+    const panel = $("#settings-panel");
+    panel?.classList.toggle("hidden");
+    // نُحمّل بيانات اللوحة عند كل فتح (لتكون طازجة دائماً)
+    if (panel && !panel.classList.contains("hidden")) renderAdminTools();
   });
+
+  wireAdminTools();
 
   $("#btn-logout")?.addEventListener("click", async () => {
     await signOut(state.me?.id);
@@ -2150,7 +2445,7 @@ async function saveMediaAttachment(message) {
 
   try {
     const response = await fetch(url, { mode: "cors" });
-    if (!response.ok) throw new Error("تعذّر تنزيل الميديا");
+    if (!response.ok) throw new Error("تعذّر تنزيل الوسائط");
     const blob = await response.blob();
     const objectUrl = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -2160,7 +2455,7 @@ async function saveMediaAttachment(message) {
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    showAuthError("تم حفظ الميديا على جهازك.");
+    showAuthError("تم حفظ الوسائط على جهازك.");
   } catch (error) {
     // روابط Storage العامة قد تمنع fetch عبر CORS؛ نترك للمتصفح تنزيل الرابط مباشرة.
     const anchor = document.createElement("a");
@@ -2171,7 +2466,7 @@ async function saveMediaAttachment(message) {
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
-    console.warn("تعذّر تنزيل الميديا مباشرة، تم فتح الرابط:", error);
+    console.warn("تعذّر تنزيل الوسائط، وتم فتح الرابط:", error);
   }
 }
 
@@ -2640,7 +2935,7 @@ async function uploadMediaToSupabase(
 
   if (!publicUrl) {
     throw new Error(
-      "تم رفع الملف ولكن تعذر الحصول على الرابط العام"
+      "تم رفع الملف ولكن تعذّر الحصول على الرابط العام"
     );
   }
 
@@ -2721,7 +3016,7 @@ function setMediaUploadingState(
 
   status.textContent =
     message ||
-    "جاري رفع الوسائط...";
+    "جارٍ رفع الوسائط…";
 
   status.classList.toggle(
     "hidden",
@@ -2834,12 +3129,12 @@ async function sendMessage({
       setMediaUploadingState(
         true,
         attachmentType === "image"
-          ? "جاري رفع الصورة، يرجى الانتظار..."
+          ? "جارٍ رفع الصورة…"
           : attachmentType === "video"
-          ? "جاري رفع الفيديو، يرجى الانتظار..."
+          ? "جارٍ رفع الفيديو…"
           : attachmentType === "audio"
-          ? "جاري رفع الرسالة الصوتية، يرجى الانتظار..."
-          : "جاري رفع الملف، يرجى الانتظار..."
+          ? "جارٍ رفع الرسالة الصوتية…"
+          : "جارٍ رفع الملف…"
       );
 
       const uploaded =
@@ -2878,7 +3173,7 @@ async function sendMessage({
       );
 
       showAuthError(
-        "فشل رفع الوسائط: " +
+        "تعذّر رفع الوسائط: " +
           (
             error?.message ||
             "خطأ غير معروف"
@@ -3110,7 +3405,7 @@ async function handleAvatarUpload(e) {
   try {
     setMediaUploadingState(
       true,
-      "جاري رفع الصورة الشخصية..."
+      "جارٍ رفع الصورة الشخصية…"
     );
 
     const uploaded =
@@ -3147,7 +3442,7 @@ async function handleAvatarUpload(e) {
     );
 
     showAuthError(
-      "فشل رفع الصورة الشخصية: " +
+      "تعذّر رفع الصورة الشخصية: " +
         (
           error?.message ||
           "خطأ غير معروف"
@@ -3172,7 +3467,7 @@ async function handleWallpaperUpload(e) {
   try {
     setMediaUploadingState(
       true,
-      "جاري رفع خلفية المحادثة..."
+      "جارٍ رفع خلفية المحادثة…"
     );
 
     const uploaded =
@@ -3206,7 +3501,7 @@ async function handleWallpaperUpload(e) {
     );
 
     showAuthError(
-      "فشل رفع خلفية المحادثة: " +
+      "تعذّر رفع خلفية المحادثة: " +
         (
           error?.message ||
           "خطأ غير معروف"
@@ -3246,7 +3541,7 @@ async function startRecording() {
 
   if (!state.isOnline) {
     showAuthError(
-      "لا يمكن رفع الرسالة الصوتية أثناء عدم الاتصال بالإنترنت."
+      "لا يمكن رفع الرسالة الصوتية بدون اتصال بالإنترنت."
     );
 
     return;
@@ -4542,7 +4837,7 @@ async function installPWA() {
     button.disabled = true;
 
     button.textContent =
-      "جاري فتح التثبيت...";
+      "جارٍ فتح نافذة التثبيت…";
   }
 
   try {

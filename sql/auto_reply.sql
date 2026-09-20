@@ -73,11 +73,11 @@ create policy "auto_reply_insert_admin"
 insert into public.auto_reply_settings (is_enabled, greeting, buttons)
 select
   true,
-  'مرحباً 👋 كيف يمكننا مساعدتك؟ اختر أحد الخيارات أو اكتب رسالتك مباشرةً.',
+  'مرحباً بك 👋 كيف يمكننا مساعدتك؟ اختر أحد الخيارات أو اكتب رسالتك مباشرةً.',
   '[
     {"label":"🛠️ طلب دعم فني","value":"طلب دعم فني"},
     {"label":"💬 استفسار عن خدمة","value":"استفسار عن خدمة"},
-    {"label":"📄 شكوى","value":"لدي شكوى"}
+    {"label":"📝 شكوى","value":"لدي شكوى"}
   ]'::jsonb
 where not exists (select 1 from public.auto_reply_settings);
 

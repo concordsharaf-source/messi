@@ -74,9 +74,9 @@
         <span id="my-name"></span>
       </div>
       <div class="sidebar-actions">
-        <button id="lang-toggle" title="Language">🌐</button>
-        <button id="theme-toggle" title="Theme">🌓</button>
-        <button id="btn-settings" title="Settings">⚙️</button>
+        <button id="lang-toggle" title="اللغة">🌐</button>
+        <button id="theme-toggle" title="المظهر">🌓</button>
+        <button id="btn-settings" title="الإعدادات">⚙️</button>
       </div>
     </header>
 
@@ -88,6 +88,46 @@
       <input id="wallpaper-input" type="file" accept="image/*" />
       <button id="btn-remove-wallpaper" class="settings-danger" type="button">حذف خلفية الدردشة</button>
       <button id="btn-enable-push" type="button" data-i18n="enable_push">تفعيل إشعارات الجهاز</button>
+      <!-- ============================================================ -->
+      <!-- لوحة المشرف — تظهر للمشرفين، وقسم الإدارة للمشرف العام فقط   -->
+      <!-- ============================================================ -->
+      <section id="admin-tools" class="hidden">
+        <div class="admin-divider"></div>
+        <div class="admin-title">🛡️ لوحة المشرف</div>
+
+        <div id="admin-stats" class="admin-stats hidden"></div>
+
+        <details class="admin-block" id="auto-reply-block" open>
+          <summary>💬 الرد التلقائي</summary>
+
+          <label class="admin-switch">
+            <input type="checkbox" id="auto-reply-enabled" />
+            <span>مُفعَّل عند بدء محادثة جديدة</span>
+          </label>
+
+          <label for="auto-reply-greeting">نص رسالة الترحيب</label>
+          <textarea id="auto-reply-greeting" rows="3" maxlength="400" placeholder="مرحباً 👋 كيف يمكننا مساعدتك؟"></textarea>
+
+          <label>الأزرار الجاهزة <span class="admin-hint">(تظهر أسفل الرسالة)</span></label>
+          <div id="auto-reply-buttons"></div>
+          <button id="btn-add-reply-button" type="button" class="admin-btn-mini">＋ إضافة زر</button>
+
+          <div class="admin-actions">
+            <button id="btn-save-auto-reply" type="button" class="admin-btn-primary">💾 حفظ</button>
+            <button id="btn-preview-auto-reply" type="button" class="admin-btn-mini">👁️ معاينة</button>
+          </div>
+          <div id="auto-reply-status" class="admin-hint"></div>
+          <div id="auto-reply-preview" class="admin-preview hidden"></div>
+        </details>
+
+        <details class="admin-block hidden" id="admin-manage-block">
+          <summary>👥 إدارة المشرفين</summary>
+          <div class="admin-hint">اضغط على «مشرف» أو «مشرف عام» لتبديل الصلاحية.</div>
+          <div id="admin-users-list" class="admin-users"></div>
+          <div id="admin-manage-status" class="admin-hint"></div>
+        </details>
+      </section>
+
       <button id="btn-logout" class="logout-btn" data-i18n="logout">تسجيل الخروج</button>
     </div>
 

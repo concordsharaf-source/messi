@@ -275,6 +275,56 @@ expect "المستخدم العادي لا يعدّل الإعدادات (0 صف
 expect "النص لم يتغيّر فعلاً" "t" \
        "$(as_root "select greeting <> 'اختراق' from public.auto_reply_settings limit 1;")"
 
+hdr "14) دوال لوحة المشرف (admin_tools)"
+# S = مشرف عام · A = مشرف · U مستخدم عادي · O غريب
+# (القسم 11.b يعيد إدخال صف S بلا صفة «عام»، فنُهيّئ الحالة كما هي في الواقع)
+as_root "update public.profiles set is_admin = true, is_super_admin = true where id='$S';" >/dev/null
+expect "تهيئة: S صار مشرفاً عاماً" "t" "$(as_root "select is_super_admin from public.profiles where id='$S';")"
+expect_ok   "المشرف العام يرقّي مستخدماً" \
+            "$(as_user_do "$S" "select public.set_admin_status('$O', true);")"
+expect "وصار is_admin فعلاً" "t" \
+       "$(as_root "select is_admin from public.profiles where id='$O';")"
+expect_fail "المستخدم العادي لا يرقّي أحداً" \
+            "$(as_user "$U" "select public.set_admin_status('$O', true);")"
+expect_fail "المشرف العادي لا يرقّي أحداً" \
+            "$(as_user "$A" "select public.set_admin_status('$O', true);")"
+expect_fail "لا يمكن تغيير صلاحيات الحساب الذاتي" \
+            "$(as_user "$S" "select public.set_admin_status('$S', true, false);")"
+expect_ok   "تعيين مشرف عام لمستخدم" \
+            "$(as_user_do "$S" "select public.set_admin_status('$O', true, true);")"
+expect "والمشرف العام مشرفٌ بالضرورة" "t" \
+       "$(as_root "select is_admin from public.profiles where id='$O';")"
+expect_ok   "إزالة صفة المشرف العام تعمل مع وجود مشرف عام آخر" \
+            "$(as_user_do "$S" "select public.set_admin_status('$O', true, false);")"
+expect "وعاد مشرفاً عادياً" "f" \
+       "$(as_root "select is_super_admin from public.profiles where id='$O';")"
+
+expect_ok   "المشرف يحفظ إعدادات الرد التلقائي" \
+            "$(as_user_do "$A" "select public.update_auto_reply('نص اختباري', '[{\"label\":\"زر\",\"value\":\"قيمة\"}]'::jsonb, true);")"
+expect "والحفظ ظهر في الجدول" "نص اختباري" \
+       "$(as_root "select greeting from public.auto_reply_settings limit 1;")"
+expect_fail "المستخدم العادي لا يحفظ الإعدادات" \
+            "$(as_user "$U" "select public.update_auto_reply('اختراق', '[]'::jsonb, true);")"
+expect_fail "نص ترحيب فارغ مرفوض" \
+            "$(as_user "$A" "select public.update_auto_reply('   ', '[]'::jsonb, true);")"
+expect_fail "زر بلا value مرفوض" \
+            "$(as_user "$A" "select public.update_auto_reply('نص', '[{\"label\":\"زر\"}]'::jsonb, true);")"
+expect_fail "أكثر من 6 أزرار مرفوض" \
+            "$(as_user "$A" "select public.update_auto_reply('نص', (select jsonb_agg(jsonb_build_object('label','ز','value','ق')) from generate_series(1,7)), true);")"
+expect_fail "نص أطول من 400 حرف مرفوض" \
+            "$(as_user "$A" "select public.update_auto_reply(repeat('ا',401), '[]'::jsonb, true);")"
+
+expect_ok   "المشرف العام يقرأ الإحصائيات" \
+            "$(as_user "$S" "select public.admin_stats() is not null;")"
+expect_fail "المستخدم العادي لا يقرأ الإحصائيات" \
+            "$(as_user "$U" "select public.admin_stats();")"
+expect_fail "المشرف العادي لا يقرأ الإحصائيات" \
+            "$(as_user "$A" "select public.admin_stats();")"
+
+# إعادة الإعدادات والصلاحيات لوضعها لبقية الاختبارات
+as_root "update public.profiles set is_admin=false, is_super_admin=false where id='$O';
+         update public.auto_reply_settings set greeting='مرحباً 👋 كيف يمكننا مساعدتك؟', updated_at=now();" >/dev/null
+
 hdr "12) حذف مستخدم أرسل رسائل (كان يفشل قبل الإصلاح)"
 expect "قبل الحذف: للمستخدم رسائل" "1" \
        "$(as_root "select count(*) from public.messages where sender_id='$U';")"
