@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v12";  // رُفع بعد البحث والتصنيف والملاحظات والنشاط والتصدير
+const CACHE_NAME = "wa-clone-shell-v13";  // نافذة الإعدادات الجديدة وأزرار المشرفين
 const APP_SHELL = [
   "./",
   "./index.html",

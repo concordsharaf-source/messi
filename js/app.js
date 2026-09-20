@@ -773,26 +773,37 @@ async function loadAdminUsers() {
     const initial = (p.display_name || p.email || "?").trim().charAt(0);
 
     row.innerHTML = `
-      <div class="admin-user-avatar" id="avatar-thumb-${p.id}">
-        ${p.avatar_url ? `<img src="${escapeHtml(p.avatar_url)}" alt="">` : escapeHtml(initial)}
-      </div>
+      <div class="admin-user-head">
+        <div class="admin-user-avatar" id="avatar-thumb-${p.id}">
+          ${p.avatar_url ? `<img src="${escapeHtml(p.avatar_url)}" alt="">` : escapeHtml(initial)}
+        </div>
 
-      <div class="admin-user-info">
-        <b>${escapeHtml(p.display_name || "بدون اسم")}</b>
-        <span>${escapeHtml(p.email || "")}</span>
+        <div class="admin-user-info">
+          <b>${escapeHtml(p.display_name || "بدون اسم")}</b>
+          <span>${escapeHtml(p.email || "بدون بريد")}</span>
+        </div>
+
+        ${p.is_super_admin ? '<span class="admin-crown" title="مشرف عام">👑</span>' : ""}
       </div>
 
       <div class="admin-user-actions">
         <button class="admin-flag ${p.is_admin ? "on" : ""}" data-act="admin" type="button"
-                title="تبديل صفة المشرف">مشرف</button>
+                title="تبديل صفة المشرف">${p.is_admin ? "✔ مشرف" : "مشرف"}</button>
         <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
-                title="تبديل صفة المشرف العام">عام</button>
-        ${isSelf ? "" : `
-          <button class="admin-key" data-act="pass" type="button" title="تعيين كلمة مرور جديدة">🔑</button>
-          <button class="admin-key" data-act="reset-link" type="button" title="إرسال رابط استعادة بالبريد">✉️</button>
+                title="تبديل صفة المشرف العام">${p.is_super_admin ? "✔ مشرف عام" : "مشرف عام"}</button>
+
+        <button class="admin-key actor-avatar" data-act="avatar" type="button"
+                title="تغيير الصورة الشخصية">📷 تغيير الصورة</button>
+
+        ${p.avatar_url
+          ? `<button class="admin-key danger" data-act="avatar-del" type="button"
+                    title="حذف الصورة الشخصية">🚫 حذف الصورة</button>`
+          : ""}
+
+        ${isSelf ? '<span class="admin-self-hint">هذا حسابك</span>' : `
+          <button class="admin-key" data-act="pass" type="button" title="تعيين كلمة مرور جديدة">🔑 كلمة المرور</button>
+          <button class="admin-key" data-act="reset-link" type="button" title="إرسال رابط استعادة بالبريد">✉️ رابط استعادة</button>
         `}
-        <button class="admin-key" data-act="avatar" type="button" title="تغيير الصورة الشخصية">📷</button>
-        ${p.avatar_url ? `<button class="admin-key" data-act="avatar-del" type="button" title="حذف الصورة الشخصية">🚫</button>` : ""}
       </div>
     `;
 
@@ -1346,6 +1357,12 @@ function wirePreferences() {
     $("#btn-close-settings").dataset.wired = "1";
     $("#btn-close-settings").addEventListener("click", () => {
       $("#settings-panel")?.classList.add("hidden");
+      $("#settings-backdrop")?.classList.add("hidden");
+    });
+
+    $("#settings-backdrop")?.addEventListener("click", () => {
+      $("#settings-panel")?.classList.add("hidden");
+      $("#settings-backdrop")?.classList.add("hidden");
     });
   }
 }
@@ -2397,9 +2414,15 @@ function wireAdminFeatures() {
 function wireChrome() {
   $("#btn-settings")?.addEventListener("click", () => {
     const panel = $("#settings-panel");
-    panel?.classList.toggle("hidden");
+    if (!panel) return;
+
+    const opening = panel.classList.contains("hidden");
+
+    panel.classList.toggle("hidden", !opening);
+    $("#settings-backdrop")?.classList.toggle("hidden", !opening);
+
     // نُحمّل بيانات اللوحة عند كل فتح (لتكون طازجة دائماً)
-    if (panel && !panel.classList.contains("hidden")) renderAdminTools();
+    if (opening) renderAdminTools();
   });
 
   wireAdminTools();
@@ -2408,6 +2431,8 @@ function wireChrome() {
   wireAdminFeatures();
 
   $("#btn-logout")?.addEventListener("click", async () => {
+    $("#settings-panel")?.classList.add("hidden");
+    $("#settings-backdrop")?.classList.add("hidden");
     await signOut(state.me?.id);
     location.reload();
   });
@@ -2446,6 +2471,7 @@ function wireChrome() {
     if (panel && !panel.classList.contains("hidden") &&
         !panel.contains(event.target) && event.target !== trigger) {
       panel.classList.add("hidden");
+      $("#settings-backdrop")?.classList.add("hidden");
     }
   });
 
