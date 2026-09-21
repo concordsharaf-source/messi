@@ -42,7 +42,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "35";
+const BUILD = "36";
 
 const state = {
   me: null,
@@ -1441,15 +1441,6 @@ async function renderAdminTools() {
   await loadAutoReplySettings();
   renderReplyPreview();
 
-  // التوقيع التلقائي: للمشرفين فقط
-  $("#signature-block")?.classList.remove("hidden");
-
-  const signatureInput = $("#signature-input");
-  if (signatureInput && signatureInput.dataset.filled !== "1") {
-    signatureInput.dataset.filled = "1";
-    signatureInput.value = state.me.signature || "";
-  }
-
   // ملخص اليوم: لكل مشرف
   $("#summary-block")?.classList.remove("hidden");
   renderDailySummary();
@@ -2029,6 +2020,12 @@ async function handleUrlQuickReply() {
 
   if (!action || !conversationId) return;
 
+  // الرد السريع للمشرف فقط: المستخدم لا يردّ نيابةً عن فريق الدعم.
+  if (!state.me?.is_admin && !state.me?.is_super_admin) {
+    window.history.replaceState({}, "", window.location.pathname);
+    return;
+  }
+
   const text = QUICK_REPLIES[action];
   if (!text) return;
 
@@ -2062,7 +2059,7 @@ async function handleUrlQuickReply() {
 //   3) الوسوم والملاحظات الداخلية
 //   4) الكتم والأرشفة
 //   5) سجل نشاط المشرفين
-//   6) التوقيع التلقائي
+//   6) مُعطَّل الآن: التوقيع التلقائي (حُذف)
 //   7) تصدير المحادثات (Excel / PDF)
 //   8) الملخص اليومي
 // ===============================================================
@@ -2766,44 +2763,6 @@ function updateChatStatusChip() {
 }
 
 // ---------------------------------------------------------------
-// 5) التوقيع التلقائي
-// ---------------------------------------------------------------
-
-function applySignatureToContent(content) {
-  const signature = state.me?.signature;
-
-  if (!content || !signature || !state.me?.is_admin) return content;
-  if (content.includes(signature)) return content;
-
-  return `${content}\n\n—\n${signature}`;
-}
-
-async function saveMySignature() {
-  const input = $("#signature-input");
-  const status = $("#signature-status");
-  const value = input?.value || "";
-
-  setAdminStatusText(status, "جارٍ الحفظ…");
-
-  const { data, error } = await supabase.rpc("set_my_signature", {
-    p_signature: value,
-  });
-
-  if (error) {
-    setAdminStatusText(status, "تعذّر الحفظ: " + error.message, "err");
-    return;
-  }
-
-  state.me.signature = data?.signature || null;
-  if (input) {
-    input.value = state.me.signature || "";
-    input.dataset.filled = "1";
-  }
-
-  setAdminStatusText(status, "✔ تم حفظ التوقيع — سيظهر أسفل ردودك.");
-}
-
-// ---------------------------------------------------------------
 // 6) تصدير المحادثة (Excel / PDF)
 // ---------------------------------------------------------------
 
@@ -3037,7 +2996,6 @@ function wireAdminFeatures() {
 
   $("#btn-refresh-activity")?.addEventListener("click", renderActivityFeed);
   $("#btn-refresh-summary")?.addEventListener("click", renderDailySummary);
-  $("#btn-save-signature")?.addEventListener("click", saveMySignature);
 
 }
 
@@ -6344,9 +6302,6 @@ async function sendMessage({
   if (!conv || state.mediaUploading) {
     return;
   }
-
-  // التوقيع التلقائي للمشرف
-  content = applySignatureToContent(content);
 
   const replyToId =
     state.replyingTo?.id || null;

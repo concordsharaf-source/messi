@@ -63,12 +63,16 @@ messaging.onBackgroundMessage((payload) => {
     silent: false,
     data: { ...data, conversationId },
     vibrate: [100, 50, 100],
-    // أزرار الرد السريع (تظهر في أندرويد وسطح المكتب)
-    actions: [
-      { action: "reply-done", title: "✅ تمّت المعالجة" },
-      { action: "reply-ack", title: "👋 رد سريع" },
-    ],
   };
+
+  // أزرار الرد السريع تُعرض للمشرف فقط (هو من يردّ على المستخدم).
+  // المستخدم العادي لا تُعرض له — حتى لا يظهر كأنه يرد على المشرف.
+  if (isAdminRecipient(data)) {
+    notificationOptions.actions = [
+      { action: "reply-done", title: "✅ تمّت المعالجة" },
+      { action: "reply-ack", title: "👋 وصلنا طلبك" },
+    ];
+  }
 
   return self.registration.showNotification(title, notificationOptions);
 });
@@ -79,6 +83,11 @@ messaging.onBackgroundMessage((payload) => {
 
 const SUPABASE_URL = "https://jjamwoidjxrdovsoftbq.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_q_XwYPM5rgWw6c8t6BlEGg_jj2oApZY";
+
+// هل صاحب هذا الإشعار مشرف؟ (يأتي العلم من دالّة send-push)
+function isAdminRecipient(data) {
+  return String(data?.isAdmin ?? "").toLowerCase() === "true";
+}
 
 const QUICK_REPLIES = {
   "reply-done": "✅ تمّت معالجة طلبك، شكراً لتواصلك معنا.",
@@ -152,7 +161,8 @@ self.addEventListener("notificationclick", (event) => {
   const data = event.notification?.data || {};
   const conversationId = data.conversationId || data.conversation_id || "";
   const action = event.action || "";
-  const quickText = QUICK_REPLIES[action];
+  // الرد السريع متاح للمشرف فقط — أي إشعار آخر يُفتح في التطبيق بلا إرسال.
+  const quickText = isAdminRecipient(data) ? QUICK_REPLIES[action] : null;
 
   // ---- الرد السريع مباشرةً من الإشعار بلا فتح التطبيق ----
   if (quickText && conversationId) {

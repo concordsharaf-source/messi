@@ -90,6 +90,9 @@ async function registerFirebaseServiceWorker() {
 
   firebaseServiceWorkerRegistration = registration;
 
+  // فحص التحديثات بنفسه في كل تشغيل حتى تصل تعديلات الإشعارات للجهاز فوراً
+  registration.update?.().catch(() => {});
+
   await navigator.serviceWorker.ready;
 
   return firebaseServiceWorkerRegistration;

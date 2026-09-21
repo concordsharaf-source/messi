@@ -51,12 +51,20 @@ serve(async (req) => {
     const receiverId = String(record.sender_id) === String(conversation.user_id)
       ? conversation.admin_id
       : conversation.user_id;
+    // هل المستلم مشرف؟ يُرسَل العلم مع الإشعار لتظهر أزرار الرد السريع للمشرف فقط.
+    const { data: receiverProfile } = await admin
+      .from("profiles")
+      .select("is_admin, is_super_admin")
+      .eq("id", receiverId)
+      .maybeSingle();
+    const receiverIsAdmin = Boolean(receiverProfile?.is_admin || receiverProfile?.is_super_admin);
+
     const { data: tokens, error: tokenError } = await admin
       .from("fcm_tokens")
       .select("token")
       .eq("user_id", receiverId);
     if (tokenError) throw tokenError;
-    if (!tokens?.length) return json({ sent: 0 });
+    if (!tokens?.length) return json({ sent: 0, receiverIsAdmin });
 
     const accessToken = await getAccessToken();
     const endpoint = `https://fcm.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/messages:send`;
@@ -84,6 +92,7 @@ serve(async (req) => {
               messageId: String(record.id || ""),
               icon: "./icons/icon.png",
               click_action: "./",
+              isAdmin: receiverIsAdmin ? "true" : "false",
             },
             android: { priority: "high" },
             webpush: { headers: { Urgency: "high" } },
@@ -92,7 +101,8 @@ serve(async (req) => {
       });
       return { status: response.status, body: await response.json() };
     }));
-    return json({ sent: results.length, results });
+    // receiverIsAdmin للتشخيص: يوضّح هل الإشعار يحمل أزرار الرد السريع (للمشرف فقط)
+    return json({ sent: results.length, results, receiverIsAdmin });
   } catch (error) {
     console.error("send-push error", error);
     return json({ error: error?.message || "Push failed" }, 500);

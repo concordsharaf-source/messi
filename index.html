@@ -31,7 +31,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "35";
+  window.WA_BUILD = "36";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -90,7 +90,7 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=35" />
+  <link rel="stylesheet" href="./css/style.css?v=36" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -299,24 +299,6 @@
           <div id="avatar-status" class="settings-hint"></div>
         </details>
 
-        <div id="signature-block" class="settings-card hidden">
-          <div class="settings-card-head">
-            <span class="settings-card-icon">✍️</span>
-            <div class="settings-card-titles">
-              <b>التوقيع التلقائي</b>
-              <small>يُضاف تلقائياً في آخر كل رسالة ترسلها (للمشرفين)</small>
-            </div>
-          </div>
-
-          <input id="signature-input" class="settings-input" type="text" maxlength="200"
-                 placeholder="مثال: مع تحيات فريق الدعم" />
-
-          <div class="settings-card-actions">
-            <button id="btn-save-signature" class="admin-btn-primary" type="button">💾 حفظ التوقيع</button>
-          </div>
-
-          <div id="signature-status" class="settings-hint"></div>
-        </div>
       </details>
 
       <!-- ============ 2) المظهر وحجم الخط ============ -->
@@ -457,7 +439,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v35</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v36</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -502,7 +484,7 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 <div id="global-toast" class="global-toast hidden"></div>
 
-<script type="module" src="./js/app.js?v=35"></script>
+<script type="module" src="./js/app.js?v=36"></script>
 
   <!-- نافذة تعديل الاسم (طبقة عامة) -->
   <div id="rename-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="تعديل الاسم">
