@@ -4529,17 +4529,37 @@ body[data-theme="dark"] .auth-oauth.ghost {
 }
 
 /* شارات الحالة والوسوم على صف المحادثة */
+/* =============================================================
+   شارات المحادثة (الحالة + الوسوم)
+   -------------------------------------------------------------
+   تُرسم في سطر مستقل أسفل معاينة الرسالة، مصفوفة إلى الجهة المقابلة
+   للصورة الشخصية (نهاية الصف) داخل المساحة الفارغة — لا فوق الصورة.
+   ============================================================= */
 .contact-badges {
-  position: absolute;
-  inset-inline-start: 14px;
-  bottom: 8px;
   display: flex;
-  align-items: center;
-  gap: 4px;
   flex-wrap: wrap;
-  max-width: 70%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 3px;
+  max-width: 100%;
   pointer-events: none;
 }
+
+.contact-badges .status-chip,
+.contact-badges .tag-chip {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 8px;
+  font-size: calc(9.5px * var(--wa-font-scale));
+  line-height: 1.7;
+}
+
+.contact-badges .mini-icon { font-size: calc(11px * var(--wa-font-scale)); line-height: 1; }
+
+.contact-row.has-badges { padding-bottom: 8px; }
 
 .contact-row { position: relative; }
 
@@ -6171,4 +6191,12 @@ body.viewing-chat #chat-panel-container,
 /* نافذة الإعدادات لا تتجاوز الارتفاع المرئي */
 .settings-panel {
   max-height: calc(var(--app-height, 100dvh) - var(--wa-header-height) - 16px);
+}
+
+
+/* قائمة خيارات المحادثة (⋮): كل خيار في سطر واحد بلا التفاف */
+.chat-options-menu button {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

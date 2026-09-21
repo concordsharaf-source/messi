@@ -1760,18 +1760,25 @@ function paintContactMeta(conversationId) {
 
   const meta = metaFor(conversationId);
 
-  let box = row.querySelector(".contact-badges");
+  // مكان الشارات: سطر مستقل أسفل معاينة الرسالة، مصفوف في الجهة المقابلة
+  // للصورة (نهاية الصف) داخل المساحة الفارغة — لا فوق الصورة الشخصية إطلاقاً.
+  const host = row.querySelector(".contact-info") || row;
+
+  let box = host.querySelector(".contact-badges");
 
   if (!meta.tags.length && meta.status === "new" && !meta.muted) {
     box?.remove();
+    row.classList.remove("has-badges");
     return;
   }
 
   if (!box) {
     box = document.createElement("div");
     box.className = "contact-badges";
-    row.appendChild(box);
+    host.appendChild(box);
   }
+
+  row.classList.add("has-badges");
 
   box.innerHTML = `
     ${meta.muted ? '<span class="mini-icon" title="مكتومة">🔇</span>' : ""}
