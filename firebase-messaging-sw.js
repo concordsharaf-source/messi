@@ -55,8 +55,8 @@ messaging.onBackgroundMessage((payload) => {
 
   const notificationOptions = {
     body,
-    icon: data.icon || "./icons/icon.png",
-    badge: data.badge || "./icons/icon.png",
+    icon: data.icon || "./icons/icon-192.png",
+    badge: data.badge || "./icons/icon-192.png",
     tag: messageId || conversationId || "whatsapp-message",
     renotify: true,
     requireInteraction: true,
@@ -161,7 +161,7 @@ self.addEventListener("notificationclick", (event) => {
         if (result.ok) {
           return self.registration.showNotification("تم الإرسال ✅", {
             body: quickText,
-            icon: "./icons/icon.png",
+            icon: "./icons/icon-192.png",
             tag: `quick-${Date.now()}`,
             silent: true,
             requireInteraction: false,

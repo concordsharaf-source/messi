@@ -2601,7 +2601,10 @@ function wireChrome() {
     $("#settings-backdrop")?.classList.toggle("hidden", !opening);
 
     // نُحمّل بيانات اللوحة عند كل فتح (لتكون طازجة دائماً)
-    if (opening) renderAdminTools();
+    if (opening) {
+      renderAdminTools();
+      syncSettingsValues();
+    }
   });
 
   wireAdminTools();
@@ -2687,6 +2690,17 @@ function wireChrome() {
     }
   );
 
+  // أزرار قسم التثبيت واللغة في الإعدادات
+  $("#btn-install-settings")?.addEventListener("click", () => installPWA());
+  $("#btn-install-guide")?.addEventListener("click", () => openInstallGuide());
+
+  $("#lang-ar")?.addEventListener("click", () => setLanguage("ar"));
+  $("#lang-en")?.addEventListener("click", () => setLanguage("en"));
+
+  // أي تفاعل داخل الإعدادات يُحدّث القيم المعروضة بجانب العناوين
+  $("#settings-panel")?.addEventListener("click", () => setTimeout(syncSettingsValues, 80));
+  $("#settings-panel")?.addEventListener("change", () => setTimeout(syncSettingsValues, 80));
+
   wireChatPanel();
   wireConversationOptions();
   wireMediaViewer();
@@ -2697,12 +2711,63 @@ function wireChrome() {
 // LANGUAGE
 // ===============================================================
 
-function toggleLanguage() {
-  state.lang = state.lang === "ar" ? "en" : "ar";
+function setLanguage(lang) {
+  if (lang !== "ar" && lang !== "en") return;
 
-  localStorage.setItem("wa_lang", state.lang);
+  state.lang = lang;
+
+  localStorage.setItem("wa_lang", lang);
 
   state.t = applyLanguage(state.lang);
+
+  syncSettingsValues();
+}
+
+function toggleLanguage() {
+  setLanguage(state.lang === "ar" ? "en" : "ar");
+}
+
+// ===============================================================
+// ملخّصات أقسام الإعدادات (القيمة الحالية بجانب كل عنوان)
+// ===============================================================
+
+function syncSettingsValues() {
+  const put = (sel, text) => {
+    const el = $(sel);
+    if (el) el.textContent = text || "";
+  };
+
+  put("#value-profile", state.me?.display_name || state.me?.email || "");
+
+  const modeEl = $("#theme-mode");
+  const mode = (modeEl && modeEl.value) || localStorage.getItem("wa_theme_mode") || "manual";
+  const modeLabel =
+    mode === "time" ? "تلقائي (وقت)" : mode === "system" ? "تلقائي (جهاز)" : state.theme === "dark" ? "داكن" : "فاتح";
+  const font = FONT_SIZES.find((f) => String(f.value) === String(prefs.fontSize));
+  put("#value-theme", font ? `${modeLabel} · ${font.label}` : modeLabel);
+
+  put(
+    "#value-wallpaper",
+    state.me?.wallpaper_url
+      ? "مخصّصة"
+      : prefs.chatBg === "default"
+      ? "افتراضية"
+      : CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg)?.label || "جاهزة"
+  );
+
+  const tone = NOTIF_TONES.find((t) => t.id === prefs.tone);
+  put("#value-tone", tone ? tone.label : "الافتراضية");
+
+  put(
+    "#value-push",
+    "Notification" in window && Notification.permission === "granted" ? "مُفعّلة ✔" : "غير مُفعّلة"
+  );
+
+  put("#value-install", isPWAInstalled() ? "مثبَّت ✔" : "غير مثبَّت");
+  put("#value-lang", state.lang === "en" ? "English" : "العربية");
+
+  $("#lang-ar")?.classList.toggle("active", state.lang !== "en");
+  $("#lang-en")?.classList.toggle("active", state.lang === "en");
 }
 
 // ===============================================================

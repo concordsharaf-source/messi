@@ -5692,3 +5692,99 @@ body[data-theme="light"] .contact-name { color: #111b21; }
   align-items: center;
   justify-content: center;
 }
+
+/* =============================================================
+   23) نافذة الإعدادات: أقسام منطوية مرتّبة (بطاقات)
+   ============================================================= */
+
+.settings-note {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--wa-text-secondary);
+  text-align: center;
+  padding: 0 4px 4px;
+}
+
+.settings-panel .admin-block {
+  margin: 0;
+  padding: 0;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .035);
+  overflow: hidden;
+}
+
+.settings-panel .admin-block > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: transparent;
+  font-size: calc(13.5px * var(--wa-font-scale));
+}
+
+.settings-panel .admin-block[open] > summary {
+  border-radius: 12px 12px 0 0;
+  border-bottom: 1px solid rgba(255, 255, 255, .07);
+  background: rgba(255, 255, 255, .05);
+}
+
+.settings-panel .admin-block[open] { padding-bottom: 12px; }
+
+.settings-panel .admin-block > *:not(summary) { margin: 10px 12px 0; }
+
+.admin-block > summary::after { margin-inline-start: auto; }
+.admin-block > summary:has(.block-value)::after { margin-inline-start: 0; }
+
+.block-value {
+  margin-inline-start: auto;
+  max-width: 48%;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .08);
+  color: var(--wa-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.block-value-static {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--wa-text-secondary);
+}
+
+.settings-sub {
+  font-size: 11.5px !important;
+  font-weight: 700;
+  color: var(--wa-accent) !important;
+  letter-spacing: 0;
+  margin: 14px 12px 0 !important;
+}
+
+.settings-inline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-inline .settings-choice { flex: 1 1 40%; }
+
+body[data-theme="light"] .settings-panel .admin-block {
+  background: rgba(0, 0, 0, .025);
+  border-color: rgba(0, 0, 0, .08);
+}
+
+body[data-theme="light"] .settings-panel .admin-block[open] > summary {
+  background: rgba(0, 0, 0, .04);
+  border-bottom-color: rgba(0, 0, 0, .08);
+}
+
+body[data-theme="light"] .block-value { background: rgba(0, 0, 0, .07); }
+
+@media (max-width: 420px) {
+  .block-value { max-width: 40%; font-size: 10.5px; }
+}

@@ -2,20 +2,18 @@
   "short_name": "واتساب الوليد",
   "name": "واتساب الوليد",
   "icons": [
-    {
-      "src": "icons/icon.png",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "icons/icon1.png",
-      "type": "image/png",
-      "sizes": "512x512"
-    }
+    { "src": "icons/icon-192.png", "type": "image/png", "sizes": "192x192", "purpose": "any" },
+    { "src": "icons/icon-512.png", "type": "image/png", "sizes": "512x512", "purpose": "any" },
+    { "src": "icons/maskable-192.png", "type": "image/png", "sizes": "192x192", "purpose": "maskable" },
+    { "src": "icons/maskable-512.png", "type": "image/png", "sizes": "512x512", "purpose": "maskable" }
   ],
   "start_url": "/index.html",
+  "scope": "/",
   "background_color": "#111b21",
   "display": "standalone",
+  "orientation": "portrait",
   "theme_color": "#111b21",
-  "description": "تطبيق محادثات ومتابعة طلبات العملاء"
+  "description": "تطبيق محادثات ومتابعة طلبات العملاء",
+  "lang": "ar",
+  "dir": "rtl"
 }

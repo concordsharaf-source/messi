@@ -53,6 +53,13 @@ export const STR = {
     continue_google: "المتابعة بواسطة جوجل",
     guest_entry: "دخول سريع بدون تسجيل بيانات",
     oauth_hint: "الدخول بجوجل يستخدم حسابك مباشرةً — لا نطلب بيانات ولا كلمة مرور.",
+    notifications: "الإشعارات",
+    device_notifications: "إشعارات الجهاز (تصل حتى مع إغلاق التطبيق)",
+    install_app: "تثبيت التطبيق",
+    install_app_hint: "ثبّت التطبيق ليُفتح مستقلاً على جهازك وتصلك الإشعارات.",
+    install_now: "تثبيت على هذا الجهاز",
+    install_steps: "خطوات التثبيت (آيفون/أندرويد)",
+    settings_note: "اضغط على عنوان أي قسم لفتحه أو إغلاقه",
   },
   en: {
     dir: "ltr",
@@ -108,6 +115,13 @@ export const STR = {
     continue_google: "Continue with Google",
     guest_entry: "Quick sign-in without registration",
     oauth_hint: "Google sign-in uses your account directly — no data or password required.",
+    notifications: "Notifications",
+    device_notifications: "Device notifications (arrive even when the app is closed)",
+    install_app: "Install app",
+    install_app_hint: "Install the app to open it standalone and receive notifications.",
+    install_now: "Install on this device",
+    install_steps: "Install steps (iPhone/Android)",
+    settings_note: "Tap any section title to expand or collapse it",
   },
 };
 

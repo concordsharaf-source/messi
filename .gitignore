@@ -18,3 +18,5 @@ npm-debug.log*
 dist/
 build/
 .vercel/
+__pycache__/
+*.pyc

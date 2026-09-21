@@ -9,12 +9,16 @@
   <meta property="og:title" content="واتساب الوليد" />
   <meta property="og:description" content="واتساب الوليد — تطبيق محادثات فورية" />
   <!-- الرابط الكامل للصورة داخل مجلد icons -->
-  <meta property="og:image" content="https://concordsharaf-source.github.io/messi/icons/icon.png" />
-  <meta property="og:url" content="https://concordsharaf-source.github.io/messi/" />
+  <meta property="og:image" content="https://messenger-gamma-five.vercel.app/icons/icon-512.png" />
+  <meta property="og:url" content="https://messenger-gamma-five.vercel.app/" />
   <meta property="og:type" content="website" />
 
   <link rel="manifest" href="./manifest.json">
-  <link rel="icon" type="image/x-icon" href="./icons/icon.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="واتساب الوليد">
   <meta name="theme-color" content="#111b21" />
   <link rel="stylesheet" href="./css/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -108,21 +112,26 @@
         <span data-i18n="settings">الإعدادات</span>
       </div>
 
-      <!-- ============ الملف الشخصي ============ -->
+      <div class="settings-note" data-i18n="settings_note">اضغط على عنوان أي قسم لفتحه أو إغلاقه</div>
+
+      <!-- ============ 1) الملف الشخصي ============ -->
       <details class="admin-block" open>
-        <summary>👤 <span data-i18n="profile">الملف الشخصي</span></summary>
+        <summary>👤 <span data-i18n="profile">الملف الشخصي</span><span class="block-value" id="value-profile"></span></summary>
+
         <label data-i18n="profile_picture">الصورة الشخصية</label>
         <input id="avatar-input" type="file" accept="image/*" />
         <button id="btn-remove-avatar" class="settings-danger" type="button">حذف الصورة الشخصية</button>
+
         <label id="signature-label" class="hidden">التوقيع التلقائي (للمشرفين)</label>
         <input id="signature-input" type="text" maxlength="200" class="hidden" placeholder="مثال: مع تحيات فريق الدعم" />
         <button id="btn-save-signature" class="admin-btn-primary hidden" type="button">💾 حفظ التوقيع</button>
         <div id="signature-status" class="settings-hint"></div>
       </details>
 
-      <!-- ============ المظهر وحجم الخط ============ -->
-      <details class="admin-block" open>
-        <summary>🎨 <span data-i18n="appearance">المظهر وحجم الخط</span></summary>
+      <!-- ============ 2) المظهر وحجم الخط ============ -->
+      <details class="admin-block">
+        <summary>🎨 <span data-i18n="appearance">المظهر وحجم الخط</span><span class="block-value" id="value-theme"></span></summary>
+
         <label data-i18n="theme_mode">وضع المظهر</label>
         <select id="theme-mode">
           <option value="manual">يدوي (زر 🌓)</option>
@@ -135,24 +144,51 @@
         <div class="settings-hint" data-i18n="font_size_hint">يُطبَّق فوراً على كل التطبيق.</div>
       </details>
 
-      <!-- ============ خلفية الدردشة ============ -->
-      <details class="admin-block" open>
-        <summary>🖼️ <span data-i18n="wallpaper">خلفية الدردشة</span></summary>
+      <!-- ============ 3) خلفية الدردشة ============ -->
+      <details class="admin-block">
+        <summary>🖼️ <span data-i18n="wallpaper">خلفية الدردشة</span><span class="block-value" id="value-wallpaper"></span></summary>
+
         <div id="wallpaper-grid" class="wallpaper-grid"></div>
         <label data-i18n="wallpaper_custom">خلفية خاصة من جهازك</label>
         <input id="wallpaper-input" type="file" accept="image/*" />
         <button id="btn-remove-wallpaper" class="settings-danger" type="button">إزالة الخلفية الخاصة</button>
       </details>
 
-      <!-- ============ نغمة الإشعارات ============ -->
-      <details class="admin-block" open>
-        <summary>🔔 <span data-i18n="notif_tone">نغمة الإشعارات</span></summary>
+      <!-- ============ 4) الإشعارات (النغمة + إشعارات الجهاز) ============ -->
+      <details class="admin-block">
+        <summary>🔔 <span data-i18n="notifications">الإشعارات</span><span class="block-value" id="value-tone"></span></summary>
+
+        <div class="settings-sub" data-i18n="notif_tone">نغمة الإشعارات</div>
         <div id="tone-list" class="tone-list"></div>
+
+        <div class="settings-sub" data-i18n="device_notifications">إشعارات الجهاز (تصل حتى مع إغلاق التطبيق)</div>
+        <button id="btn-enable-push" type="button" data-i18n="enable_push">تفعيل إشعارات الجهاز</button>
+        <div class="block-value-static" id="value-push"></div>
       </details>
 
-      <!-- ============ الأمان ============ -->
+      <!-- ============ 5) تثبيت التطبيق ============ -->
+      <details class="admin-block">
+        <summary>📲 <span data-i18n="install_app">تثبيت التطبيق</span><span class="block-value" id="value-install"></span></summary>
+
+        <div class="settings-hint" data-i18n="install_app_hint">ثبّت التطبيق ليُفتح مستقلاً على جهازك وتصلك الإشعارات.</div>
+        <button id="btn-install-settings" type="button" class="admin-btn-primary">📲 <span data-i18n="install_now">تثبيت على هذا الجهاز</span></button>
+        <button id="btn-install-guide" type="button" class="admin-btn-mini">📖 <span data-i18n="install_steps">خطوات التثبيت (آيفون/أندرويد)</span></button>
+      </details>
+
+      <!-- ============ 6) اللغة ============ -->
+      <details class="admin-block">
+        <summary>🌐 <span data-i18n="language">اللغة</span><span class="block-value" id="value-lang"></span></summary>
+
+        <div class="settings-inline">
+          <button id="lang-ar" type="button" class="settings-choice">العربية</button>
+          <button id="lang-en" type="button" class="settings-choice">English</button>
+        </div>
+      </details>
+
+      <!-- ============ 7) الأمان ============ -->
       <details class="admin-block">
         <summary>🔐 <span data-i18n="security">الأمان</span></summary>
+
         <label data-i18n="change_password">تغيير كلمة المرور</label>
         <input id="new-password" type="password" autocomplete="new-password" placeholder="كلمة المرور الجديدة" />
         <input id="new-password-confirm" type="password" autocomplete="new-password" placeholder="تأكيد كلمة المرور الجديدة" />
@@ -160,8 +196,6 @@
         <div id="password-status" class="settings-hint"></div>
         <div class="settings-hint">لا تُرسل كلمة المرور لأي جهة — التغيير يتم مباشرةً في خدمة المصادقة.</div>
       </details>
-
-      <button id="btn-enable-push" type="button" data-i18n="enable_push">تفعيل إشعارات الجهاز</button>
 
       <!-- ============================================================ -->
       <!-- لوحة المشرف — تظهر للمشرفين، وقسم الإدارة للمشرف العام فقط   -->
