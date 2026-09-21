@@ -6660,6 +6660,149 @@ body[data-theme="light"] .country-item { color: #111b21; }
 }
 
 /* ================================================================
+   نافذة الإعدادات: الرأس + بطاقات الأقسام + حقول الإدخال
+   ================================================================ */
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  justify-content: center;
+  position: relative;
+}
+
+.settings-head-icon {
+  font-size: 17px;
+  opacity: .9;
+}
+
+/* بطاقة داخل قسم (مثل التوقيع التلقائي) */
+.settings-card {
+  border: 1px solid rgba(134, 150, 160, .18);
+  border-radius: 14px;
+  background: rgba(134, 150, 160, .06);
+  padding: 12px 13px;
+  margin: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+body[data-theme="light"] .settings-card {
+  border-color: rgba(0, 0, 0, .09);
+  background: rgba(0, 0, 0, .025);
+}
+
+.settings-card.hidden { display: none; }
+
+.settings-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.settings-card-icon {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(37, 211, 102, .14);
+  font-size: 15px;
+}
+
+.settings-card-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-card-titles b {
+  font-size: calc(13.5px * var(--wa-font-scale));
+  font-weight: 700;
+  color: var(--wa-text-primary);
+}
+
+.settings-card-titles small {
+  font-size: calc(11.5px * var(--wa-font-scale));
+  color: var(--wa-text-secondary);
+  line-height: 1.6;
+}
+
+.settings-card-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-card-actions > button {
+  flex: 1 1 140px;
+  min-height: 42px;
+}
+
+/* حقول الإدخال في الإعدادات: مظهر موحّد متوافق مع التطبيق */
+.settings-input,
+.settings-panel input[type="text"]:not(.avatar-file-input),
+.settings-panel input[type="password"],
+.settings-panel input[type="email"],
+.settings-panel input[type="tel"],
+.settings-panel textarea {
+  width: 100% !important;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(134, 150, 160, .28) !important;
+  background: #202c33 !important;
+  color: #e9edef !important;
+  font-family: inherit !important;
+  font-size: calc(14px * var(--wa-font-scale)) !important;
+  line-height: 1.7;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+body[data-theme="light"] .settings-input,
+body[data-theme="light"] .settings-panel input[type="text"]:not(.avatar-file-input),
+body[data-theme="light"] .settings-panel input[type="password"],
+body[data-theme="light"] .settings-panel input[type="email"],
+body[data-theme="light"] .settings-panel input[type="tel"],
+body[data-theme="light"] .settings-panel textarea {
+  background: #ffffff !important;
+  color: #111b21 !important;
+  border-color: rgba(0, 0, 0, .14) !important;
+}
+
+.settings-input::placeholder,
+.settings-panel input::placeholder,
+.settings-panel textarea::placeholder {
+  color: #8696a0;
+  opacity: .95;
+}
+
+.settings-input:focus,
+.settings-panel input[type="text"]:not(.avatar-file-input):focus,
+.settings-panel input[type="password"]:focus,
+.settings-panel input[type="email"]:focus,
+.settings-panel input[type="tel"]:focus,
+.settings-panel textarea:focus {
+  border-color: rgba(37, 211, 102, .75) !important;
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, .14);
+}
+
+.settings-panel textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+/* لا نُثقل حقول البحث وأشرطة الاختيار */
+.settings-panel input[type="search"] {
+  border-radius: 999px !important;
+}
+
+/* ================================================================
    الصورة الشخصية: لوحة الإعدادات + محرّر القص
    ================================================================ */
 .avatar-panel {

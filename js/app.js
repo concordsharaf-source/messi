@@ -41,7 +41,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "31";
+const BUILD = "32";
 
 const state = {
   me: null,
@@ -211,6 +211,21 @@ async function boot() {
   });
 
   window.addEventListener("popstate", (event) => {
+    // إغلاق داخلي للإعدادات: لا نفعل شيئاً (الحالة سُحبت بالفعل)
+    if (popstateFromSettings) {
+      popstateFromSettings = false;
+      return;
+    }
+
+    // الإعدادات مفتوحة؟ زر الرجوع يغلقها ويعود لشاشة المحادثات
+    if (typeof isSettingsOpen === "function" && isSettingsOpen()) {
+      closeSettings(true);
+      return;
+    }
+
+    // حالة الإعدادات نفسها: لا شيء
+    if (event.state?.waSettings) return;
+
     if (!event.state || !event.state.waChat) {
       closeChatView();
     }
@@ -1398,9 +1413,7 @@ async function renderAdminTools() {
   renderReplyPreview();
 
   // التوقيع التلقائي: للمشرفين فقط
-  ["#signature-label", "#signature-input", "#btn-save-signature"].forEach((sel) =>
-    $(sel)?.classList.remove("hidden")
-  );
+  $("#signature-block")?.classList.remove("hidden");
 
   const signatureInput = $("#signature-input");
   if (signatureInput && signatureInput.dataset.filled !== "1") {
@@ -1792,17 +1805,9 @@ function wirePreferences() {
     $("#btn-change-password").addEventListener("click", changeMyPassword);
   }
 
-  if ($("#btn-close-settings")?.dataset.wired !== "1") {
-    $("#btn-close-settings").dataset.wired = "1";
-    $("#btn-close-settings").addEventListener("click", () => {
-      $("#settings-panel")?.classList.add("hidden");
-      $("#settings-backdrop")?.classList.add("hidden");
-    });
-
-    $("#settings-backdrop")?.addEventListener("click", () => {
-      $("#settings-panel")?.classList.add("hidden");
-      $("#settings-backdrop")?.classList.add("hidden");
-    });
+  if ($("#settings-backdrop")?.dataset.wired !== "1") {
+    $("#settings-backdrop").dataset.wired = "1";
+    $("#settings-backdrop").addEventListener("click", () => closeSettings());
   }
 }
 
@@ -3112,23 +3117,85 @@ window.__hideSplash = () => {
   setTimeout(() => el.classList.add("hidden"), 500);
 };
 
+// ===============================================================
+// الإعدادات: فتح/إغلاق + زر الرجوع في الجوال
+// ---------------------------------------------------------------
+// عند فتح الإعدادات نُسجّل حالة في سجل المتصفح، فيرجع زر الرجوع
+// إلى شاشة المحادثات بدل الخروج من التطبيق.
+// ===============================================================
+
+let settingsHistoryPushed = false;   // هل أضفنا حالة الإعدادات للسجل؟
+let popstateFromSettings = false;    // نمنع التعامل مرّتين بعد إغلاق بالسجل
+
+function isSettingsOpen() {
+  return !document.getElementById("settings-panel")?.classList.contains("hidden");
+}
+
+/** يفتح الإعدادات (ويحفظ الحالة في سجل المتصفح) */
+function openSettings(options = {}) {
+  const panel = $("#settings-panel");
+
+  if (!panel) return;
+
+  const wasClosed = panel.classList.contains("hidden");
+
+  panel.classList.remove("hidden");
+  $("#settings-backdrop")?.classList.remove("hidden");
+
+  // حالة في السجل: زر الرجوع يغلق الإعدادات ويرجع للقائمة
+  if (wasClosed && options.pushHistory !== false) {
+    settingsHistoryPushed = true;
+
+    history.pushState({ waSettings: true }, "", "#settings");
+  }
+
+  // نُحمّل بيانات اللوحة عند كل فتح (لتكون طازجة دائماً)
+  renderAdminTools();
+  syncSettingsValues();
+
+  if (options.focusSelector) {
+    const input = $(options.focusSelector);
+    const details = input?.closest("details");
+
+    if (details) details.open = true;
+
+    setTimeout(() => {
+      details?.scrollIntoView({ block: "center", behavior: "smooth" });
+      input?.focus();
+    }, 250);
+  }
+}
+
+/**
+ * يغلق الإعدادات.
+ * viaBack = true عندما يكون الإغلاق بسبب زر الرجوع نفسه (الحالة سُحبت أصلاً).
+ */
+function closeSettings(viaBack = false) {
+  const panel = $("#settings-panel");
+
+  if (!panel || panel.classList.contains("hidden")) return;
+
+  panel.classList.add("hidden");
+  $("#settings-backdrop")?.classList.add("hidden");
+
+  // تنظيف حالة السجل إن أغلقنا بزر داخلي (لا يترك أثراً لزر الرجوع)
+  if (!viaBack && settingsHistoryPushed && history.state?.waSettings) {
+    settingsHistoryPushed = false;
+    popstateFromSettings = true;
+
+    history.back();
+    return;
+  }
+
+  settingsHistoryPushed = false;
+}
+
 function wireChrome() {
   wireAppHeight();
 
   $("#btn-settings")?.addEventListener("click", () => {
-    const panel = $("#settings-panel");
-    if (!panel) return;
-
-    const opening = panel.classList.contains("hidden");
-
-    panel.classList.toggle("hidden", !opening);
-    $("#settings-backdrop")?.classList.toggle("hidden", !opening);
-
-    // نُحمّل بيانات اللوحة عند كل فتح (لتكون طازجة دائماً)
-    if (opening) {
-      renderAdminTools();
-      syncSettingsValues();
-    }
+    if (isSettingsOpen()) closeSettings();
+    else openSettings();
   });
 
   wireAdminTools();
@@ -3137,8 +3204,7 @@ function wireChrome() {
   wireAdminFeatures();
 
   $("#btn-logout")?.addEventListener("click", async () => {
-    $("#settings-panel")?.classList.add("hidden");
-    $("#settings-backdrop")?.classList.add("hidden");
+    closeSettings();
     await signOut(state.me?.id);
     location.reload();
   });
@@ -3163,8 +3229,7 @@ function wireChrome() {
     const trigger = $("#btn-settings");
     if (panel && !panel.classList.contains("hidden") &&
         !panel.contains(event.target) && event.target !== trigger) {
-      panel.classList.add("hidden");
-      $("#settings-backdrop")?.classList.add("hidden");
+      closeSettings();
     }
   });
 
@@ -9189,10 +9254,8 @@ function maybePromptPassword() {
 }
 
 function openPasswordSection() {
-  const panel = document.getElementById("settings-panel");
-
-  panel?.classList.remove("hidden");
-  document.getElementById("settings-backdrop")?.classList.remove("hidden");
+  // نفتح الإعدادات مع تسجيل الحالة (ليعمل زر الرجوع)
+  if (!isSettingsOpen()) openSettings({ focusSelector: "#my-password" });
 
   const input = document.getElementById("my-password");
   const details = input?.closest("details");
