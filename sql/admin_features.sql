@@ -543,3 +543,36 @@ end;
 $$;
 
 grant execute on function public.admin_rename_user(uuid, text) to authenticated;
+
+
+-- ===============================================================
+-- بيانات آخر رسالة في قائمة المحادثات (لتكات واتساب في الصفحة الرئيسية)
+-- ===============================================================
+-- عمودان يُحدَّثان من التطبيق مع كل رسالة:
+--   last_sender_id      : من أرسل آخر رسالة (لإظهار ✓✓ على الصادر فقط)
+--   last_message_status : sent / delivered / read (لون التكات)
+-- ===============================================================
+
+alter table public.conversations
+  add column if not exists last_sender_id uuid;
+
+alter table public.conversations
+  add column if not exists last_message_status text;
+
+-- تعبئة أولية من آخر رسالة فعلية في كل محادثة
+update public.conversations c
+   set last_sender_id = m.sender_id,
+       last_message_status = m.status
+  from (
+    select distinct on (conversation_id)
+           conversation_id,
+           sender_id,
+           status
+      from public.messages
+     order by conversation_id, created_at desc
+  ) m
+ where m.conversation_id = c.id
+   and (
+     c.last_sender_id is distinct from m.sender_id
+     or c.last_message_status is distinct from m.status
+   );

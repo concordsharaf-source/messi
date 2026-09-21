@@ -88,7 +88,10 @@
     <header class="sidebar-header">
       <div class="me">
         <div class="avatar"><img id="my-avatar" src="" alt="" /></div>
-        <span id="my-name"></span>
+        <div class="me-text">
+          <b class="me-app" data-i18n="app_name">واتساب الوليد</b>
+          <span id="my-name"></span>
+        </div>
       </div>
       <div class="sidebar-actions">
         <button id="lang-toggle" title="اللغة">🌐</button>
@@ -216,7 +219,12 @@
     </div>
 
     <div class="search-box">
-      <input id="contact-search" type="search" autocomplete="off" data-i18n-placeholder="search" placeholder="بحث في المحادثات" />
+      <div class="search-field">
+        <svg class="search-glass" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/>
+        </svg>
+        <input id="contact-search" type="search" autocomplete="off" data-i18n-placeholder="search" placeholder="بحث" />
+      </div>
     </div>
 
     <!-- فلتر سريع للمشرفين (يظهر لهم فقط) -->

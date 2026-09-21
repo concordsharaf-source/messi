@@ -5459,3 +5459,219 @@ body[data-theme="light"] .install-guide-step-text { color: #111b21; }
 }
 
 .install-guide-card.warn .install-guide-note b { color: #fbbf24; }
+
+/* =================================================================
+   §22) الصفحة الرئيسية على شكل واتساب: الرأس + البحث + قائمة المحادثات
+   ================================================================= */
+
+/* ---- رأس الصفحة: الصورة + اسم التطبيق ---- */
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  min-height: var(--wa-header-height);
+  background: #202c33;
+}
+
+body[data-theme="light"] .sidebar-header { background: #f0f2f5; }
+
+.sidebar-header .me {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.sidebar-header .me .avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+}
+
+.me-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.me-app {
+  font-size: calc(17px * var(--wa-font-scale));
+  font-weight: 700;
+  color: var(--wa-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body[data-theme="light"] .me-app { color: #111b21; }
+
+#my-name {
+  font-size: calc(12px * var(--wa-font-scale));
+  color: #8696a0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- خانة البحث كما في واتساب ---- */
+
+.search-box {
+  padding: 7px 12px;
+  background: #111b21;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.3);
+}
+
+body[data-theme="light"] .search-box {
+  background: #ffffff;
+  border-bottom-color: #e9edef;
+}
+
+.search-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 14px;
+  border-radius: 19px;
+  background: #202c33;
+}
+
+body[data-theme="light"] .search-field { background: #f0f2f5; }
+
+.search-glass {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  color: #8696a0;
+}
+
+.search-field input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--wa-text-primary);
+  font-family: inherit;
+  font-size: calc(14.5px * var(--wa-font-scale));
+}
+
+body[data-theme="light"] .search-field input { color: #111b21; }
+
+.search-field input::placeholder { color: #8696a0; }
+
+.search-field input::-webkit-search-cancel-button {
+  filter: invert(1);
+  opacity: 0.45;
+}
+
+/* ---- صفوف المحادثات ---- */
+
+.contact-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 10px 13px;
+  min-height: 72px;
+  border-bottom: 1px solid rgba(134, 150, 160, 0.12);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.contact-row:hover { background: #202c33; }
+
+.contact-row.active,
+.contact-row.selected { background: #2a3942; }
+
+body[data-theme="light"] .contact-row:hover { background: #f5f6f6; }
+
+body[data-theme="light"] .contact-row.active,
+body[data-theme="light"] .contact-row.selected { background: #f0f2f5; }
+
+.contact-row .avatar {
+  width: 49px;
+  height: 49px;
+  flex: 0 0 49px;
+  font-size: 19px;
+}
+
+.contact-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.contact-name {
+  font-size: calc(16px * var(--wa-font-scale));
+  color: var(--wa-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+body[data-theme="light"] .contact-name { color: #111b21; }
+
+.contact-sub {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: calc(13.5px * var(--wa-font-scale));
+  color: #8696a0;
+}
+
+.contact-preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contact-ticks {
+  flex: 0 0 auto;
+  font-size: calc(13px * var(--wa-font-scale));
+  letter-spacing: -2px;
+  color: #8696a0;
+}
+
+.contact-ticks.read { color: #53bdeb; }
+
+.contact-meta {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 52px;
+}
+
+.contact-time {
+  font-size: calc(12px * var(--wa-font-scale));
+  color: #8696a0;
+  white-space: nowrap;
+}
+
+/* الوقت أخضر عندما يكون هناك رسائل غير مقروءة — مثل واتساب */
+.contact-row:has(.unread-badge) .contact-time { color: #25d366; }
+
+.unread-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #25d366;
+  color: #111b21;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

@@ -1573,6 +1573,10 @@ function wireQuickAuth() {
   // لدالة signInAsGuest() بقيت في الكود — لإرجاع الزر يكفي سطر واحد في index.html.
 
   completeGoogleRedirectIfPending();
+
+  // فتح قفل الصوت عند أول لمسة حتى يعمل صوت الرسائل فوراً
+  document.addEventListener("pointerdown", unlockAudio, { once: true, capture: true });
+  document.addEventListener("keydown", unlockAudio, { once: true, capture: true });
 }
 
 // ===============================================================
@@ -3011,6 +3015,8 @@ async function loadContactsFromNetwork() {
             : 0,
           _lastMessage: conversation?.last_message || null,
           _lastMessageAt: conversation?.last_message_at || null,
+          _lastSenderId: conversation?.last_sender_id || null,
+          _lastMessageStatus: conversation?.last_message_status || null,
         };
       });
 
@@ -3093,6 +3099,8 @@ async function loadContactsFromNetwork() {
       _unread: unreadCounts[c.id] || 0,
       _lastMessage: c.last_message,
       _lastMessageAt: c.last_message_at || null,
+      _lastSenderId: c.last_sender_id || null,
+      _lastMessageStatus: c.last_message_status || null,
       _ownerAdminName:
         state.me.is_super_admin &&
         c.owner_admin?.id !== state.me.id
@@ -3131,6 +3139,37 @@ async function loadContactsFromNetwork() {
 // CONTACT ROW
 // ===============================================================
 
+// وقت آخر رسالة كما في واتساب: اليوم = ساعة، أمس = «أمس»،
+// خلال الأسبوع = اسم اليوم، وإلا = تاريخ مختصر.
+function formatContactTime(iso) {
+  if (!iso) return "";
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  const diffDays = Math.round((startOfToday - startOfDate) / 86400000);
+
+  const locale = state.lang === "ar" ? "ar-SA" : "en-US";
+
+  if (diffDays <= 0) {
+    return date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  }
+
+  if (diffDays === 1) return "أمس";
+
+  if (diffDays < 7) return date.toLocaleDateString(locale, { weekday: "long" });
+
+  return date.toLocaleDateString(locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
 function buildContactRow(c, opts = {}) {
   const row = document.createElement("div");
 
@@ -3144,6 +3183,22 @@ function buildContactRow(c, opts = {}) {
   const online =
     c.id &&
     state.onlineMap[c.id];
+
+  const lastAt = c._lastMessageAt;
+
+  const lastMine =
+    c._lastSenderId && String(c._lastSenderId) === String(state.me?.id);
+
+  const lastStatus = c._lastMessageStatus || "";
+
+  const ticks =
+    lastMine
+      ? lastStatus === "read"
+        ? '<span class="contact-ticks read">✓✓</span>'
+        : lastStatus === "delivered"
+        ? '<span class="contact-ticks">✓✓</span>'
+        : '<span class="contact-ticks">✓</span>'
+      : "";
 
   row.innerHTML = `
     <div class="avatar">
@@ -3173,16 +3228,22 @@ function buildContactRow(c, opts = {}) {
       </div>
 
       <div class="contact-sub">
-        ${escapeHtml(c._lastMessage || "")}
+        ${ticks}
+        <span class="contact-preview">${escapeHtml(c._lastMessage || "")}</span>
       </div>
     </div>
 
-    ${
-      opts.withUnread && c._unread
-        ? `<div class="unread-badge">${c._unread}</div>`
-        : ""
-    }
+    <div class="contact-meta">
+      <span class="contact-time">${formatContactTime(lastAt)}</span>
+
+      ${
+        opts.withUnread && c._unread
+          ? `<div class="unread-badge">${c._unread}</div>`
+          : ""
+      }
+    </div>
   `;
+
 
   row.addEventListener("click", () => {
     openConversation(c);
@@ -3258,11 +3319,33 @@ async function patchContactUIOnNewMessage(
   // -------------------------------------------------------------
 
   if (row) {
-    const sub =
-      row.querySelector(".contact-sub");
+    const previewEl =
+      row.querySelector(".contact-preview");
 
-    if (sub) {
-      sub.textContent = preview;
+    if (previewEl) {
+      previewEl.textContent = preview;
+    }
+
+    // التكات كما في واتساب (للرسائل الصادرة فقط)
+    const ticksEl =
+      row.querySelector(".contact-ticks");
+
+    if (ticksEl) {
+      const status = message.status || "sent";
+
+      ticksEl.classList.toggle("hidden", !isMine);
+      ticksEl.classList.toggle("read", status === "read");
+
+      ticksEl.textContent =
+        status === "sent" ? "✓" : "✓✓";
+    }
+
+    const timeEl =
+      row.querySelector(".contact-time");
+
+    if (timeEl) {
+      timeEl.textContent =
+        formatContactTime(message.created_at);
     }
 
     row.dataset.lastMessageAt =
@@ -3300,7 +3383,10 @@ async function patchContactUIOnNewMessage(
         badge.className =
           "unread-badge";
 
-        row.appendChild(badge);
+        const meta = row.querySelector(".contact-meta");
+
+        if (meta) meta.appendChild(badge);
+        else row.appendChild(badge);
       }
 
       badge.textContent =
@@ -5230,6 +5316,8 @@ async function sendMessage({
         last_message: preview,
         last_message_at:
           new Date().toISOString(),
+        last_sender_id: state.me.id,
+        last_message_status: "sent",
       })
       .eq("id", conv.id);
 
@@ -5725,6 +5813,8 @@ async function flushOutbox() {
               }),
             last_message_at:
               new Date().toISOString(),
+            last_sender_id: msg.sender_id,
+            last_message_status: "sent",
           })
           .eq(
             "id",
@@ -6117,6 +6207,26 @@ async function markConversationRead(
   clearUnreadBadge(
     conversationId
   );
+
+    // تحديث تكات آخر رسالة في صف المحادثة (مثل واتساب)
+    try {
+      const conv = state.activeConversation;
+
+      const otherId =
+        conv && String(conv.user_id) === String(state.me.id)
+          ? conv.admin_id
+          : conv?.user_id;
+
+      if (otherId && conv?.id === conversationId) {
+        await supabase
+          .from("conversations")
+          .update({ last_message_status: "read" })
+          .eq("id", conversationId)
+          .eq("last_sender_id", otherId);
+      }
+    } catch (_) {
+      // لا نُفشل القراءة بسبب التكات
+    }
 }
 
 // ===============================================================
@@ -6500,14 +6610,111 @@ function subscribeGlobalMessageWatch() {
 // NOTIFICATION SOUND
 // ===============================================================
 
+// ===============================================================
+// الصوت الداخلي
+// -----------------------------------------------------------------
+//  • يُشغَّل عند وصول أي رسالة ليست منك (في أي محادثة)
+//  • نفتح «قفل الصوت» عند أول لمسة، لأن المتصفحات تمنع التشغيل قبلها
+//  • وإن تعذّر تشغيل الملف (لم يُحمّل بعد، أو مُنع) نُولّد نغمة
+//    داخل المتصفح نفسها — فيسمع المستخدم تنبيهاً في كل الأحوال
+//  • اهتزاز خفيف على الجوال مثل واتساب
+// ===============================================================
+
+let audioContext = null;
+let audioUnlocked = false;
+
+function getAudioContext() {
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+
+  if (!Ctx) return null;
+
+  if (!audioContext) {
+    try {
+      audioContext = new Ctx();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  if (audioContext.state === "suspended") {
+    audioContext.resume().catch(() => {});
+  }
+
+  return audioContext;
+}
+
+// نغمة مُولَّدة (لا تحتاج أي ملف) — تعمل دائماً
+function playSyntheticTone() {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  const now = ctx.currentTime;
+
+  const blip = (startAt, freq, peak) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(freq, startAt);
+
+    gain.gain.setValueAtTime(0.0001, startAt);
+    gain.gain.exponentialRampToValueAtTime(peak, startAt + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.26);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(startAt);
+    osc.stop(startAt + 0.28);
+  };
+
+  blip(now, 830, 0.30);
+  blip(now + 0.12, 1245, 0.22);
+}
+
+// نفتح قفل الصوت عند أول تفاعل من المستخدم
+function unlockAudio() {
+  if (audioUnlocked) return;
+
+  audioUnlocked = true;
+
+  const audio = $("#notification-sound");
+
+  if (audio) {
+    audio.volume = 0;
+
+    audio
+      .play()
+      .then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+      })
+      .catch(() => {})
+      .finally(() => {
+        audio.volume = 1;
+      });
+  }
+
+  getAudioContext();
+}
+
 function playNotificationSound() {
   const url = toneUrl();
 
-  // «صامت» = لا نشغّل شيئاً
+  // النغمة «صامتة» — المستخدم اختار عدم الصوت
   if (!url) return;
 
+  // اهتزاز خفيف على الجوال (مثل واتساب)
+  try {
+    navigator.vibrate?.([80, 40, 80]);
+  } catch (_) {}
+
   const audio = $("#notification-sound");
-  if (!audio) return;
+
+  if (!audio) {
+    playSyntheticTone();
+    return;
+  }
 
   if (audio.dataset.tone !== url) {
     audio.dataset.tone = url;
@@ -6518,7 +6725,10 @@ function playNotificationSound() {
     audio.currentTime = 0;
   } catch (_) {}
 
-  audio.play().catch(() => {});
+  audio.play().catch(() => {
+    // الملف لم يجهز أو مُنع التشغيل → نغمة مُولَّدة
+    playSyntheticTone();
+  });
 }
 
 // ===============================================================
