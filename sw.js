@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v32";  // v25: كسر الكاش + تحديث تلقائي مضمون
+const CACHE_NAME = "wa-clone-shell-v33";  // v25: كسر الكاش + تحديث تلقائي مضمون
 const APP_SHELL = [
   "./",
   "./index.html",

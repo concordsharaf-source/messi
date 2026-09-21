@@ -10,6 +10,7 @@ import {
 } from "./auth.js";
 import {
   COUNTRIES,
+  NO_COUNTRY,
   countryByCode,
   searchCountries,
   defaultCountryCode,
@@ -41,7 +42,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "32";
+const BUILD = "33";
 
 const state = {
   me: null,
@@ -546,7 +547,15 @@ function wireAuthForms() {
   $("#signup-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const dial = countryByCode($("#signup-country")?.value || defaultCountryCode()).dial;
+    const country = authCountry("signup");
+
+    if (!country) {
+      showAuthError("اختر الدولة من القائمة أولاً");
+      openCountryPanel("signup");
+      return;
+    }
+
+    const dial = country.dial;
     const phone = $("#signup-phone")?.value.trim() || "";
     const password = $("#signup-password")?.value || "";
     const displayName = $("#signup-name")?.value.trim() || "";
@@ -675,7 +684,15 @@ function setLoginMode(mode) {
 }
 
 async function submitPhoneLogin() {
-  const dial = countryByCode($("#login-country")?.value || defaultCountryCode()).dial;
+  const country = authCountry("login");
+
+  if (!country) {
+    showAuthError("اختر الدولة من القائمة أولاً");
+    openCountryPanel("login");
+    return;
+  }
+
+  const dial = country.dial;
   const phone = $("#login-phone")?.value.trim() || "";
   const password = $("#login-phone-pass")?.value || "";
 
@@ -710,21 +727,30 @@ function countryPickerEl(which) {
   return document.getElementById(`${which}-country-picker`);
 }
 
+/** الدولة المختارة فعلاً في شاشة (login/signup) — أو undefined */
+function authCountry(which) {
+  return countryByCode($(`#${which}-country`)?.value);
+}
+
 function paintCountryButton(which) {
   const picker = countryPickerEl(which);
   const input = $(`#${which}-country`);
 
   if (!picker || !input) return;
 
-  const c = countryByCode(input.value);
+  // بلا دولة افتراضية: قبل الاختيار يظهر زر محايد «اختر الدولة»
+  const c = countryByCode(input.value) || NO_COUNTRY;
 
   const flag = picker.querySelector(".country-flag");
   const name = picker.querySelector(".country-name");
   const dial = picker.querySelector(".country-dial");
 
+  picker.classList.toggle("empty", !c.code);
+  picker.classList.toggle("picked", !!c.code);
+
   if (flag) flag.textContent = c.flag;
   if (name) name.textContent = c.name;
-  if (dial) dial.textContent = `+${c.dial}`;
+  if (dial) dial.textContent = c.dial ? `+${c.dial}` : "";
 }
 
 function closeCountryPanel(which) {
@@ -857,18 +883,22 @@ function openCountryPanel(which) {
 
 function updatePhoneHint(which) {
   const isSignup = which === "signup";
-  const dial = countryByCode($(isSignup ? "#signup-country" : "#login-country")?.value || "YE").dial;
+  const c = authCountry(isSignup ? "signup" : "login");
   const hint = $(isSignup ? "#signup-phone-hint" : "#login-phone-hint");
   const input = $(isSignup ? "#signup-phone" : "#login-phone");
 
   if (hint) {
-    hint.innerHTML = `مفتاح الدولة: <span class="num-ltr" dir="ltr">+${escapeHtml(
-      String(dial)
-    )}</span> — اكتب رقمك بدونه`;
+    hint.innerHTML = c
+      ? `مفتاح الدولة: <span class="num-ltr" dir="ltr">+${escapeHtml(
+          String(c.dial)
+        )}</span> — اكتب رقمك بدونه`
+      : `اختر الدولة من القائمة أولاً — ثم اكتب رقمك بدون مفتاح الدولة`;
   }
 
   if (input) {
-    input.placeholder = `رقم الهاتف (مثال: ${dial === "967" ? "771234567" : "5xxxxxxxx"})`;
+    input.placeholder = c
+      ? `رقم الهاتف (مثال: ${c.dial === "967" ? "771234567" : "5xxxxxxxx"})`
+      : "رقم الهاتف (بدون مفتاح الدولة)";
   }
 }
 
@@ -876,17 +906,8 @@ function updatePhoneHint(which) {
 function initAuthPhoneUI() {
   const saved = getSavedPhone();
 
-  // إن كان هناك رقم محفوظ نستنتج دولته
-  if (saved?.full) {
-    const match = COUNTRIES.filter((c) => String(saved.full).startsWith(c.dial)).sort(
-      (x, y) => y.dial.length - x.dial.length
-    )[0];
-
-    if (match) {
-      const loginInput = $("#login-country");
-      if (loginInput) loginInput.value = match.code;
-    }
-  }
+  // لا نختار أي دولة تلقائياً (بطلب المستخدم) — لا اليمن ولا غيرها.
+  // الرقم المحفوظ يبقى متاحاً بزر «استخدم رقمي المحفوظ» فيملأ الدولة عند النقر.
 
   ["login", "signup"].forEach(paintCountryButton);
   wireCountryPickers();
@@ -3442,18 +3463,31 @@ function wireChatPanel() {
     updateComposerButtons();
   });
 
-  // كما في واتساب: Enter يُنزل سطراً جديداً، والإرسال بزر الإرسال
-  // (Ctrl+Enter أو ⌘+Enter إرسال سريع لمن يحب)
+  // سطح المكتب: Enter يُرسل، وShift+Enter سطر جديد.
+  // الجوال/التابلت (لمس): Enter سطر جديد والإرسال بزر ➤ كما في واتساب.
+  // (Ctrl+Enter أو ⌘+Enter إرسال سريع في كل الحالات)
   $("#composer-input")?.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
+
+    // لا نُرسل أثناء تركيب الكلمة (لوحات عربية/آسيوية)
+    if (event.isComposing || event.keyCode === 229) return;
 
     if (event.ctrlKey || event.metaKey) {
       event.preventDefault();
       submitComposer();
+      setTimeout(autoGrowComposer, 0);
       return;
     }
 
-    // السطر الجديد سلوك textarea الافتراضي — نُحدّث الارتفاع بعده
+    // أجهزة اللمس: السطر الجديد سلوك textarea الافتراضي — نُحدّث الارتفاع بعده
+    if (!isDesktopKeyboard() || event.shiftKey || event.altKey) {
+      setTimeout(autoGrowComposer, 0);
+      return;
+    }
+
+    // سطح المكتب: الإرسال مباشرة
+    event.preventDefault();
+    submitComposer();
     setTimeout(autoGrowComposer, 0);
   });
 
@@ -3479,6 +3513,26 @@ function wireChatPanel() {
 
   autoGrowComposer();
   updateComposerButtons();
+}
+
+// =================================================================
+// سطح المكتب أم جهاز لمس؟
+// -----------------------------------------------------------------
+//  سطح المكتب (فأرة + لوحة مفاتيح): Enter يُرسل الرسالة،
+//  وShift+Enter يُنزل سطراً جديداً.
+//  أجهزة اللمس (الجوال/التابلت): Enter سطر جديد كما في واتساب،
+//  والإرسال بزر ➤ فقط — حتى لا تُرسل رسالة بالخطأ.
+// =================================================================
+
+function isDesktopKeyboard() {
+  try {
+    if (window.matchMedia?.("(hover: hover) and (pointer: fine)").matches) return true;
+  } catch (_) {}
+
+  // بلا فأرة صحيحة: إن وُجد لمس فالجهاز لمسيّ (جوال/تابلت)
+  if (Number(navigator.maxTouchPoints || 0) > 0) return false;
+
+  return true;
 }
 
 function submitComposer() {

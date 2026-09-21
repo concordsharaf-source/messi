@@ -4351,9 +4351,11 @@ body[data-theme="dark"] .auth-card {
   padding: 10px;
 }
 
+/* التبويب النشط: نص أبيض واضح على الأخضر (كان لونه أخضر على أخضر فيختفي) */
 .auth-tabs button.active {
-  color: var(--wa-accent) !important;
-  border-bottom: 3px solid var(--wa-accent) !important;
+  color: #ffffff !important;
+  border-bottom: none !important;
+  box-shadow: 0 2px 10px rgba(0, 168, 132, .35);
 }
 
 .auth-form input {
@@ -6548,6 +6550,12 @@ body[data-theme="light"] .country-btn {
 }
 
 .country-btn .country-flag { font-size: 16px; line-height: 1; }
+
+/* قبل اختيار الدولة: زر محايد بلا مفتاح ولا دولة (لا افتراضي) */
+.country-picker.empty .country-btn { color: #8696a0; }
+.country-picker.empty .country-btn .country-flag { filter: grayscale(.35); }
+.country-picker.empty .country-btn .country-name { max-width: 116px; }
+body[data-theme="light"] .country-picker.empty .country-btn { color: #667781; }
 
 .country-btn .country-name {
   direction: rtl;

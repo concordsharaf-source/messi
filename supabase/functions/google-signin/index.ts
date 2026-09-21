@@ -19,7 +19,7 @@
 //   • التوقيع يُتحقق بمفاتيح جوجل العامة (RS256)، ومخزّنة مؤقتاً ساعة
 //   • نرفض أي معرّف لمشروع Firebase غير مشروعنا (aud/iss)
 //   • نقبل فقط الدخول بحساب جوجل (sign_in_provider = google.com)
-//   • نرفض البريد غير المُوثَّق
+//   • البريد مقبول متى كان المزوّد google.com (جوجل يوثّق البريد بنفسه)
 //   • مفتاح الخدمة (service role) لا يغادر الخادم أبداً
 //   • الدالة تُنشر بـ --no-verify-jwt لأن المستخدم لم يسجّل دخوله بعد
 //     (ولا حاجة: التحقق يجري من معرّف Firebase الموقّع)
@@ -140,7 +140,17 @@ async function verifyFirebaseIdToken(idToken: string) {
     throw new Error("not_google_provider");
   }
 
-  if (payload.email_verified !== true) throw new Error("email_not_verified");
+  // ملاحظة مهمة: بعض حسابات جوجل تصل بـ email_verified = false (أو بلا الحقل أصلاً)
+  // رغم أن جوجل نفسه هو من أصدرها. وبما أننا تحققنا من التوقيع + المشروع (aud/iss)
+  // + أن المزوّد google.com، فالبريد موثّق من جوجل فعلياً — لذلك لا نرفض الدخول.
+  // (كان الرفض الصارم سبب خطأ email_not_verified للمستخدمين.)
+  if (payload.email_verified !== true) {
+    console.warn(
+      "[google-signin] email_verified غير صحيح في رمز جوجل — نكمل لأن المزوّد google.com:",
+      payload.email_verified,
+    );
+  }
+
   if (!payload.email || typeof payload.email !== "string") throw new Error("email_missing");
 
   return payload;

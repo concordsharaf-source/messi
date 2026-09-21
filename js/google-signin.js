@@ -69,7 +69,32 @@ export function googleErrorMessage(error) {
 
   if (map[code]) return map[code];
 
-  if (/invalid_token|token_/.test(raw)) return "تعذّر التحقق من حساب جوجل — أعد المحاولة.";
+  // أسباب يرسلها جسر google-signin — نترجمها إلى عبارات واضحة
+  const reasons = {
+    invalid_token: "تعذّر التحقق من حساب جوجل — أعد المحاولة.",
+    token_malformed: "تعذّر التحقق من حساب جوجل — أعد المحاولة.",
+    token_bad_alg: "تعذّر التحقق من حساب جوجل — أعد المحاولة.",
+    token_bad_signature: "تعذّر التحقق من حساب جوجل — أعد المحاولة.",
+    token_key_not_found: "تعذّر التحقق من حساب جوجل — أعد المحاولة.",
+    token_expired: "انتهت صلاحية جلسة جوجل — أعد المحاولة.",
+    token_bad_iat: "ساعة الجهاز غير مضبوطة — اضبط التاريخ والوقت ثم أعد المحاولة.",
+    token_bad_audience: "حساب جوجل هذا من مشروع آخر — تواصل مع الدعم.",
+    token_bad_issuer: "حساب جوجل هذا من مشروع آخر — تواصل مع الدعم.",
+    token_no_subject: "تعذّر التحقق من حساب جوجل — أعد المحاولة.",
+    not_google_provider: "هذا الحساب ليس حساب جوجل — استخدم الدخول بجوجل أو بالرقم.",
+    email_missing: "لا يوجد بريد في حساب جوجل — استخدم الدخول برقم الهاتف.",
+    email_not_verified: "تعذّر تأكيد بريد حساب جوجل — أعد المحاولة.",
+    create_user_failed: "تعذّر إنشاء الحساب — أعد المحاولة بعد قليل.",
+    session_failed: "تعذّر تجهيز الجلسة — أعد المحاولة بعد قليل.",
+    bridge_failed: "تعذّر تجهيز الجلسة — أعد المحاولة بعد قليل.",
+    jwks_unavailable: "تعذّر الوصول إلى جوجل — تحقّق من الاتصال ثم أعد المحاولة.",
+  };
+
+  if (reasons[raw]) return reasons[raw];
+
+  if (/invalid_token|token_|session_failed|create_user_failed/.test(raw)) {
+    return "تعذّر الدخول بجوجل — أعد المحاولة.";
+  }
 
   if (/Failed to fetch|NetworkError|dynamically imported module/i.test(raw)) {
     return "تعذّر الوصول إلى خدمة الدخول — تحقّق من الاتصال بالإنترنت.";
