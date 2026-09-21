@@ -31,7 +31,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "30";
+  window.WA_BUILD = "31";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -90,7 +90,7 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=30" />
+  <link rel="stylesheet" href="./css/style.css?v=31" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -280,9 +280,27 @@
         <details class="admin-sub">
           <summary>🖼️ <span data-i18n="profile_picture">الصورة الشخصية</span></summary>
 
-          <label data-i18n="profile_picture">الصورة الشخصية</label>
-          <input id="avatar-input" type="file" accept="image/*" />
-          <button id="btn-remove-avatar" class="settings-danger" type="button">حذف الصورة الشخصية</button>
+          <div class="avatar-panel">
+            <button id="btn-avatar-open" class="avatar-preview-btn" type="button" aria-label="تغيير الصورة الشخصية">
+              <span class="avatar-preview-wrap">
+                <img id="avatar-preview-img" alt="" class="hidden" />
+                <span id="avatar-preview-initial" class="avatar-preview-initial">؟</span>
+                <span class="avatar-camera-badge">📷</span>
+              </span>
+              <span class="avatar-preview-hint">اضغط لتغيير الصورة</span>
+            </button>
+
+            <div class="avatar-quick-actions">
+              <button id="btn-avatar-gallery" class="admin-btn-primary" type="button">🖼️ من المعرض</button>
+              <button id="btn-avatar-camera" class="admin-btn-mini" type="button">📷 بالكاميرا</button>
+              <button id="btn-remove-avatar" class="settings-danger" type="button">🗑️ إزالة الصورة</button>
+            </div>
+          </div>
+
+          <input id="avatar-input" type="file" accept="image/png,image/jpeg,image/webp,image/*" class="avatar-file-input" />
+          <input id="avatar-camera-input" type="file" accept="image/*" capture="user" class="avatar-file-input" />
+
+          <div id="avatar-status" class="settings-hint"></div>
         </details>
 
         <label id="signature-label" class="hidden">التوقيع التلقائي (للمشرفين)</label>
@@ -423,7 +441,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v30</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v31</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -468,7 +486,7 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 <div id="global-toast" class="global-toast hidden"></div>
 
-<script type="module" src="./js/app.js?v=30"></script>
+<script type="module" src="./js/app.js?v=31"></script>
 
   <!-- نافذة تعديل الاسم (طبقة عامة) -->
   <div id="rename-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="تعديل الاسم">
@@ -483,6 +501,48 @@
         <button id="rename-close" class="admin-btn-mini" type="button">إغلاق</button>
       </div>
       <div id="rename-status" class="settings-hint"></div>
+    </div>
+  </div>
+
+  <!-- محرّر الصورة الشخصية (طبقة عامة) -->
+  <div id="avatar-editor" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="تعديل الصورة الشخصية">
+    <div class="avatar-editor-card">
+      <div class="avatar-editor-head">
+        <b id="avatar-editor-title">تعديل الصورة الشخصية</b>
+        <button id="avatar-editor-close" class="admin-btn-mini" type="button" aria-label="إغلاق">✕</button>
+      </div>
+
+      <div id="avatar-stage" class="avatar-stage" tabindex="0" aria-label="منطقة القص — اسحب لتحديد المكان">
+        <div class="avatar-stage-inner">
+          <img id="avatar-stage-img" alt="" draggable="false" />
+        </div>
+        <div class="avatar-ring" aria-hidden="true"></div>
+        <div id="avatar-stage-hint" class="avatar-stage-hint">
+          <span>🖼️</span>
+          <b>اختر صورة من المعرض أو الكاميرا</b>
+          <small>ثم اسحب بإصبعك لتحديد المكان، وكبّر بأصبعين أو بالشريط</small>
+        </div>
+      </div>
+
+      <div class="avatar-zoom-row">
+        <span class="avatar-zoom-icon">🔍</span>
+        <input id="avatar-zoom" type="range" min="100" max="360" value="100" aria-label="تكبير" />
+        <button id="avatar-rotate" class="admin-btn-mini" type="button" title="تدوير ٩٠ درجة">↻</button>
+        <button id="avatar-reset" class="admin-btn-mini" type="button">إعادة ضبط</button>
+      </div>
+
+      <div class="avatar-editor-actions">
+        <button id="avatar-pick-gallery" class="admin-btn-mini" type="button">🖼️ المعرض</button>
+        <button id="avatar-pick-camera" class="admin-btn-mini" type="button">📷 الكاميرا</button>
+        <button id="avatar-save" class="admin-btn-primary" type="button" disabled>💾 حفظ الصورة</button>
+      </div>
+
+      <div id="avatar-progress" class="avatar-progress hidden">
+        <div class="avatar-progress-track"><i id="avatar-progress-fill"></i></div>
+        <span id="avatar-progress-text">جارٍ الرفع…</span>
+      </div>
+
+      <div id="avatar-editor-status" class="settings-hint"></div>
     </div>
   </div>
 

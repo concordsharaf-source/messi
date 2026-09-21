@@ -41,7 +41,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "30";
+const BUILD = "31";
 
 const state = {
   me: null,
@@ -347,9 +347,7 @@ async function enterApp() {
   $("#my-name").textContent = state.me.display_name;
   $("#my-name")?.setAttribute("dir", nameDirection(state.me.display_name));
 
-  if (state.me.avatar_url) {
-    $("#my-avatar").src = state.me.avatar_url;
-  }
+  paintAvatarPreview();
 
   applyThemeVars();
 
@@ -1699,93 +1697,13 @@ async function changeMyPassword() {
 
 // تصغير الصورة داخل المتصفح قبل إرسالها: 512 بكسل كحد أقصى و JPEG مضغوط.
 // هذا يحفظ سرعة الإرسال ويُبقي الصور خفيفة على القاعدة.
-function fileToResizedDataUrl(file, max = 512, quality = 0.85) {
-  return new Promise((resolve, reject) => {
-    if (!file || !file.type.startsWith("image/")) {
-      reject(new Error("الملف المختار ليس صورة"));
-      return;
-    }
 
-    const reader = new FileReader();
-
-    reader.onerror = () => reject(new Error("تعذّر قراءة الملف"));
-
-    reader.onload = () => {
-      const img = new Image();
-
-      img.onerror = () => reject(new Error("تعذّر فتح الصورة — جرّب صورة أخرى"));
-
-      img.onload = () => {
-        const scale = Math.min(1, max / Math.max(img.width, img.height));
-        const width = Math.max(1, Math.round(img.width * scale));
-        const height = Math.max(1, Math.round(img.height * scale));
-
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext("2d");
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, 0, 0, width, height);
-
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-
-      img.src = reader.result;
-    };
-
-    reader.readAsDataURL(file);
-  });
-}
-
+/** لوحة المشرف: نفتح نفس محرّر القص بعد اختيار الصورة */
 function pickUserAvatar(profile) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.style.display = "none";
-
-  input.addEventListener("change", async () => {
-    const file = input.files?.[0];
-    input.remove();
-    if (!file) return;
-    await changeUserAvatar(profile, file);
+  openAvatarEditor({
+    target: profile,
+    startFromUrl: profile.avatar_url || "",
   });
-
-  document.body.appendChild(input);
-  input.click();
-}
-
-async function changeUserAvatar(profile, file) {
-  const status = $("#admin-manage-status");
-  const who = profile.display_name || profile.email || "المستخدم";
-
-  try {
-    setAdminStatusText(status, `جارٍ تجهيز صورة «${who}»…`);
-
-    const dataUrl = await fileToResizedDataUrl(file);
-
-    setAdminStatusText(status, "جارٍ الرفع…");
-
-    const { data, error } = await supabase.functions.invoke("admin-set-avatar", {
-      body: { userId: profile.id, dataUrl },
-    });
-
-    if (error || data?.error) {
-      throw new Error(data?.error || error?.message || "خطأ غير معروف");
-    }
-
-    profile.avatar_url = data.url;
-
-    setAdminStatusText(status, `✔ تم تحديث صورة «${who}».`);
-
-    await loadAdminUsers();
-
-    // تحديث قائمة المحادثات وصورة المستخدم في الواجهة فوراً
-    await loadContacts();
-  } catch (error) {
-    setAdminStatusText(status, "تعذّر تحديث الصورة: " + (error?.message || "خطأ غير معروف"), "err");
-  }
 }
 
 async function removeUserAvatar(profile) {
@@ -3235,10 +3153,7 @@ function wireChrome() {
     toggleTheme
   );
 
-  $("#avatar-input")?.addEventListener(
-    "change",
-    handleAvatarUpload
-  );
+  wireAvatarEditor();
 
   $("#btn-remove-avatar")?.addEventListener("click", removeAvatar);
   $("#btn-remove-wallpaper")?.addEventListener("click", removeWallpaper);
@@ -6562,17 +6477,55 @@ async function removeStorageFile(bucket, publicUrl) {
 
 async function removeAvatar() {
   if (!state.me?.id) return;
-  const previousUrl = state.me.avatar_url;
-  try {
-    const { error } = await supabase.from("profiles").update({ avatar_url: null }).eq("id", state.me.id);
-    if (error) throw error;
-    state.me.avatar_url = null;
-    await removeStorageFile("avatars", previousUrl);
-    $("#my-avatar")?.removeAttribute("src");
-    showAuthError("تم حذف الصورة الشخصية.");
-  } catch (error) {
-    showAuthError("تعذّر حذف الصورة الشخصية: " + (error?.message || "خطأ غير معروف"));
+
+  if (!state.me.avatar_url) {
+    settingStatus("#avatar-status", "لا توجد صورة شخصية لحذفها.", "err");
+    return;
   }
+
+  if (!window.confirm("حذف الصورة الشخصية؟")) return;
+
+  const previousUrl = state.me.avatar_url;
+
+  settingStatus("#avatar-status", "جارٍ الحذف…");
+
+  try {
+    const { error } = await supabase
+      .from("profiles")
+      .update({ avatar_url: null })
+      .eq("id", state.me.id);
+
+    if (error) throw error;
+
+    state.me.avatar_url = null;
+
+    // نحذف الملف القديم فقط بعد نجاح التحديث
+    await removeStorageFile("avatars", previousUrl).catch(() => {});
+
+    paintAvatarPreview();
+
+    try {
+      await loadContacts();
+    } catch (_) {}
+
+    settingStatus("#avatar-status", "✔ تم حذف الصورة الشخصية.", "ok");
+  } catch (error) {
+    settingStatus(
+      "#avatar-status",
+      "تعذّر حذف الصورة الشخصية: " + (error?.message || "خطأ غير معروف"),
+      "err"
+    );
+  }
+}
+
+/** كتابة حالة داخل قسم الإعدادات */
+function settingStatus(selector, message, kind = "") {
+  const el = $(selector);
+
+  if (!el) return;
+
+  el.textContent = message || "";
+  el.className = kind ? `settings-hint ${kind}` : "settings-hint";
 }
 
 async function removeWallpaper() {
@@ -6590,63 +6543,720 @@ async function removeWallpaper() {
   }
 }
 
-async function handleAvatarUpload(e) {
-  const file =
-    e.target.files?.[0];
+// ===============================================================
+// الصورة الشخصية — محرّر قص وتكبير + رفع بنسبة تقدّم
+// ===============================================================
 
+const AVATAR = {
+  target: null,      // profile الهدف (null = صورتي أنا)
+  img: null,         // نسخة عاملة مصغّرة من الصورة
+  w: 0,
+  h: 0,
+  zoom: 1,           // مضاعف التكبير (1 = تغطية القرص كاملاً)
+  rot: 0,            // 0 / 90 / 180 / 270
+  x: 0,
+  y: 0,              // إزاحة مركز الصورة داخل المسرح
+  busy: false,
+  rawSize: 0,
+  dragging: false,
+  pointers: new Map(),
+  pinchStart: null,
+};
+
+const AVATAR_OUTPUT = 512;       // قياس الصورة النهائية (مربّعة)
+const AVATAR_MAX_FILE = 15 * 1024 * 1024;
+const AVATAR_WORK_MAX = 1600;    // تصغير النسخة العاملة لسلاسة السحب على الجوال
+
+function avatarEls() {
+  return {
+    modal: $("#avatar-editor"),
+    stage: $("#avatar-stage"),
+    img: $("#avatar-stage-img"),
+    hint: $("#avatar-stage-hint"),
+    zoom: $("#avatar-zoom"),
+    save: $("#avatar-save"),
+    status: $("#avatar-editor-status"),
+    progress: $("#avatar-progress"),
+    fill: $("#avatar-progress-fill"),
+    text: $("#avatar-progress-text"),
+    title: $("#avatar-editor-title"),
+  };
+}
+
+function avatarSay(message, kind = "") {
+  const { status } = avatarEls();
+
+  if (!status) return;
+
+  status.textContent = message || "";
+  status.className = kind ? `settings-hint ${kind}` : "settings-hint";
+}
+
+function avatarProgress(percent, label) {
+  const { progress, fill, text } = avatarEls();
+  if (!progress) return;
+
+  const show = percent !== null;
+
+  progress.classList.toggle("hidden", !show);
+
+  if (fill) fill.style.width = `${Math.max(0, Math.min(100, percent || 0))}%`;
+  if (text && label) text.textContent = label;
+}
+
+/** قياس المسرح بالمكسل */
+function avatarStageSize() {
+  return avatarEls().stage?.clientWidth || 300;
+}
+
+/** أبعاد الصورة بعد التدوير */
+function avatarRotatedDims() {
+  const swap = AVATAR.rot % 180 !== 0;
+
+  return {
+    w: swap ? AVATAR.h : AVATAR.w,
+    h: swap ? AVATAR.w : AVATAR.h,
+  };
+}
+
+/** مقياس التغطية: يجعل الصورة تغطي القرص بلا فراغات */
+function avatarBaseScale() {
+  const d = avatarStageSize() * 0.86;   // قطر قرص القص = 86% من المسرح
+  const rotated = avatarRotatedDims();
+
+  if (!rotated.w || !rotated.h) return 1;
+
+  return d / Math.min(rotated.w, rotated.h);
+}
+
+function avatarScale() {
+  return avatarBaseScale() * AVATAR.zoom;
+}
+
+/** يمنع ظهور فراغ داخل القرص عند السحب */
+function clampAvatarPan() {
+  const d = avatarStageSize() * 0.86;
+  const s = avatarScale();
+  const rotated = avatarRotatedDims();
+
+  const maxX = Math.max(0, (rotated.w * s - d) / 2);
+  const maxY = Math.max(0, (rotated.h * s - d) / 2);
+
+  AVATAR.x = Math.max(-maxX, Math.min(maxX, AVATAR.x));
+  AVATAR.y = Math.max(-maxY, Math.min(maxY, AVATAR.y));
+}
+
+/** يرسم التحويل الحالي على الصورة داخل المسرح */
+function paintAvatarStage() {
+  const { img } = avatarEls();
+
+  if (!img || !AVATAR.img) return;
+
+  clampAvatarPan();
+
+  img.style.transform = `translate(${AVATAR.x}px, ${AVATAR.y}px) rotate(${AVATAR.rot}deg) scale(${avatarScale()})`;
+}
+
+/** يهيّئ المسرح بعد تحميل صورة جديدة */
+function resetAvatarView() {
+  AVATAR.zoom = 1;
+  AVATAR.rot = 0;
+  AVATAR.x = 0;
+  AVATAR.y = 0;
+
+  const { zoom } = avatarEls();
+  if (zoom) zoom.value = "100";
+
+  paintAvatarStage();
+}
+
+/** يحمّل صورة المستخدم (مع تصغير النسخة العاملة) ويعرضها في المسرح */
+async function loadAvatarFile(file) {
   if (!file) return;
 
+  // لو اختار الصورة من لوحة الإعدادات، نفتح المحرّر ليضبط القص
+  if ($("#avatar-editor")?.classList.contains("hidden")) {
+    openAvatarEditor();
+  }
+
+  if (!String(file.type || "").startsWith("image/")) {
+    avatarSay("الملف المختار ليس صورة.", "err");
+    return;
+  }
+
+  if (file.size > AVATAR_MAX_FILE) {
+    avatarSay("حجم الصورة كبير جداً (الحد ١٥ ميجابايت).", "err");
+    return;
+  }
+
+  avatarSay("جارٍ تجهيز الصورة…");
+
   try {
-    setMediaUploadingState(
-      true,
-      "جارٍ رفع الصورة الشخصية…"
-    );
+    const dataUrl = await readFileAsDataUrl(file);
+    const image = await loadImageElement(dataUrl);
 
-    const uploaded =
-      await uploadMediaToSupabase(
-        file,
-        {
-          bucket: "avatars",
-          folder: state.me.id,
-        }
-      );
-
-    await supabase
-      .from("profiles")
-      .update({
-        avatar_url:
-          uploaded.publicUrl,
-      })
-      .eq(
-        "id",
-        state.me.id
-      );
-
-    state.me.avatar_url =
-      uploaded.publicUrl;
-
-    if ($("#my-avatar")) {
-      $("#my-avatar").src =
-        uploaded.publicUrl;
+    if (Math.min(image.width, image.height) < 80) {
+      avatarSay("الصورة صغيرة جداً — اختر صورة أوضح.", "err");
+      return;
     }
-  } catch (error) {
-    console.error(
-      "Avatar upload failed:",
-      error
-    );
 
-    showAuthError(
-      "تعذّر رفع الصورة الشخصية: " +
-        (
-          error?.message ||
-          "خطأ غير معروف"
-        )
-    );
-  } finally {
-    setMediaUploadingState(false);
-    e.target.value = "";
+    // نسخة عاملة مصغّرة: سحب سلس وذاكرة أقل
+    const maxSide = Math.max(image.width, image.height);
+    const k = maxSide > AVATAR_WORK_MAX ? AVATAR_WORK_MAX / maxSide : 1;
+
+    AVATAR.w = Math.max(1, Math.round(image.width * k));
+    AVATAR.h = Math.max(1, Math.round(image.height * k));
+
+    const work = document.createElement("canvas");
+    work.width = AVATAR.w;
+    work.height = AVATAR.h;
+
+    const wctx = work.getContext("2d");
+    wctx.imageSmoothingEnabled = true;
+    wctx.imageSmoothingQuality = "high";
+    wctx.drawImage(image, 0, 0, AVATAR.w, AVATAR.h);
+
+    const workUrl = work.toDataURL("image/jpeg", 0.95);
+
+    AVATAR.img = await loadImageElement(workUrl);
+    AVATAR.rawSize = file.size;
+
+    const { img, hint, save } = avatarEls();
+
+    if (img) {
+      img.src = workUrl;
+      img.classList.remove("hidden");
+    }
+
+    hint?.classList.add("hidden");
+    if (save) save.disabled = false;
+
+    resetAvatarView();
+    avatarSay(`تم تجهيز الصورة (${Math.round(file.size / 1024)} كيلوبايت). حرّكها ثم اضغط حفظ.`);
+  } catch (error) {
+    avatarSay("تعذّر فتح الصورة: " + (error?.message || "خطأ غير معروف"), "err");
   }
 }
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("تعذّر قراءة الملف"));
+    reader.onload = () => resolve(reader.result);
+
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+
+    image.onerror = () => reject(new Error("تعذّر فتح الصورة"));
+    image.onload = () => resolve(image);
+
+    image.src = src;
+  });
+}
+
+/** قصّ القرص وتصديره صورة مربّعة */
+function renderAvatarBlob() {
+  return new Promise((resolve, reject) => {
+    if (!AVATAR.img) {
+      reject(new Error("اختر صورة أولاً"));
+      return;
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = AVATAR_OUTPUT;
+    canvas.height = AVATAR_OUTPUT;
+
+    const ctx = canvas.getContext("2d");
+    const d = avatarStageSize() * 0.86;
+    const f = AVATAR_OUTPUT / d;
+    const s = avatarScale();
+
+    ctx.fillStyle = "#0b141a";
+    ctx.fillRect(0, 0, AVATAR_OUTPUT, AVATAR_OUTPUT);
+
+    ctx.save();
+    ctx.translate(AVATAR_OUTPUT / 2, AVATAR_OUTPUT / 2);
+    ctx.scale(f, f);
+    ctx.translate(AVATAR.x, AVATAR.y);
+    ctx.rotate((AVATAR.rot * Math.PI) / 180);
+
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+
+    ctx.drawImage(
+      AVATAR.img,
+      (-AVATAR.w * s) / 2,
+      (-AVATAR.h * s) / 2,
+      AVATAR.w * s,
+      AVATAR.h * s
+    );
+
+    ctx.restore();
+
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("تعذّر تجهيز الصورة"))),
+      "image/jpeg",
+      0.9
+    );
+  });
+}
+
+/** رفع مع نسبة تقدّم حقيقية (XHR)، ومع مسار احتياطي لو تعذّر */
+function uploadAvatarWithProgress(blob, path) {
+  return new Promise(async (resolve, reject) => {
+    let session = null;
+
+    try {
+      const res = await supabase.auth.getSession();
+      session = res?.data?.session || null;
+    } catch (_) {}
+
+    const token = session?.access_token;
+
+    if (!token || typeof XMLHttpRequest === "undefined") {
+      // مسار احتياطي: مكتبة Supabase (بلا نسبة تقدّم)
+      const { error } = await supabase.storage
+        .from("avatars")
+        .upload(path, blob, { contentType: "image/jpeg", cacheControl: "3600", upsert: false });
+
+      if (error) reject(new Error(error.message));
+      else resolve();
+      return;
+    }
+
+    const xhr = new XMLHttpRequest();
+
+    xhr.open("POST", `${SUPABASE_URL}/storage/v1/object/avatars/${path}`);
+
+    xhr.setRequestHeader("apikey", SUPABASE_ANON_KEY);
+    xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    xhr.setRequestHeader("Content-Type", "image/jpeg");
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable) return;
+
+      const percent = Math.round((event.loaded / event.total) * 100);
+      avatarProgress(percent, `جارٍ رفع الصورة… ${percent}%`);
+    };
+
+    xhr.onerror = () => reject(new Error("تعذّر الاتصال بالخادم أثناء الرفع"));
+    xhr.onabort = () => reject(new Error("أُوقف الرفع"));
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`فشل الرفع (${xhr.status})`));
+    };
+
+    xhr.send(blob);
+  });
+}
+
+function avatarPublicUrl(path) {
+  return `${SUPABASE_URL}/storage/v1/object/public/avatars/${path}`;
+}
+
+/** رسم الصورة في كل مواضع الواجهة (بلا جلب بيانات) */
+function paintAvatarPreview() {
+  const me = state.me;
+  const url = me?.avatar_url || "";
+
+  const sidebar = $("#my-avatar");
+  if (sidebar) {
+    if (url) sidebar.src = url;
+    else sidebar.removeAttribute("src");
+  }
+
+  const previewImg = $("#avatar-preview-img");
+  const previewInitial = $("#avatar-preview-initial");
+
+  if (previewImg) {
+    if (url) {
+      previewImg.src = url;
+      previewImg.classList.remove("hidden");
+      previewInitial?.classList.add("hidden");
+    } else {
+      previewImg.removeAttribute("src");
+      previewImg.classList.add("hidden");
+      previewInitial?.classList.remove("hidden");
+    }
+  }
+
+  if (previewInitial) {
+    previewInitial.textContent = (me?.display_name || "؟").trim().charAt(0) || "؟";
+  }
+}
+
+/** رسم الصورة + تحديث القوائم (ليظهر التغيير لبقية المستخدمين) */
+async function refreshAvatarUI() {
+  paintAvatarPreview();
+
+  try {
+    await loadContacts();
+  } catch (_) {}
+}
+
+/** فتح المحرّر: target = بروفايل مستخدم آخر (للمشرف) أو null لصورتي */
+function openAvatarEditor(options = {}) {
+  const { modal, title, img, hint, save } = avatarEls();
+
+  if (!modal) return;
+
+  AVATAR.target = options.target || null;
+  AVATAR.img = null;
+  AVATAR.w = 0;
+  AVATAR.h = 0;
+
+  if (img) {
+    img.classList.add("hidden");
+    img.removeAttribute("src");
+  }
+
+  hint?.classList.remove("hidden");
+  if (save) save.disabled = true;
+
+  avatarProgress(null);
+  avatarSay("");
+
+  if (title) {
+    title.textContent = AVATAR.target
+      ? `تعديل صورة: ${AVATAR.target.display_name || "مستخدم"}`
+      : "تعديل الصورة الشخصية";
+  }
+
+  modal.classList.remove("hidden");
+
+  // نبدأ من الصورة الحالية (إن وُجدت) ثم يستطيع المستخدم قصّها أو اختيار غيرها
+  const currentUrl =
+    options.startFromUrl !== undefined
+      ? options.startFromUrl
+      : AVATAR.target
+      ? AVATAR.target.avatar_url
+      : state.me?.avatar_url;
+
+  if (currentUrl) loadAvatarFromStorage(currentUrl);
+}
+
+/** يجلب الصورة الحالية من التخزين ويضعها في المحرّر (لاستكمال التعديل عليها) */
+async function loadAvatarFromStorage(url) {
+  const path = getStoragePath("avatars", url);
+
+  if (!path) return;
+
+  try {
+    const { data, error } = await supabase.storage.from("avatars").download(path);
+
+    if (error || !data) throw error || new Error("تعذّر تنزيل الصورة الحالية");
+
+    await loadAvatarFile(data);
+  } catch (_) {
+    // لا مشكلة: المستخدم يختار صورة جديدة
+  }
+}
+
+function closeAvatarEditor() {
+  if (AVATAR.busy) return;
+
+  avatarEls().modal?.classList.add("hidden");
+  avatarProgress(null);
+}
+
+/** الحفظ: قص + رفع + تحديث البروفايل */
+async function saveAvatarFromEditor() {
+  if (AVATAR.busy) return;
+
+  const { save } = avatarEls();
+  const target = AVATAR.target;
+
+  if (!AVATAR.img) {
+    avatarSay("اختر صورة أولاً.", "err");
+    return;
+  }
+
+  if (!state.isOnline) {
+    avatarSay("لا يمكن الرفع بدون اتصال بالإنترنت.", "err");
+    return;
+  }
+
+  AVATAR.busy = true;
+  if (save) save.disabled = true;
+
+  try {
+    avatarSay("جارٍ تجهيز الصورة…");
+    avatarProgress(0, "جارٍ الرفع… 0%");
+
+    const blob = await renderAvatarBlob();
+
+    // ===== تعديل صورة مستخدم آخر (لوحة المشرف) =====
+    if (target && String(target.id) !== String(state.me?.id)) {
+      const dataUrl = await blobToDataUrl(blob);
+
+      avatarProgress(60, "جارٍ الحفظ على الخادم…");
+
+      const { data, error } = await supabase.functions.invoke("admin-set-avatar", {
+        body: { userId: target.id, dataUrl },
+      });
+
+      if (error || data?.error) {
+        throw new Error(data?.error || error?.message || "خطأ غير معروف");
+      }
+
+      avatarProgress(100, "تم ✔");
+      avatarSay(`✔ تم تحديث صورة «${target.display_name || "المستخدم"}».`, "ok");
+
+      setTimeout(() => {
+        AVATAR.busy = false;
+        if (save) save.disabled = false;
+        closeAvatarEditor();
+        avatarProgress(null);
+      }, 600);
+
+      await loadAdminUsers();
+      await loadContacts();
+
+      showAuthError("✔ تم تحديث صورة المستخدم.");
+      return;
+    }
+
+    // ===== صورتي: رفع مباشر إلى مجلد حسابي =====
+    const previousUrl = state.me?.avatar_url || "";
+    const path = `${state.me.id}/avatar-${Date.now()}.jpg`;
+
+    await uploadAvatarWithProgress(blob, path);
+
+    const publicUrl = avatarPublicUrl(path);
+
+    const { error } = await supabase
+      .from("profiles")
+      .update({ avatar_url: publicUrl })
+      .eq("id", state.me.id);
+
+    if (error) throw new Error(error.message);
+
+    state.me.avatar_url = publicUrl;
+
+    avatarProgress(100, "تم ✔");
+
+    // تنظيف الصورة القديمة (بعد نجاح الجديدة)
+    if (previousUrl && previousUrl !== publicUrl) {
+      removeStorageFile("avatars", previousUrl).catch(() => {});
+    }
+
+    await refreshAvatarUI();
+
+    avatarSay(
+      `✔ تم حفظ الصورة (${Math.round(blob.size / 1024)} كيلوبايت).`,
+      "ok"
+    );
+
+    setTimeout(() => {
+      AVATAR.busy = false;
+      if (save) save.disabled = false;
+      closeAvatarEditor();
+      avatarProgress(null);
+    }, 800);
+  } catch (error) {
+    avatarProgress(null);
+    avatarSay("تعذّر حفظ الصورة: " + (error?.message || "خطأ غير معروف"), "err");
+
+    AVATAR.busy = false;
+    if (save) save.disabled = false;
+  }
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onerror = () => reject(new Error("تعذّر تجهيز الصورة"));
+    reader.onload = () => resolve(reader.result);
+
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** إيماءات المسرح: سحب بإصبع، تكبير بإصبعين، عجلة الفأرة، أسهم لوحة المفاتيح */
+function wireAvatarStage() {
+  const { stage } = avatarEls();
+  if (!stage || stage.dataset.wired === "1") return;
+
+  stage.dataset.wired = "1";
+
+  const pointOf = (event) => ({ x: event.clientX, y: event.clientY });
+
+  stage.addEventListener("pointerdown", (event) => {
+    if (!AVATAR.img) return;
+
+    stage.setPointerCapture?.(event.pointerId);
+    AVATAR.pointers.set(event.pointerId, pointOf(event));
+    AVATAR.dragging = true;
+
+    if (AVATAR.pointers.size === 2) {
+      const [a, b] = [...AVATAR.pointers.values()];
+
+      AVATAR.pinchStart = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y),
+        zoom: AVATAR.zoom,
+      };
+    }
+  });
+
+  stage.addEventListener("pointermove", (event) => {
+    if (!AVATAR.img) return;
+    if (!AVATAR.pointers.has(event.pointerId)) return;
+
+    const previous = AVATAR.pointers.get(event.pointerId);
+    AVATAR.pointers.set(event.pointerId, pointOf(event));
+
+    // تكبير بإصبعين
+    if (AVATAR.pointers.size >= 2 && AVATAR.pinchStart) {
+      const [a, b] = [...AVATAR.pointers.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+
+      if (AVATAR.pinchStart.dist > 0) {
+        setAvatarZoom(AVATAR.pinchStart.zoom * (dist / AVATAR.pinchStart.dist));
+      }
+
+      return;
+    }
+
+    // سحب
+    AVATAR.x += event.clientX - previous.x;
+    AVATAR.y += event.clientY - previous.y;
+
+    paintAvatarStage();
+  });
+
+  const endPointer = (event) => {
+    AVATAR.pointers.delete(event.pointerId);
+
+    if (AVATAR.pointers.size < 2) AVATAR.pinchStart = null;
+    if (!AVATAR.pointers.size) AVATAR.dragging = false;
+  };
+
+  stage.addEventListener("pointerup", endPointer);
+  stage.addEventListener("pointercancel", endPointer);
+  stage.addEventListener("pointerleave", endPointer);
+
+  stage.addEventListener(
+    "wheel",
+    (event) => {
+      if (!AVATAR.img) return;
+
+      event.preventDefault();
+      setAvatarZoom(AVATAR.zoom * (event.deltaY < 0 ? 1.08 : 0.93));
+    },
+    { passive: false }
+  );
+
+  stage.addEventListener("keydown", (event) => {
+    if (!AVATAR.img) return;
+
+    const step = event.shiftKey ? 24 : 8;
+
+    if (event.key === "ArrowLeft") AVATAR.x -= step;
+    else if (event.key === "ArrowRight") AVATAR.x += step;
+    else if (event.key === "ArrowUp") AVATAR.y -= step;
+    else if (event.key === "ArrowDown") AVATAR.y += step;
+    else if (event.key === "+" || event.key === "=") setAvatarZoom(AVATAR.zoom * 1.1);
+    else if (event.key === "-") setAvatarZoom(AVATAR.zoom / 1.1);
+    else return;
+
+    event.preventDefault();
+    paintAvatarStage();
+  });
+
+  // إفلات صورة على المسرح
+  ["dragenter", "dragover"].forEach((type) =>
+    stage.addEventListener(type, (event) => {
+      event.preventDefault();
+      stage.classList.add("dragover");
+    })
+  );
+
+  stage.addEventListener("dragleave", () => stage.classList.remove("dragover"));
+
+  stage.addEventListener("drop", async (event) => {
+    event.preventDefault();
+    stage.classList.remove("dragover");
+
+    const file = event.dataTransfer?.files?.[0];
+    if (file) await loadAvatarFile(file);
+  });
+}
+
+function setAvatarZoom(value) {
+  AVATAR.zoom = Math.max(1, Math.min(3.6, value));
+
+  const { zoom } = avatarEls();
+  if (zoom) zoom.value = String(Math.round(AVATAR.zoom * 100));
+
+  paintAvatarStage();
+}
+
+/** ربط أزرار المحرّر ولوحة الإعدادات */
+function wireAvatarEditor() {
+  if (wireAvatarEditor._done) return;
+  wireAvatarEditor._done = true;
+
+  openAvatarEditor._pickGallery = () => $("#avatar-input")?.click();
+  openAvatarEditor._pickCamera = () => $("#avatar-camera-input")?.click();
+
+  $("#btn-avatar-open")?.addEventListener("click", () => openAvatarEditor());
+  $("#btn-avatar-gallery")?.addEventListener("click", () => $("#avatar-input")?.click());
+  $("#btn-avatar-camera")?.addEventListener("click", () => $("#avatar-camera-input")?.click());
+
+  $("#avatar-pick-gallery")?.addEventListener("click", () => $("#avatar-input")?.click());
+  $("#avatar-pick-camera")?.addEventListener("click", () => $("#avatar-camera-input")?.click());
+
+  $("#avatar-editor-close")?.addEventListener("click", closeAvatarEditor);
+  $("#avatar-save")?.addEventListener("click", saveAvatarFromEditor);
+
+  $("#avatar-editor")?.addEventListener("click", (event) => {
+    if (event.target.id === "avatar-editor") closeAvatarEditor();
+  });
+
+  $("#avatar-rotate")?.addEventListener("click", () => {
+    AVATAR.rot = (AVATAR.rot + 90) % 360;
+    paintAvatarStage();
+  });
+
+  $("#avatar-reset")?.addEventListener("click", resetAvatarView);
+
+  $("#avatar-zoom")?.addEventListener("input", (event) => {
+    setAvatarZoom(Number(event.target.value || 100) / 100);
+  });
+
+  const onChange = (event) => {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (file) loadAvatarFile(file);
+  };
+
+  $("#avatar-input")?.addEventListener("change", onChange);
+  $("#avatar-camera-input")?.addEventListener("change", onChange);
+
+  // زر الصورة في الشريط الجانبي = اختصار للمحرّر
+  $("#my-avatar")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openAvatarEditor();
+  });
+
+  wireAvatarStage();
+
+  window.addEventListener("resize", () => {
+    if (!AVATAR.img) return;
+    paintAvatarStage();
+  });
+}
+
 
 // ===============================================================
 // WALLPAPER

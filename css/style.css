@@ -6660,6 +6660,278 @@ body[data-theme="light"] .country-item { color: #111b21; }
 }
 
 /* ================================================================
+   الصورة الشخصية: لوحة الإعدادات + محرّر القص
+   ================================================================ */
+.avatar-panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 6px 0 10px;
+}
+
+.avatar-preview-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.avatar-preview-wrap {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #202c33;
+  border: 2px solid rgba(134, 150, 160, .35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .3);
+}
+
+.avatar-preview-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-preview-wrap img.hidden { display: none; }
+
+.avatar-preview-initial {
+  font-size: 34px;
+  font-weight: 700;
+  color: #8696a0;
+}
+
+.avatar-camera-badge {
+  position: absolute;
+  bottom: 4px;
+  inset-inline-end: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #25d366;
+  color: #07231a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+}
+
+.avatar-preview-hint {
+  font-size: 12px;
+  color: #8696a0;
+}
+
+.avatar-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 150px;
+  min-width: 140px;
+}
+
+.avatar-quick-actions button { width: 100%; }
+
+/* حقول الملفات مخفية تماماً وبمعزل عن التخطيط (لا تُسبب أي تمرير أفقي) */
+.avatar-file-input,
+#settings-panel .avatar-file-input {
+  position: fixed !important;
+  top: -120px !important;
+  left: -120px !important;
+  width: 1px !important;
+  height: 1px !important;
+  min-width: 0 !important;
+  max-width: 1px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ---------- محرّر القص ---------- */
+.avatar-editor-card {
+  width: min(430px, 100%);
+  max-height: 94%;
+  overflow-y: auto;
+  background: #111b21;
+  border: 1px solid rgba(134, 150, 160, .22);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .5);
+}
+
+body[data-theme="light"] .avatar-editor-card {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, .1);
+}
+
+.avatar-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.avatar-editor-head b { font-size: 15px; }
+
+.avatar-stage {
+  position: relative;
+  width: min(300px, 82vw);
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #0b141a;
+  border: 1px solid rgba(134, 150, 160, .22);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+
+.avatar-stage:active { cursor: grabbing; }
+
+.avatar-stage.dragover { border-color: #25d366; }
+
+.avatar-stage-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.avatar-stage-inner img {
+  max-width: none;
+  max-height: none;
+  transform-origin: center center;
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.avatar-stage-inner img.hidden { display: none; }
+
+/* حلقة القص: تُظلم الأطراف ويبقى القرص واضحاً */
+.avatar-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    circle at center,
+    rgba(0, 0, 0, 0) 0,
+    rgba(0, 0, 0, 0) calc(50% - 3px),
+    rgba(0, 0, 0, .001) calc(50% - 3px)
+  );
+}
+
+.avatar-ring::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 86%;
+  height: 86%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(37, 211, 102, .9);
+  box-shadow: 0 0 0 9999px rgba(11, 20, 26, .62);
+}
+
+.avatar-ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(233, 237, 239, .18);
+}
+
+.avatar-stage-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  padding: 18px;
+  color: #8696a0;
+  background: rgba(11, 20, 26, .55);
+}
+
+.avatar-stage-hint span { font-size: 34px; }
+.avatar-stage-hint b { font-size: 13.5px; color: #e9edef; }
+.avatar-stage-hint small { font-size: 11.5px; line-height: 1.7; }
+.avatar-stage-hint.hidden { display: none; }
+
+.avatar-zoom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 12px;
+}
+
+.avatar-zoom-row input[type="range"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  accent-color: #25d366;
+}
+
+.avatar-zoom-icon { font-size: 14px; opacity: .8; }
+
+.avatar-editor-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.avatar-editor-actions .admin-btn-primary { flex: 1 1 130px; }
+
+.avatar-progress {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.avatar-progress.hidden { display: none; }
+
+.avatar-progress-track {
+  height: 7px;
+  border-radius: 999px;
+  background: #202c33;
+  overflow: hidden;
+}
+
+.avatar-progress-track i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #128c7e, #25d366);
+  transition: width .18s ease;
+}
+
+.avatar-progress span {
+  font-size: 11.5px;
+  color: #8696a0;
+  text-align: center;
+}
+
+/* ================================================================
    أزرار «المحادثات»: محادثاتي / كل مشرف / كل المحادثات
    ================================================================ */
 .section-heading-chats {
