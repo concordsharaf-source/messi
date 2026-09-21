@@ -31,7 +31,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "28";
+  window.WA_BUILD = "29";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -90,7 +90,7 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=28" />
+  <link rel="stylesheet" href="./css/style.css?v=29" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -151,7 +151,15 @@
     <form id="login-form" class="auth-form">
       <div id="login-phone-wrap">
         <div class="phone-row">
-          <select id="login-country" class="country-select" aria-label="الدولة"></select>
+          <div class="country-picker" id="login-country-picker">
+            <button type="button" class="country-btn" aria-haspopup="listbox" aria-expanded="false">
+              <span class="country-flag"></span>
+              <span class="country-name"></span>
+              <span class="country-dial" dir="ltr"></span>
+              <span class="country-caret">▾</span>
+            </button>
+            <input type="hidden" id="login-country" value="YE" />
+          </div>
           <input id="login-phone" type="tel" inputmode="numeric" autocomplete="tel"
                  placeholder="رقم الهاتف (بدون مفتاح الدولة)" />
         </div>
@@ -176,7 +184,15 @@
 
     <form id="signup-form" class="auth-form hidden">
       <div class="phone-row">
-        <select id="signup-country" class="country-select" aria-label="الدولة"></select>
+        <div class="country-picker" id="signup-country-picker">
+          <button type="button" class="country-btn" aria-haspopup="listbox" aria-expanded="false">
+            <span class="country-flag"></span>
+            <span class="country-name"></span>
+            <span class="country-dial" dir="ltr"></span>
+            <span class="country-caret">▾</span>
+          </button>
+          <input type="hidden" id="signup-country" value="YE" />
+        </div>
         <input id="signup-phone" type="tel" required inputmode="numeric" autocomplete="tel"
                placeholder="رقم الهاتف (بدون مفتاح الدولة)" />
       </div>
@@ -230,7 +246,7 @@
         <div class="avatar"><img id="my-avatar" src="" alt="" /></div>
         <div class="me-text">
           <b class="me-app" data-i18n="app_name">واتساب الوليد</b>
-          <span id="my-name"></span>
+          <span id="my-name" dir="auto"></span>
         </div>
       </div>
       <div class="sidebar-actions">
@@ -407,7 +423,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v28</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v29</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -449,7 +465,23 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 <div id="global-toast" class="global-toast hidden"></div>
 
-<script type="module" src="./js/app.js?v=28"></script>
+<script type="module" src="./js/app.js?v=29"></script>
+
+  <!-- نافذة تعديل الاسم (طبقة عامة) -->
+  <div id="rename-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="تعديل الاسم">
+    <div class="notes-card">
+      <h3>✏️ تعديل الاسم <span class="notes-private" id="rename-target-label"></span></h3>
+
+      <label for="rename-input">الاسم الجديد</label>
+      <input id="rename-input" type="text" maxlength="40" placeholder="اكتب الاسم" dir="auto" />
+
+      <div class="notes-actions">
+        <button id="rename-save" class="admin-btn-primary" type="button">💾 حفظ الاسم</button>
+        <button id="rename-close" class="admin-btn-mini" type="button">إغلاق</button>
+      </div>
+      <div id="rename-status" class="settings-hint"></div>
+    </div>
+  </div>
 
 </body>
 </html>

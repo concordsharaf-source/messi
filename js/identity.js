@@ -8,56 +8,96 @@ const INTERNAL_DOMAIN = "wa-walid.app"; // نطاق داخلي لحساب الم
 
 // ---------------- قائمة الدول ----------------
 // اليمن أولاً (الافتراضي) ثم بقية الدول العربية ثم الأكثر شيوعاً
+// ٤٦ دولة — مرتّبة أبجدياً حسب الاسم العربي (مع الاسم الإنجليزي للبحث)
 export const COUNTRIES = [
-  { code: "YE", dial: "967", flag: "🇾🇪", name: "اليمن" },
-  { code: "SA", dial: "966", flag: "🇸🇦", name: "السعودية" },
-  { code: "AE", dial: "971", flag: "🇦🇪", name: "الإمارات" },
-  { code: "OM", dial: "968", flag: "🇴🇲", name: "عُمان" },
-  { code: "QA", dial: "974", flag: "🇶🇦", name: "قطر" },
-  { code: "KW", dial: "965", flag: "🇰🇼", name: "الكويت" },
-  { code: "BH", dial: "973", flag: "🇧🇭", name: "البحرين" },
-  { code: "EG", dial: "20", flag: "🇪🇬", name: "مصر" },
-  { code: "JO", dial: "962", flag: "🇯🇴", name: "الأردن" },
-  { code: "LB", dial: "961", flag: "🇱🇧", name: "لبنان" },
-  { code: "SY", dial: "963", flag: "🇸🇾", name: "سوريا" },
-  { code: "IQ", dial: "964", flag: "🇮🇶", name: "العراق" },
-  { code: "PS", dial: "970", flag: "🇵🇸", name: "فلسطين" },
-  { code: "SD", dial: "249", flag: "🇸🇩", name: "السودان" },
-  { code: "LY", dial: "218", flag: "🇱🇾", name: "ليبيا" },
-  { code: "TN", dial: "216", flag: "🇹🇳", name: "تونس" },
-  { code: "DZ", dial: "213", flag: "🇩🇿", name: "الجزائر" },
-  { code: "MA", dial: "212", flag: "🇲🇦", name: "المغرب" },
-  { code: "MR", dial: "222", flag: "🇲🇷", name: "موريتانيا" },
-  { code: "SO", dial: "252", flag: "🇸🇴", name: "الصومال" },
-  { code: "DJ", dial: "253", flag: "🇩🇯", name: "جيبوتي" },
-  { code: "KM", dial: "269", flag: "🇰🇲", name: "جزر القمر" },
-  { code: "TR", dial: "90", flag: "🇹🇷", name: "تركيا" },
-  { code: "IR", dial: "98", flag: "🇮🇷", name: "إيران" },
-  { code: "PK", dial: "92", flag: "🇵🇰", name: "باكستان" },
-  { code: "IN", dial: "91", flag: "🇮🇳", name: "الهند" },
-  { code: "BD", dial: "880", flag: "🇧🇩", name: "بنغلاديش" },
-  { code: "ID", dial: "62", flag: "🇮🇩", name: "إندونيسيا" },
-  { code: "MY", dial: "60", flag: "🇲🇾", name: "ماليزيا" },
-  { code: "PH", dial: "63", flag: "🇵🇭", name: "الفلبين" },
-  { code: "ET", dial: "251", flag: "🇪🇹", name: "إثيوبيا" },
-  { code: "KE", dial: "254", flag: "🇰🇪", name: "كينيا" },
-  { code: "NG", dial: "234", flag: "🇳🇬", name: "نيجيريا" },
-  { code: "ZA", dial: "27", flag: "🇿🇦", name: "جنوب أفريقيا" },
-  { code: "GB", dial: "44", flag: "🇬🇧", name: "بريطانيا" },
-  { code: "DE", dial: "49", flag: "🇩🇪", name: "ألمانيا" },
-  { code: "FR", dial: "33", flag: "🇫🇷", name: "فرنسا" },
-  { code: "NL", dial: "31", flag: "🇳🇱", name: "هولندا" },
-  { code: "SE", dial: "46", flag: "🇸🇪", name: "السويد" },
-  { code: "IT", dial: "39", flag: "🇮🇹", name: "إيطاليا" },
-  { code: "ES", dial: "34", flag: "🇪🇸", name: "إسبانيا" },
-  { code: "RU", dial: "7", flag: "🇷🇺", name: "روسيا" },
-  { code: "CN", dial: "86", flag: "🇨🇳", name: "الصين" },
-  { code: "US", dial: "1", flag: "🇺🇸", name: "أمريكا" },
-  { code: "CA", dial: "1", flag: "🇨🇦", name: "كندا" },
-  { code: "AU", dial: "61", flag: "🇦🇺", name: "أستراليا" },
+  { code: "AU", dial: "61", flag: "🇦🇺", name: "أستراليا", en: "Australia" },
+  { code: "DE", dial: "49", flag: "🇩🇪", name: "ألمانيا", en: "Germany" },
+  { code: "US", dial: "1", flag: "🇺🇸", name: "أمريكا", en: "United States" },
+  { code: "ET", dial: "251", flag: "🇪🇹", name: "إثيوبيا", en: "Ethiopia" },
+  { code: "ES", dial: "34", flag: "🇪🇸", name: "إسبانيا", en: "Spain" },
+  { code: "ID", dial: "62", flag: "🇮🇩", name: "إندونيسيا", en: "Indonesia" },
+  { code: "IR", dial: "98", flag: "🇮🇷", name: "إيران", en: "Iran" },
+  { code: "IT", dial: "39", flag: "🇮🇹", name: "إيطاليا", en: "Italy" },
+  { code: "JO", dial: "962", flag: "🇯🇴", name: "الأردن", en: "Jordan" },
+  { code: "AE", dial: "971", flag: "🇦🇪", name: "الإمارات", en: "United Arab Emirates" },
+  { code: "BH", dial: "973", flag: "🇧🇭", name: "البحرين", en: "Bahrain" },
+  { code: "DZ", dial: "213", flag: "🇩🇿", name: "الجزائر", en: "Algeria" },
+  { code: "SA", dial: "966", flag: "🇸🇦", name: "السعودية", en: "Saudi Arabia" },
+  { code: "SD", dial: "249", flag: "🇸🇩", name: "السودان", en: "Sudan" },
+  { code: "SE", dial: "46", flag: "🇸🇪", name: "السويد", en: "Sweden" },
+  { code: "SO", dial: "252", flag: "🇸🇴", name: "الصومال", en: "Somalia" },
+  { code: "CN", dial: "86", flag: "🇨🇳", name: "الصين", en: "China" },
+  { code: "IQ", dial: "964", flag: "🇮🇶", name: "العراق", en: "Iraq" },
+  { code: "PH", dial: "63", flag: "🇵🇭", name: "الفلبين", en: "Philippines" },
+  { code: "KW", dial: "965", flag: "🇰🇼", name: "الكويت", en: "Kuwait" },
+  { code: "MA", dial: "212", flag: "🇲🇦", name: "المغرب", en: "Morocco" },
+  { code: "IN", dial: "91", flag: "🇮🇳", name: "الهند", en: "India" },
+  { code: "YE", dial: "967", flag: "🇾🇪", name: "اليمن", en: "Yemen" },
+  { code: "PK", dial: "92", flag: "🇵🇰", name: "باكستان", en: "Pakistan" },
+  { code: "GB", dial: "44", flag: "🇬🇧", name: "بريطانيا", en: "United Kingdom" },
+  { code: "BD", dial: "880", flag: "🇧🇩", name: "بنغلاديش", en: "Bangladesh" },
+  { code: "TR", dial: "90", flag: "🇹🇷", name: "تركيا", en: "Turkey" },
+  { code: "TN", dial: "216", flag: "🇹🇳", name: "تونس", en: "Tunisia" },
+  { code: "KM", dial: "269", flag: "🇰🇲", name: "جزر القمر", en: "Comoros" },
+  { code: "ZA", dial: "27", flag: "🇿🇦", name: "جنوب أفريقيا", en: "South Africa" },
+  { code: "DJ", dial: "253", flag: "🇩🇯", name: "جيبوتي", en: "Djibouti" },
+  { code: "RU", dial: "7", flag: "🇷🇺", name: "روسيا", en: "Russia" },
+  { code: "SY", dial: "963", flag: "🇸🇾", name: "سوريا", en: "Syria" },
+  { code: "OM", dial: "968", flag: "🇴🇲", name: "عُمان", en: "Oman" },
+  { code: "FR", dial: "33", flag: "🇫🇷", name: "فرنسا", en: "France" },
+  { code: "PS", dial: "970", flag: "🇵🇸", name: "فلسطين", en: "Palestine" },
+  { code: "QA", dial: "974", flag: "🇶🇦", name: "قطر", en: "Qatar" },
+  { code: "CA", dial: "1", flag: "🇨🇦", name: "كندا", en: "Canada" },
+  { code: "KE", dial: "254", flag: "🇰🇪", name: "كينيا", en: "Kenya" },
+  { code: "LB", dial: "961", flag: "🇱🇧", name: "لبنان", en: "Lebanon" },
+  { code: "LY", dial: "218", flag: "🇱🇾", name: "ليبيا", en: "Libya" },
+  { code: "MY", dial: "60", flag: "🇲🇾", name: "ماليزيا", en: "Malaysia" },
+  { code: "EG", dial: "20", flag: "🇪🇬", name: "مصر", en: "Egypt" },
+  { code: "MR", dial: "222", flag: "🇲🇷", name: "موريتانيا", en: "Mauritania" },
+  { code: "NG", dial: "234", flag: "🇳🇬", name: "نيجيريا", en: "Nigeria" },
+  { code: "NL", dial: "31", flag: "🇳🇱", name: "هولندا", en: "Netherlands" },
 ];
 
 const DEFAULT_COUNTRY = "YE";
+
+/** نص البحث لكل دولة (عربي + إنجليزي + مفتاح + رمز) */
+function haystack(c) {
+  return `${c.name} ${c.en} ${c.dial} ${c.code} ${c.flag}`.toLowerCase();
+}
+
+/**
+ * بحث الدول بالحروف: يطابق بداية الاسم العربي/الإنجليزي أو مفتاح الدولة.
+ * النتائج مرتّبة أبجدياً (وهذا هو ترتيب القائمة أصلاً).
+ */
+export function searchCountries(query, limit = 60) {
+  const q = String(query || "").trim().toLowerCase();
+
+  if (!q) return COUNTRIES.slice(0, limit);
+
+  const norm = q.replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/\s+/g, "");
+
+  const score = (c) => {
+    const name = c.name.toLowerCase();
+    const nameNorm = name.replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه");
+    const en = c.en.toLowerCase();
+
+    if (name.startsWith(q) || nameNorm.startsWith(norm)) return 0;      // اسم عربي
+    if (name.includes(q) || nameNorm.includes(norm)) return 1;          // داخل الاسم
+    if (en.startsWith(q)) return 2;                                     // اسم إنجليزي
+    if (en.includes(q)) return 3;
+    if (c.dial.startsWith(q.replace(/^\+/, ""))) return 4;             // مفتاح الدولة
+    if (c.code.toLowerCase().startsWith(q)) return 5;
+    if (haystack(c).includes(q)) return 6;
+
+    return -1;
+  };
+
+  return COUNTRIES.map((c) => ({ c, s: score(c) }))
+    .filter((x) => x.s >= 0)
+    .sort((a, b) => a.s - b.s || a.c.name.localeCompare(b.c.name, "ar"))
+    .slice(0, limit)
+    .map((x) => x.c);
+}
 const PHONE_KEY = "wa_saved_phone";
 
 export function countryByCode(code) {

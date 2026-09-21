@@ -285,6 +285,7 @@ export async function disablePushNotifications(userId = null) {
 export function listenForForegroundMessages({
   onNotification = null,
   soundUrl = "./icons/notify.mp3",
+  shouldPlaySound = null,
 } = {}) {
 
   if (!messaging) {
@@ -331,14 +332,19 @@ export function listenForForegroundMessages({
         return;
       }
 
-      try {
-        const audio = new Audio(soundUrl);
-        audio.volume = 1;
-        await audio.play().catch(() => {
-          console.warn("[FCM] تشغيل الصوت التلقائي محظور من المتصفح.");
-        });
-      } catch (error) {
-        console.warn("[FCM] Audio error:", error);
+      // لا صوت إن كان المستخدم يشاهد نفس المحادثة التي وصلتها الرسالة
+      const allowed = typeof shouldPlaySound === "function" ? shouldPlaySound(data) !== false : true;
+
+      if (allowed) {
+        try {
+          const audio = new Audio(soundUrl);
+          audio.volume = 1;
+          await audio.play().catch(() => {
+            console.warn("[FCM] تشغيل الصوت التلقائي محظور من المتصفح.");
+          });
+        } catch (error) {
+          console.warn("[FCM] Audio error:", error);
+        }
       }
 
       // ---------------------------------------------------------

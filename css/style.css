@@ -4845,10 +4845,29 @@ body[data-theme="dark"] .auth-oauth.ghost {
 .bubble-text mark { background: #ffe08a; color: #111b21; border-radius: 3px; }
 
 /* لوحة الملاحظات الداخلية */
+/* طبقة عامة centred (تُستخدم لنافذة تعديل الاسم) */
+.modal-overlay {
+  position: fixed;
+  top: var(--app-top, 0px);
+  bottom: auto;
+  inset-inline: 0;
+  height: var(--app-height, 100dvh);
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(11, 20, 26, 0.75);
+}
+
 .notes-panel {
-  position: absolute;
-  inset: 0;
-  z-index: 40;
+  /* ملء الشاشة بشكل صحيح: مثل بقية الطبقات العلوية (ارتفاع من متغيّر التطبيق) */
+  position: fixed;
+  top: var(--app-top, 0px);
+  bottom: auto;
+  inset-inline: 0;
+  height: var(--app-height, 100dvh);
+  z-index: 60;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6498,33 +6517,162 @@ body.viewing-chat #chat-panel-container,
   width: 100%;
 }
 
-.phone-row .country-select {
+.country-picker {
+  position: relative;
   flex: 0 0 auto;
-  width: auto;
-  max-width: 44%;
-  min-width: 118px;
+}
+
+.country-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  min-height: 46px;
   padding: 0 10px;
   border-radius: 12px;
   border: 1px solid rgba(134, 150, 160, .28);
   background: #202c33;
   color: #e9edef;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, #8696a0 50%),
-                    linear-gradient(135deg, #8696a0 50%, transparent 50%);
-  background-position: left 12px top 55%, left 17px top 55%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
+  white-space: nowrap;
+  direction: ltr;
 }
 
-body[data-theme="light"] .phone-row .country-select {
-  background-color: #ffffff;
+body[data-theme="light"] .country-btn {
+  background: #ffffff;
   color: #111b21;
   border-color: rgba(0, 0, 0, .14);
+}
+
+.country-btn .country-flag { font-size: 16px; line-height: 1; }
+
+.country-btn .country-name {
+  direction: rtl;
+  unicode-bidi: isolate;
+  max-width: 92px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.country-btn .country-dial {
+  direction: ltr;
+  unicode-bidi: isolate;
+  color: #8696a0;
+  font-size: 11.5px;
+}
+
+.country-btn .country-caret { color: #8696a0; font-size: 10px; }
+
+/* لوحة البحث والاختيار */
+.country-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  inset-inline-start: 0;
+  z-index: 40;
+  width: min(310px, 88vw);
+  max-height: 320px;
+  display: flex;
+  flex-direction: column;
+  background: #111b21;
+  border: 1px solid rgba(134, 150, 160, .25);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .45);
+  overflow: hidden;
+}
+
+body[data-theme="light"] .country-panel {
+  background: #ffffff;
+  border-color: rgba(0, 0, 0, .12);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .18);
+}
+
+.country-search {
+  margin: 9px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(134, 150, 160, .25);
+  background: #202c33;
+  color: #e9edef;
+  font-family: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+body[data-theme="light"] .country-search {
+  background: #f0f2f5;
+  color: #111b21;
+}
+
+.country-list {
+  overflow-y: auto;
+  padding: 0 6px 8px;
+}
+
+.country-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: #e9edef;
+  font-family: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+  direction: ltr;              /* العرض من اليسار لليمين: علَم، اسم، مفتاح */
+}
+
+body[data-theme="light"] .country-item { color: #111b21; }
+
+.country-item:hover,
+.country-item:focus-visible { background: rgba(37, 211, 102, .12); }
+
+.country-item.active { background: rgba(37, 211, 102, .18); }
+
+.country-item .ci-flag { font-size: 17px; line-height: 1; }
+
+.country-item .ci-name {
+  flex: 1 1 auto;
+  direction: rtl;
+  unicode-bidi: isolate;
+  text-align: start;
+}
+
+.country-item .ci-dial {
+  direction: ltr;
+  unicode-bidi: isolate;
+  color: #8696a0;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.country-empty {
+  padding: 14px;
+  text-align: center;
+  color: #8696a0;
+  font-size: 12.5px;
+}
+
+/* ================================================================
+   الأسماء: تُعرض من اليسار إلى اليمين بشكل صحيح
+   (يتبع المتصفح أول حرف قوي: لاتيني → LTR، عربي → RTL)
+   ================================================================ */
+.contact-name,
+.chat-header-name,
+#chat-header-name,
+#my-name,
+.identity-row b,
+.notes-card h3,
+.admin-users-list b,
+#admin-users-list b {
+  unicode-bidi: plaintext;
+  text-align: start;
 }
 
 .phone-row input {

@@ -11,6 +11,7 @@ import {
 import {
   COUNTRIES,
   countryByCode,
+  searchCountries,
   defaultCountryCode,
   buildFullPhone,
   isValidPhone,
@@ -40,7 +41,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "28";
+const BUILD = "29";
 
 const state = {
   me: null,
@@ -362,6 +363,8 @@ async function enterApp() {
         listenForForegroundMessages({
           soundUrl: toneUrl(),
           onNotification: handleForegroundNotification,
+          shouldPlaySound: (data) =>
+            !isViewingConversation(data?.conversation_id || data?.conversationId),
         });
     } catch (err) {
       console.error(
@@ -572,6 +575,8 @@ function wireAuthForms() {
 
       if (sel) sel.value = match.code;
       if (inp) inp.value = String(saved.full).slice(match.dial.length);
+
+      paintCountryButton("login");
       updatePhoneHint("login");
     }
 
@@ -677,17 +682,155 @@ async function submitPhoneLogin() {
 
 // -------------------- واجهة الهاتف: قائمة الدول + تلميح المفتاح --------------------
 
-function fillCountrySelect(select, selected) {
-  if (!select) return;
+// -------------------- منتقي الدول: زر + لوحة بحث بالحروف --------------------
 
-  const wanted = selected || defaultCountryCode();
+function countryPickerEl(which) {
+  return document.getElementById(`${which}-country-picker`);
+}
 
-  select.innerHTML = COUNTRIES.map(
-    (c) =>
-      `<option value="${c.code}">${c.flag} ${c.name} (+${c.dial})</option>`
-  ).join("");
+function paintCountryButton(which) {
+  const picker = countryPickerEl(which);
+  const input = $(`#${which}-country`);
 
-  select.value = COUNTRIES.some((c) => c.code === wanted) ? wanted : "YE";
+  if (!picker || !input) return;
+
+  const c = countryByCode(input.value);
+
+  const flag = picker.querySelector(".country-flag");
+  const name = picker.querySelector(".country-name");
+  const dial = picker.querySelector(".country-dial");
+
+  if (flag) flag.textContent = c.flag;
+  if (name) name.textContent = c.name;
+  if (dial) dial.textContent = `+${c.dial}`;
+}
+
+function closeCountryPanel(which) {
+  const picker = countryPickerEl(which);
+
+  picker?.querySelector(".country-panel")?.remove();
+  picker?.querySelector(".country-btn")?.setAttribute("aria-expanded", "false");
+  document.removeEventListener("click", closeCountryPanel._outside || (() => {}), true);
+}
+
+/** ربط واحد مفوَّض لكل منتقيات الدول (لا يتكرر مهما أُعيدت التهيئة) */
+function wireCountryPickers() {
+  if (wireCountryPickers._done) return;
+
+  wireCountryPickers._done = true;
+
+  document.addEventListener("click", (event) => {
+    const btn = event.target?.closest?.(".country-btn");
+    if (!btn) return;
+
+    const picker = btn.closest(".country-picker");
+    const which = picker?.id?.replace("-country-picker", "");
+    if (!which) return;
+
+    event.stopPropagation();
+    openCountryPanel(which);
+  });
+}
+
+function openCountryPanel(which) {
+  const picker = countryPickerEl(which);
+  const btn = picker?.querySelector(".country-btn");
+
+  if (!picker || !btn) return;
+
+  // حارس: نقرة واحدة تفتح مرة واحدة (حتى لو تكرّر الربط)
+  const now = Date.now();
+  const repeat = openCountryPanel._lastWhich === which && now - (openCountryPanel._lastAt || 0) < 400;
+
+  openCountryPanel._lastWhich = which;
+  openCountryPanel._lastAt = now;
+
+  if (repeat) return;
+
+  if (picker.querySelector(".country-panel")) {
+    closeCountryPanel(which);
+    return;
+  }
+
+  closeCountryPanel(which);
+
+  const panel = document.createElement("div");
+  panel.className = "country-panel";
+  panel.innerHTML = `
+    <input class="country-search" type="search" autocomplete="off" placeholder="ابحث بالحروف… (مثال: اليمن أو Yemen أو 967)" />
+    <div class="country-list" role="listbox"></div>
+  `;
+
+  picker.appendChild(panel);
+  btn.setAttribute("aria-expanded", "true");
+
+  const search = panel.querySelector(".country-search");
+  const list = panel.querySelector(".country-list");
+
+  const render = (query) => {
+    const results = searchCountries(query);
+    const current = $(`#${which}-country`)?.value;
+
+    list.innerHTML = results.length
+      ? results
+          .map(
+            (c) => `
+        <button type="button" class="country-item${c.code === current ? " active" : ""}" data-code="${c.code}" role="option">
+          <span class="ci-flag">${c.flag}</span>
+          <span class="ci-name">${c.name}</span>
+          <span class="ci-dial" dir="ltr">+${c.dial}</span>
+        </button>`
+          )
+          .join("")
+      : `<div class="country-empty">لا توجد دولة مطابقة</div>`;
+  };
+
+  render("");
+
+  search?.addEventListener("input", () => render(search.value));
+
+  search?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+
+      const first = list.querySelector(".country-item");
+
+      if (first) first.click();
+    }
+
+    if (event.key === "Escape") closeCountryPanel(which);
+  });
+
+  list.addEventListener("click", (event) => {
+    const item = event.target.closest(".country-item");
+    if (!item) return;
+
+    const input = $(`#${which}-country`);
+
+    if (input) input.value = item.dataset.code;
+
+    paintCountryButton(which);
+    updatePhoneHint(which === "signup" ? "signup" : "login");
+    closeCountryPanel(which);
+
+    const phone = $(`#${which}-phone`);
+
+    phone?.focus();
+  });
+
+  setTimeout(() => search?.focus(), 40);
+
+  // إغلاق عند النقر خارج اللوحة
+  const outside = (event) => {
+    if (!picker.contains(event.target)) {
+      closeCountryPanel(which);
+      document.removeEventListener("click", outside, true);
+    }
+  };
+
+  closeCountryPanel._outside = outside;
+
+  setTimeout(() => document.addEventListener("click", outside, true), 0);
 }
 
 function updatePhoneHint(which) {
@@ -705,25 +848,29 @@ function updatePhoneHint(which) {
   }
 }
 
-/** يهيّئ قوائم الدول والتلميحات وحقل كلمة مرور الحساب */
+/** يهيّئ منتقي الدول (تسجيل/دخول) + تلميحات المفتاح */
 function initAuthPhoneUI() {
   const saved = getSavedPhone();
 
-  fillCountrySelect($("#signup-country"));
-  fillCountrySelect($("#login-country"), saved?.country);
+  // إن كان هناك رقم محفوظ نستنتج دولته
+  if (saved?.full) {
+    const match = COUNTRIES.filter((c) => String(saved.full).startsWith(c.dial)).sort(
+      (x, y) => y.dial.length - x.dial.length
+    )[0];
+
+    if (match) {
+      const loginInput = $("#login-country");
+      if (loginInput) loginInput.value = match.code;
+    }
+  }
+
+  ["login", "signup"].forEach(paintCountryButton);
+  wireCountryPickers();
 
   updatePhoneHint("signup");
   updatePhoneHint("login");
 
-  ["#signup-country", "#login-country"].forEach((sel) => {
-    $(sel)?.addEventListener("change", () => updatePhoneHint(sel === "#signup-country" ? "signup" : "login"));
-  });
-
-  ["#signup-phone", "#login-phone"].forEach((sel) => {
-    $(sel)?.addEventListener("input", () => updatePhoneHint(sel === "#signup-phone" ? "signup" : "login"));
-  });
-
-  // زر تعبئة الرقم المحفوظ (تعبئة فقط — الدخول يتطلب كلمة المرور)
+  // زر تعبئة الرقم المحفوظ (تعبئة فقط — الدخول بكلمة المرور)
   const prefillBtn = $("#btn-phone-prefill");
 
   if (prefillBtn) {
@@ -2452,6 +2599,161 @@ async function saveNotesPanel() {
   setAdminStatusText(status, "✔ تم حفظ الملاحظات الداخلية.");
 }
 
+// ---------------------------------------------------------------
+// تعديل الاسم: اسم الطرف الآخر (للمشرف) أو اسمي (للمستخدم العادي)
+// ---------------------------------------------------------------
+
+function renameSubject() {
+  const conv = state.activeConversation;
+  const other = conv?.otherProfile;
+
+  const isStaff = Boolean(state.me?.is_admin || state.me?.can_moderate);
+  const otherIsMe = other && String(other.id) === String(state.me?.id);
+
+  if (isStaff && other && !otherIsMe) {
+    return {
+      profile: other,
+      isAdminPath: true,
+      label: "اسم المستخدم",
+      current: other.display_name || "",
+    };
+  }
+
+  return {
+    profile: state.me,
+    isAdminPath: false,
+    label: "اسمك",
+    current: state.me?.display_name || "",
+  };
+}
+
+function openRenamePanel() {
+  const panel = $("#rename-panel");
+  const input = $("#rename-input");
+  const label = $("#rename-target-label");
+  const status = $("#rename-status");
+  const subject = renameSubject();
+
+  if (!panel || !input) return;
+
+  $("#chat-options-menu")?.classList.add("hidden");
+
+  if (label) label.textContent = subject.label;
+  if (status) {
+    status.textContent = subject.isAdminPath
+      ? "سيُغيَّر الاسم الظاهر لهذا المستخدم في التطبيق."
+      : "سيُغيَّر اسمك الظاهر للآخرين.";
+    status.className = "settings-hint";
+  }
+
+  input.value = subject.current;
+  panel.classList.remove("hidden");
+
+  setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 60);
+}
+
+function closeRenamePanel() {
+  $("#rename-panel")?.classList.add("hidden");
+}
+
+async function saveRenameFromPanel() {
+  const status = $("#rename-status");
+  const input = $("#rename-input");
+  const subject = renameSubject();
+  const value = String(input?.value || "").replace(/\s+/g, " ").trim();
+
+  const say = (msg, cls) => {
+    if (!status) return;
+
+    status.textContent = msg;
+    status.className = cls ? `settings-hint ${cls}` : "settings-hint";
+  };
+
+  if (!value) {
+    say("اكتب الاسم أولاً.", "err");
+    return;
+  }
+
+  if (value.length > 40) {
+    say("الاسم يجب أن يكون ٤٠ حرفاً أو أقل.", "err");
+    return;
+  }
+
+  if (value === subject.current) {
+    closeRenamePanel();
+    return;
+  }
+
+  say("جارٍ الحفظ…");
+
+  try {
+    if (subject.isAdminPath) {
+      const { data, error } = await supabase.rpc("admin_rename_user", {
+        p_user: subject.profile.id,
+        p_new_name: value,
+      });
+
+      if (error) throw new Error(error.message);
+    } else {
+      const { error } = await supabase
+        .from("profiles")
+        .update({ display_name: value })
+        .eq("id", state.me.id);
+
+      if (error) throw new Error(error.message);
+    }
+  } catch (err) {
+    say(`تعذّر حفظ الاسم: ${err.message}`, "err");
+    return;
+  }
+
+  // تحديث الواجهة فوراً
+  if (subject.isAdminPath) {
+    if (state.activeConversation?.otherProfile) {
+      state.activeConversation.otherProfile.display_name = value;
+    }
+
+    const headerName = $("#chat-header-name");
+    if (headerName) headerName.textContent = value;
+
+    const row = state.contactRowsByConversation?.[state.activeConversation?.id];
+    const nameEl = row?.querySelector?.(".contact-name");
+    if (nameEl) nameEl.textContent = value;
+  } else {
+    if (state.me) state.me.display_name = value;
+  }
+
+  say("✔ تم حفظ الاسم.", "ok");
+
+  setTimeout(closeRenamePanel, 700);
+
+  try {
+    await loadContacts();
+  } catch (e) {}
+}
+
+function wireRenamePanel() {
+  $("#chat-rename-item")?.addEventListener("click", openRenamePanel);
+  $("#rename-close")?.addEventListener("click", closeRenamePanel);
+  $("#rename-save")?.addEventListener("click", saveRenameFromPanel);
+
+  $("#rename-panel")?.addEventListener("click", (event) => {
+    if (event.target.id === "rename-panel") closeRenamePanel();
+  });
+
+  $("#rename-input")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      saveRenameFromPanel();
+    }
+
+    if (event.key === "Escape") closeRenamePanel();
+  });
+}
+
 function wireNotesPanel() {
   $("#chat-notes-toggle")?.addEventListener("click", openNotesPanel);
   $("#notes-close")?.addEventListener("click", closeNotesPanel);
@@ -2808,8 +3110,6 @@ function updateAdminConversationOptions() {
     <button type="button" class="chat-option" data-admin-act="notes">📝 ملاحظات ووسوم</button>
     <button type="button" class="chat-option" data-admin-act="mute">${meta.muted ? "🔔 إلغاء الكتم" : "🔇 كتم المحادثة"}</button>
     <button type="button" class="chat-option" data-admin-act="archive">${meta.archived ? "📤 إخراج من الأرشيف" : "📦 أرشفة المحادثة"}</button>
-    <button type="button" class="chat-option" data-admin-act="csv">📊 تصدير Excel (CSV)</button>
-    <button type="button" class="chat-option" data-admin-act="print">🖨️ طباعة / حفظ PDF</button>
   `;
 
   box.appendChild(wrap);
@@ -2826,8 +3126,6 @@ function updateAdminConversationOptions() {
     else if (act === "notes") openNotesPanel();
     else if (act === "mute") toggleConversationMute(conv.id);
     else if (act === "archive") toggleConversationArchive(conv.id);
-    else if (act === "csv") exportConversationCSV();
-    else if (act === "print") printConversation();
   });
 }
 
@@ -2838,6 +3136,7 @@ function updateAdminConversationOptions() {
 function wireAdminFeatures() {
   wireContactFilters();
   wireMessageSearch();
+  wireRenamePanel();
   wireNotesPanel();
   wireThemeMode();
 
@@ -3356,11 +3655,6 @@ function wireConversationOptions() {
     $("#chat-options-toggle")?.setAttribute("aria-expanded", String(willOpen));
   });
 
-  $("#chat-remove-member")?.addEventListener("click", async () => {
-    $("#chat-options-menu")?.classList.add("hidden");
-    await removeActiveChatMember();
-  });
-
   document.addEventListener("click", (event) => {
     const menu = $("#chat-options-menu");
     const trigger = $("#chat-options-toggle");
@@ -3742,7 +4036,7 @@ function buildContactRow(c, opts = {}) {
     </div>
 
     <div class="contact-info">
-      <div class="contact-name">
+      <div class="contact-name" dir="auto">
         ${escapeHtml(c.display_name)}
         ${
           c._ownerAdminName
@@ -4090,18 +4384,12 @@ function getActiveChatTargetId() {
 }
 
 function updateConversationOptions() {
-  const removeButton = $("#chat-remove-member");
-  if (!removeButton) return;
+  // «ملاحظات داخلية» عنصر للمشرفين فقط (لا يراه المستخدم العادي)
+  const isStaff = Boolean(state.me?.is_admin);
 
-  const canRemove = Boolean(
-    isActiveChatModerator() &&
-    getActiveChatTargetId() &&
-    String(getActiveChatTargetId()) !== String(state.me?.id)
-  );
+  $("#chat-notes-toggle")?.classList.toggle("hidden", !isStaff);
 
-  removeButton.classList.toggle("hidden", !canRemove);
-
-  // خيارات الإدارة (حالة/ملاحظات/كتم/أرشفة/تصدير)
+  // خيارات الإدارة (حالة/ملاحظات/كتم/أرشفة)
   updateAdminConversationOptions();
 }
 
@@ -4134,28 +4422,6 @@ async function getChatMemberRole(conversationId, userId) {
   }
 
   return data?.role || null;
-}
-
-async function removeActiveChatMember() {
-  const conversation = state.activeConversation;
-  const targetUserId = getActiveChatTargetId();
-
-  if (!conversation?.id || !isActiveChatModerator() || !targetUserId) return;
-  if (!window.confirm("حذف المستخدم من هذه المحادثة؟")) return;
-
-  const { error } = await supabase.rpc("remove_chat_member", {
-    p_conversation_id: conversation.id,
-    p_user_id: targetUserId,
-  });
-
-  if (error) {
-    showAuthError("تعذّر حذف المستخدم من المحادثة: " + error.message);
-    return;
-  }
-
-  closeChatView();
-  await loadContacts();
-  showAuthError("تم حذف المستخدم من المحادثة.");
 }
 
 async function openConversation(otherProfile) {
@@ -4255,6 +4521,8 @@ async function openConversation(otherProfile) {
 
     $("#chat-header-name").textContent =
       otherProfile.display_name;
+
+    $("#chat-header-name")?.setAttribute("dir", "auto");
 
     $("#chat-header-avatar").src =
       otherProfile.avatar_url || "";
@@ -6796,7 +7064,7 @@ function subscribeToConversation(
           );
 
           if (isIncoming) {
-            playNotificationSound();
+            notifySoundFor(conversationId);
 
             // المحادثة مفتوحة، لذلك لا نزيد العداد.
             clearUnreadBadge(
@@ -7389,7 +7657,7 @@ function subscribeGlobalMessageWatch() {
             persistDeliveredStatus(msg.id);
           }
 
-          playNotificationSound();
+          notifySoundFor(msg.conversation_id);
         }
       )
       .subscribe((status) => {
@@ -7487,6 +7755,36 @@ function unlockAudio() {
   }
 
   getAudioContext();
+}
+
+// ---------------------------------------------------------------
+// هل المستخدم فاتح نفس صفحة الدردشة التي وصلتها الرسالة؟
+// إن كان كذلك: لا نغمة إشعار (مثل واتساب تماماً).
+// ---------------------------------------------------------------
+function isViewingConversation(conversationId) {
+  if (!conversationId) return false;
+
+  // 1) نفس المحادثة مفتوحة في الحالة
+  const active = state.activeConversation?.id;
+
+  if (!active || String(active) !== String(conversationId)) return false;
+
+  // 2) الصفحة أمام المستخدم فعلاً (لا في الخلفية)
+  if (document.visibilityState !== "visible") return false;
+
+  // 3) لوحة الدردشة معروضة (لا القائمة) — body.viewing-chat يضبطها فتح الدردشة
+  if (!document.body.classList.contains("viewing-chat")) return false;
+
+  const chatActive = document.getElementById("chat-active");
+
+  return Boolean(chatActive && !chatActive.classList.contains("hidden"));
+}
+
+// صوت الإشعار مشروط: لا صوت للمحادثة المفتوحة أمام المستخدم
+function notifySoundFor(conversationId) {
+  if (isViewingConversation(conversationId)) return;
+
+  playNotificationSound();
 }
 
 function playNotificationSound() {
