@@ -34,7 +34,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "26";
+const BUILD = "27";
 
 const state = {
   me: null,
@@ -1264,6 +1264,8 @@ function renderFontSizeChoices() {
       localStorage.setItem("wa_fontscale", f.value);
       applyFontScale();
       renderFontSizeChoices();
+      // حجم الخط يتغيّر ⇒ نُعيد حساب ارتفاع خانة الكتابة حتى لا يُقطع النص
+      setTimeout(autoGrowComposer, 0);
     });
 
     box.appendChild(btn);
@@ -2800,11 +2802,46 @@ function wireAppHeight() {
 
   appHeightWired = true;
 
-  window.visualViewport?.addEventListener("resize", syncAppHeight);
+  const onViewportChange = () => {
+    syncAppHeight();
+    autoGrowComposer();
+  };
+
+  window.visualViewport?.addEventListener("resize", onViewportChange);
   window.visualViewport?.addEventListener("scroll", syncAppHeight);
-  window.addEventListener("resize", syncAppHeight);
-  window.addEventListener("orientationchange", () => setTimeout(syncAppHeight, 250));
-  document.addEventListener("focusin", () => setTimeout(syncAppHeight, 300));
+  window.addEventListener("resize", onViewportChange);
+  window.addEventListener("orientationchange", () => setTimeout(onViewportChange, 250));
+  document.addEventListener("focusin", () => setTimeout(onViewportChange, 300));
+
+  // عند بدء الكتابة: نتأكد أن الشريط كامل داخل المنطقة المرئية (لا يختفي تحت الكيبورد)
+  document.addEventListener(
+    "focusin",
+    (event) => {
+      if (!event.target?.closest?.(".composer")) return;
+
+      setTimeout(() => {
+        syncAppHeight();
+        autoGrowComposer();
+
+        const composer = document.querySelector(".composer");
+        const vv = window.visualViewport;
+
+        if (!composer || !vv) return;
+
+        const viewBottom = vv.height + (vv.offsetTop || 0);
+        const overlap = composer.getBoundingClientRect().bottom - viewBottom;
+
+        if (overlap > 1) {
+          document.documentElement.style.setProperty(
+            "--app-height",
+            Math.max(320, Math.round(vv.height - overlap - 6)) + "px"
+          );
+          autoGrowComposer();
+        }
+      }, 80);
+    },
+    true
+  );
 }
 
 // ===============================================================
@@ -3169,13 +3206,32 @@ function autoGrowComposer() {
   const box = $("#composer-input");
   if (!box || box.tagName !== "TEXTAREA") return;
 
-  const MAX_HEIGHT = 132;
+  // وهو مخفي لا يمكن قياسه: أي ارتفاع نحسبه هنا يكون صغيراً فيُقطع النص لاحقاً
+  if (!box.getClientRects().length) {
+    box.style.height = "";
+    box.classList.remove("composer-grown");
+    return;
+  }
+
+  const cs = getComputedStyle(box);
+  const scale = parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue("--wa-font-scale")
+  ) || 1;
+
+  const lineHeight = parseFloat(cs.lineHeight) || 24;
+  const paddingV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  const oneLine = Math.ceil(lineHeight + paddingV);
+  const MAX_HEIGHT = Math.round(Math.min(132 * scale, window.innerHeight * 0.45));
 
   box.style.height = "auto";
 
-  box.style.height = Math.min(box.scrollHeight, MAX_HEIGHT) + "px";
-  box.classList.toggle("composer-grown", box.scrollHeight > MAX_HEIGHT);
+  // لا نصغر عن سطر واحد أبداً ⇒ النص المكتوب يظهر دائماً
+  const needed = Math.max(oneLine, box.scrollHeight);
+
+  box.style.height = Math.min(needed, MAX_HEIGHT) + "px";
+  box.classList.toggle("composer-grown", needed > MAX_HEIGHT);
 }
+
 
 // مثل واتساب: 🎤 والحقل فارغ، و➤ عند الكتابة
 function updateComposerButtons() {
@@ -4203,28 +4259,48 @@ async function loadMessages(conversationId) {
 // ===============================================================
 
 async function loadReactionsForConversation() {
-  state.reactions = {};
+  // نحتفظ بالتفاعلات التي أضافها المستخدم ولم تُحفظ بعد (المعلّقة) حتى لا
+  // «تختفي» شريحة التفاعل إذا تأخر الحفظ أو تعذّرت قراءته.
+  const pending = {};
 
-  const ids =
-    state.messages.map(
-      (m) => m.id
+  Object.entries(state.reactions || {}).forEach(([mid, list]) => {
+    const keep = (list || []).filter(
+      (r) => r && r.user_id === state.me?.id && String(r.id).startsWith("tmp-")
     );
 
-  if (!ids.length) return;
+    if (keep.length) pending[mid] = keep;
+  });
 
-  const { data } = await supabase
-    .from("message_reactions")
-    .select("*")
-    .in("message_id", ids);
+  state.reactions = {};
 
-  (data || []).forEach((r) => {
-    if (!state.reactions[r.message_id]) {
-      state.reactions[r.message_id] = [];
-    }
+  const ids = state.messages.map((m) => m.id);
 
-    state.reactions[
-      r.message_id
-    ].push(r);
+  if (ids.length) {
+    const { data, error } = await supabase
+      .from("message_reactions")
+      .select("*")
+      .in("message_id", ids);
+
+    if (error) console.warn("تعذّرت قراءة التفاعلات:", error.message);
+
+    (data || []).forEach((r) => {
+      if (!state.reactions[r.message_id]) {
+        state.reactions[r.message_id] = [];
+      }
+
+      state.reactions[r.message_id].push(r);
+    });
+  }
+
+  // ادمج المعلّق مع المحفوظ بلا تكرار
+  Object.entries(pending).forEach(([mid, list]) => {
+    const current = state.reactions[mid] || (state.reactions[mid] = []);
+
+    list.forEach((p) => {
+      const dup = current.some((r) => r.user_id === p.user_id && r.emoji === p.emoji);
+
+      if (!dup) current.push(p);
+    });
   });
 
   renderMessages();
@@ -4895,6 +4971,8 @@ function getQuickReactPanel() {
         `<button type="button" class="quick-react-opt" role="menuitem" data-emoji="${emoji}">${emoji}</button>`
     ).join("");
 
+    panel.addEventListener("pointerdown", (event) => event.stopPropagation());
+    panel.addEventListener("pointerup", (event) => event.stopPropagation());
     panel.addEventListener("click", (event) => {
       const emoji = event.target.closest(".quick-react-opt")?.dataset.emoji;
       if (!emoji) return;
@@ -4927,15 +5005,48 @@ function positionQuickReactPanel() {
   const margin = 8;
   const gap = 10;
 
-  let top = rect.top - ph - gap;
-  if (top < margin) top = Math.min(rect.bottom + gap, window.innerHeight - ph - margin);
+  // نستخدم «المنطقة المرئية» فعلياً (مهم في آيفون عند ظهور الكيبورد أو شريط المتصفح)
+  const vv = window.visualViewport;
+  const viewTop = vv ? vv.offsetTop || 0 : 0;
+  const viewLeft = vv ? vv.offsetLeft || 0 : 0;
+  const viewW = vv ? vv.width : window.innerWidth;
+  const viewH = vv ? vv.height : window.innerHeight;
 
-  let left = rect.left + rect.width / 2 - pw / 2;
-  left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin));
-  top = Math.max(margin, Math.min(top, window.innerHeight - ph - margin));
+  // الإحداثيات نسبةً إلى المنطقة المرئية
+  const rectTop = rect.top - viewTop;
+  const rectBottom = rect.bottom - viewTop;
+  const rectLeft = rect.left - viewLeft;
 
-  panel.style.top = `${Math.round(top)}px`;
-  panel.style.left = `${Math.round(left)}px`;
+  let top = rectTop - ph - gap;
+  if (top < margin) top = Math.min(rectBottom + gap, viewH - ph - margin);
+
+  let left = rectLeft + rect.width / 2 - pw / 2;
+  left = Math.max(margin, Math.min(left, viewW - pw - margin));
+  top = Math.max(margin, Math.min(top, viewH - ph - margin));
+
+  panel.style.top = `${Math.round(top + viewTop)}px`;
+  panel.style.left = `${Math.round(left + viewLeft)}px`;
+
+  // شبكة أمان: لا ندع اللوحة تخرج عن الشاشة بأي حال (كانت قد تختفي في آيفون)
+  const pr = panel.getBoundingClientRect();
+  const outside =
+    pr.bottom < viewTop + 4 ||
+    pr.top > viewTop + viewH - 4 ||
+    pr.right < viewLeft + 4 ||
+    pr.left > viewLeft + viewW - 4 ||
+    pr.width === 0 ||
+    pr.height === 0;
+
+  if (outside) {
+    const centeredTop = Math.round(viewTop + Math.max(margin, (viewH - ph) / 2));
+    const centeredLeft = Math.round(viewLeft + Math.max(margin, (viewW - pw) / 2));
+
+    panel.style.top = `${centeredTop}px`;
+    panel.style.left = `${centeredLeft}px`;
+    panel.classList.add("panel-centered");
+  } else {
+    panel.classList.remove("panel-centered");
+  }
 }
 
 function closeQuickReact(force = false) {
@@ -4943,7 +5054,7 @@ function closeQuickReact(force = false) {
   // مهلة سماح: التمرير/تغيّر المقاس/النقرة الشبحية بعد رفع الإصبع كانت
   // تُغلق اللوحة فور فتحها فتظهر "تومض وتختفي". لا نُغلق داخل المهلة.
   // ---------------------------------------------------------------
-  if (!force && performance.now() - quickReactOpenedAt < 350) return;
+  if (!force && performance.now() - quickReactOpenedAt < 600) return;
 
   document
     .querySelectorAll(".bubble-row.react-open, .bubble-row.long-pressed")
@@ -5026,9 +5137,13 @@ function wireMessageLongPress(row, m, canDelete) {
     if (openedByPress) swallowClickUntil = performance.now() + 300;
   });
 
-  ["pointercancel", "pointerleave"].forEach((name) =>
-    row.addEventListener(name, cancel)
-  );
+  // الانزلاق البسيط أو إلغاء المؤشر (يحدث كثيراً في آيفون) يُلغي المؤقّت فقط،
+  // ولا يُغلق لوحة ظاهرة أبداً.
+  row.addEventListener("pointercancel", cancel);
+  row.addEventListener("pointerleave", (event) => {
+    if (event.pointerType === "touch") return;
+    cancel();
+  });
 
   // على الحاسوب: زر الفأرة الأيمن يفتح اللوحة أيضاً
   row.addEventListener("contextmenu", (event) => {
@@ -5330,13 +5445,43 @@ async function toggleReaction(messageId, emoji) {
         await supabase.from("message_reactions").delete().eq("id", existing.id);
       }
     } else {
-      const { error } = await supabase.from("message_reactions").insert({
-        message_id: messageId,
-        user_id: state.me.id,
-        emoji,
-      });
+      const { data: saved, error } = await supabase
+        .from("message_reactions")
+        .insert({
+          message_id: messageId,
+          user_id: state.me.id,
+          emoji,
+        })
+        .select()
+        .maybeSingle();
 
-      if (error) console.error("تعذّر حفظ التفاعل:", error.message);
+      if (error) {
+        console.error("تعذّر حفظ التفاعل:", error.message);
+
+        // فشل الحفظ: نُزيل الشريحة المعلّقة بدل تركها وهمية، ونخبر المستخدم
+        const list = state.reactions[messageId] || [];
+
+        state.reactions[messageId] = list.filter(
+          (r) => !(r.user_id === state.me.id && r.emoji === emoji && String(r.id).startsWith("tmp-"))
+        );
+
+        renderMessages();
+        showAuthError("تعذّر حفظ التفاعل — تأكد من الاتصال بالإنترنت");
+        return;
+      }
+
+      // استبدل الشريحة المؤقتة بالصف الحقيقي القادم من القاعدة
+      if (saved?.id) {
+        const list = state.reactions[messageId] || [];
+
+        state.reactions[messageId] = list.map((r) =>
+          r.user_id === state.me.id && r.emoji === emoji && String(r.id).startsWith("tmp-")
+            ? saved
+            : r
+        );
+
+        renderMessages();
+      }
 
       // تفاعل واحد فقط لكل مستخدم على الرسالة: نُزيل أي تفاعل آخر لنفس
       // المستخدم على نفس الرسالة (يشمل ما أُضيف في نافذة تحديث سابقة).

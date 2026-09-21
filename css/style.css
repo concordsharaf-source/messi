@@ -6449,3 +6449,33 @@ body.viewing-chat #chat-panel-container,
   letter-spacing: .8px;
   font-size: 11.5px !important;
 }
+
+/* =============================================================
+   §31 إصلاحات: النص المقطوع في خانة الكتابة + ثبات لوحة التفاعل
+   ============================================================= */
+
+/* خانة الكتابة: لا تقل عن سطر واحد مهما كان حجم الخط المختار */
+.composer textarea {
+  min-height: calc(42px * var(--wa-font-scale)) !important;
+  max-height: min(calc(130px * var(--wa-font-scale)), 46vh) !important;
+  line-height: 1.45 !important;
+}
+
+/* على الجوال: لا نسمح للضغط المطول بإظهار قوائم النظام أو تكبير الصفحة */
+.bubble,
+.bubble-row,
+.reaction-chip {
+  touch-action: manipulation;
+}
+
+/* لوحة التفاعل: في الحالات الشاذة تُوسَّط في الشاشة بدل أن تختفي */
+#quick-react-panel-global.panel-centered {
+  position: fixed !important;
+  z-index: 1002;
+}
+
+/* شريحة التفاعل: تبقى ظاهرة حتى لو أعاد التطبيق الرسم */
+.reaction-chip {
+  animation: chipIn .16s ease-out;
+  will-change: transform;
+}
