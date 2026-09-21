@@ -147,6 +147,9 @@ $$;
 --
 --    ✅ الطريقة الصحيحة: يسجّل الشخص حسابه أولاً، ثم يُرقّى عبر
 --       sql/promote_admins.sql (استعلام واحد).
+-- ملاحظة: حسابات تسجيل «رقم الهاتف» (بلا كلمة مرور) تُنشأ ببريد داخلي
+-- على النطاق wa-walid.app، وهو لا يجب أن يظهر في الملف الشخصي إطلاقاً.
+-- لذلك نأخذ البريد الظاهر من contact_email (اختياري)، وإن لم يوجد يبقى null.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -154,20 +157,41 @@ security definer
 set search_path = public
 as $$
 declare
-  v_email text;
+  v_email  text;
+  v_name   text;
+  v_avatar text;
 begin
   v_email := lower(coalesce(new.email, ''));
 
-  insert into public.profiles (id, email, display_name, phone)
+  if v_email like '%@wa-walid.app' then
+    v_email := lower(coalesce(nullif(new.raw_user_meta_data ->> 'contact_email', ''), ''));
+  end if;
+
+  v_name := coalesce(
+    nullif(new.raw_user_meta_data ->> 'display_name', ''),
+    nullif(new.raw_user_meta_data ->> 'full_name', ''),
+    nullif(new.raw_user_meta_data ->> 'name', ''),
+    nullif(split_part(v_email, '@', 1), ''),
+    'مستخدم'
+  );
+
+  v_avatar := coalesce(
+    nullif(new.raw_user_meta_data ->> 'avatar_url', ''),
+    nullif(new.raw_user_meta_data ->> 'picture', '')
+  );
+
+  insert into public.profiles (id, email, display_name, phone, avatar_url)
   values (
     new.id,
-    new.email,
-    coalesce(new.raw_user_meta_data ->> 'display_name', split_part(v_email, '@', 1)),
-    new.raw_user_meta_data ->> 'phone'
+    nullif(v_email, ''),
+    v_name,
+    nullif(new.raw_user_meta_data ->> 'phone', ''),
+    v_avatar
   )
   on conflict (id) do update
     set email        = coalesce(excluded.email, public.profiles.email),
-        display_name = coalesce(excluded.display_name, public.profiles.display_name);
+        display_name = coalesce(nullif(public.profiles.display_name, ''), excluded.display_name),
+        avatar_url   = coalesce(public.profiles.avatar_url, excluded.avatar_url);
 
   return new;
 end;
@@ -185,14 +209,41 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_auth_email text;
+  v_contact    text;
+  v_is_phone   boolean;
 begin
+  v_auth_email := lower(coalesce(new.email, ''));
+  v_is_phone   := v_auth_email like '%@wa-walid.app';
+  v_contact    := lower(coalesce(nullif(new.raw_user_meta_data ->> 'contact_email', ''), ''));
+
   update public.profiles
-     set email        = coalesce(new.email, email),
-         display_name = coalesce(new.raw_user_meta_data ->> 'display_name', display_name)
+     set email = case
+                   when v_is_phone then nullif(v_contact, '')
+                   else coalesce(nullif(v_auth_email, ''), email)
+                 end,
+         display_name = coalesce(
+           nullif(display_name, ''),
+           nullif(new.raw_user_meta_data ->> 'display_name', ''),
+           nullif(new.raw_user_meta_data ->> 'full_name', ''),
+           nullif(new.raw_user_meta_data ->> 'name', ''),
+           'مستخدم'
+         ),
+         avatar_url = coalesce(
+           nullif(avatar_url, ''),
+           nullif(new.raw_user_meta_data ->> 'avatar_url', ''),
+           nullif(new.raw_user_meta_data ->> 'picture', '')
+         )
    where id = new.id;
   return new;
 end;
 $$;
+
+-- رقم الهاتف فريد: لا يمكن لحسابين أن يتشاركا الرقم نفسه
+create unique index if not exists profiles_phone_unique
+  on public.profiles (phone)
+  where phone is not null and phone <> '';
 
 drop trigger if exists on_auth_user_updated on auth.users;
 create trigger on_auth_user_updated

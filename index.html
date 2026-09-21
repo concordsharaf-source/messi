@@ -13,6 +13,15 @@
   <meta property="og:url" content="https://messenger-gamma-five.vercel.app/" />
   <meta property="og:type" content="website" />
 
+  <!-- شاشة إقلاع آيفون: تُزيل الشاشة البيضاء قبل ظهور التطبيق -->
+  <link rel="apple-touch-startup-image" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash/splash-1290x2796.jpg">
+  <link rel="apple-touch-startup-image" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash/splash-1284x2778.jpg">
+  <link rel="apple-touch-startup-image" media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash/splash-1179x2556.jpg">
+  <link rel="apple-touch-startup-image" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash/splash-1170x2532.jpg">
+  <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash/splash-1242x2688.jpg">
+  <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)" href="./icons/splash/splash-1125x2436.jpg">
+  <link rel="apple-touch-startup-image" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)" href="./icons/splash/splash-828x1792.jpg">
+  <link rel="apple-touch-startup-image" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)" href="./icons/splash/splash-750x1334.jpg">
   <link rel="manifest" href="./manifest.json">
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
@@ -22,7 +31,36 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "25";
+  window.WA_BUILD = "26";
+
+  // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
+  window.__splashStart = performance.now();
+
+  (function () {
+    function applyViewport() {
+      var vv = window.visualViewport;
+      var h = Math.round((vv && vv.height) || window.innerHeight || 0);
+      var t = Math.round((vv && vv.offsetTop) || 0);
+
+      if (h > 0) document.documentElement.style.setProperty("--app-height", h + "px");
+      document.documentElement.style.setProperty("--app-top", t + "px");
+    }
+
+    applyViewport();
+    window.addEventListener("resize", applyViewport);
+    window.addEventListener("orientationchange", applyViewport);
+    if (window.visualViewport) {
+      visualViewport.addEventListener("resize", applyViewport);
+      visualViewport.addEventListener("scroll", applyViewport);
+    }
+
+    // شبكة أمان: إن تعذّر التحميل لأي سبب، لا تبقى شاشة الانتظار عالقة
+    setTimeout(function () {
+      var el = document.getElementById("boot-loading");
+      if (el && !el.classList.contains("splash-out")) window.__hideSplash?.();
+    }, 9000);
+  })();
+
   (function () {
     try {
       var KEY = "wa_build_seen";
@@ -52,15 +90,46 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=25" />
+  <link rel="stylesheet" href="./css/style.css?v=26" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
 <body data-theme="dark">
 
 <!-- شاشة تحميل أولية: تمنع ظهور شاشة الدخول للحظة قبل التحقق من الجلسة المخزنة -->
-<div id="boot-loading" class="boot-loading">
-  <div class="boot-spinner"></div>
+<div id="boot-loading" class="splash">
+  <div class="splash-bg" aria-hidden="true"></div>
+
+  <div class="splash-center">
+    <div class="splash-logo">
+      <svg viewBox="0 0 120 120" class="splash-mark" aria-hidden="true">
+        <defs>
+          <linearGradient id="splashGreen" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#5ee24c"/>
+            <stop offset="100%" stop-color="#17a05e"/>
+          </linearGradient>
+          <filter id="splashGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="5" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+
+        <circle class="splash-disc" cx="60" cy="60" r="46" fill="url(#splashGreen)"/>
+        <circle class="splash-ring" cx="60" cy="60" r="52" fill="none" stroke="#25d366" stroke-width="2.5"
+                stroke-linecap="round" filter="url(#splashGlow)"/>
+
+        <g class="splash-glyph">
+          <path fill="#fff" d="M60 30c-16.6 0-30 12.5-30 27.9 0 4.9 1.4 9.5 3.9 13.5L30 90l19-4.5c3.4 1.6 7.2 2.5 11 2.5 16.6 0 30-12.5 30-27.9S76.6 30 60 30z" opacity=".14"/>
+          <path fill="#fff" d="M46.9 44.4c-.9-2-1.8-2-2.7-2.1h-2.3c-.8 0-2.1.3-3.2 1.5-1.1 1.2-4.2 4.1-4.2 10s4.3 11.6 4.9 12.4c.6.8 8.3 13.2 20.3 18 10 4 12 3.2 14.2 3s7-2.9 8-5.6c1-2.8 1-5.2.7-5.6-.3-.5-1.1-.8-2.3-1.4-1.2-.6-7-3.4-8.1-3.8-1.1-.4-1.9-.6-2.7.6-.8 1.2-3.1 3.9-3.8 4.7-.7.8-1.4.9-2.6.3-1.2-.6-5-1.9-9.6-5.9-3.5-3.2-5.9-7-6.6-8.2-.7-1.2-.1-1.9.5-2.5.5-.5 1.2-1.4 1.8-2.1.6-.7.8-1.2 1.2-2 .4-.8.2-1.5-.1-2.1-.3-.6-2.6-6.4-3.6-8.7z"/>
+        </g>
+      </svg>
+    </div>
+
+    <div class="splash-title">واتساب الوليد</div>
+    <div class="splash-sub">محادثات فورية · آمنة</div>
+
+    <div class="splash-bar"><span></span></div>
+  </div>
 </div>
 
 <!-- ================= AUTH SCREEN ================= -->
@@ -80,16 +149,34 @@
     <p id="auth-error" class="auth-error hidden"></p>
 
     <form id="login-form" class="auth-form">
-      <input id="login-email" type="email" required data-i18n-placeholder="email" placeholder="البريد الإلكتروني" />
-      <input id="login-password" type="password" required data-i18n-placeholder="password" placeholder="كلمة المرور" />
-      <button type="submit" data-i18n="login_btn">دخول</button>
+      <div id="login-quick" class="login-quick hidden">
+        <div class="login-quick-name" id="login-quick-name"></div>
+        <button type="button" id="btn-quick-login" class="login-quick-btn">👋 دخول سريع بهذا الجهاز</button>
+      </div>
+
+      <div id="login-email-wrap">
+        <input id="login-email" type="email" autocomplete="email" data-i18n-placeholder="email" placeholder="البريد الإلكتروني" />
+        <input id="login-password" type="password" autocomplete="current-password" data-i18n-placeholder="password" placeholder="كلمة المرور" />
+        <button type="submit" data-i18n="login_btn">دخول</button>
+        <button type="button" id="btn-phone-mode" class="auth-link">📱 الدخول برقم الهاتف (بلا كلمة مرور)</button>
+      </div>
+
+      <div id="login-phone-wrap" class="hidden">
+        <input id="login-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="رقم الهاتف" />
+        <input id="login-phone-name" type="text" placeholder="الاسم كما سجّلت به" />
+        <button type="submit" id="btn-phone-login" class="auth-submit-phone">دخول برقم الهاتف</button>
+        <button type="button" id="btn-email-mode" class="auth-link">↩ الدخول بالبريد الإلكتروني</button>
+      </div>
     </form>
 
     <form id="signup-form" class="auth-form hidden">
-      <input id="signup-name" type="text" required data-i18n-placeholder="display_name" placeholder="اسم المستخدم" />
-      <input id="signup-email" type="email" required data-i18n-placeholder="email" placeholder="البريد الإلكتروني" />
-      <input id="signup-phone" type="tel" data-i18n-placeholder="phone" placeholder="رقم الهاتف (اختياري)" />
-      <input id="signup-password" type="password" required minlength="6" data-i18n-placeholder="password" placeholder="كلمة المرور" />
+      <input id="signup-name" type="text" required autocomplete="name" placeholder="الاسم الكامل (مطلوب)" />
+      <input id="signup-phone" type="tel" required inputmode="tel" autocomplete="tel" placeholder="رقم الهاتف (مطلوب)" />
+      <input id="signup-email" type="email" autocomplete="email" placeholder="البريد الإلكتروني (اختياري)" />
+      <div class="auth-note">
+        📱 اكتب رقمك مباشرة (مثال: <b dir="ltr">771234567</b>) — نضيف مفتاح الدولة تلقائياً.<br>
+        🔒 لا تحتاج كلمة مرور: يعتمد التطبيق <b>بصمة مستخدم</b> من رقمك واسمك ومعلومات جهازك، ويسجّل دخولك تلقائياً.
+      </div>
       <button type="submit" data-i18n="signup_btn">إنشاء الحساب</button>
     </form>
 
@@ -153,6 +240,9 @@
       <!-- ============ 1) الملف الشخصي ============ -->
       <details class="admin-block" open>
         <summary>👤 <span data-i18n="profile">الملف الشخصي</span><span class="block-value" id="value-profile"></span></summary>
+
+        <!-- بصمة المستخدم: الرقم + الاسم + معلومات الجهاز -->
+        <div id="identity-box" class="identity-box"></div>
 
         <details class="admin-sub">
           <summary>🖼️ <span data-i18n="profile_picture">الصورة الشخصية</span></summary>
@@ -291,7 +381,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v25</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v26</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -333,7 +423,7 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 <div id="global-toast" class="global-toast hidden"></div>
 
-<script type="module" src="./js/app.js?v=25"></script>
+<script type="module" src="./js/app.js?v=26"></script>
 
 </body>
 </html>

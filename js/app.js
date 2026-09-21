@@ -1,5 +1,19 @@
 import { supabase } from "./supabaseClient.js";
-import { signUp, signIn, signOut, getCurrentProfile } from "./auth.js";
+import {
+  signUp,
+  signIn,
+  signOut,
+  getCurrentProfile,
+  signUpWithPhone,
+  signInWithPhone,
+} from "./auth.js";
+import {
+  getLocalIdentity,
+  clearLocalIdentity,
+  deviceStamp,
+  prettyPhone,
+  buildFingerprint,
+} from "./identity.js";
 import { applyLanguage } from "./i18n.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
 import {
@@ -20,7 +34,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "25";
+const BUILD = "26";
 
 const state = {
   me: null,
@@ -111,15 +125,19 @@ async function boot() {
   wireAuthForms();
   wireChrome();
 
-  $("#boot-loading")?.classList.add("hidden");
-
+  // نُظهر الشاشة المطلوبة أولاً، ثم نُخرج شاشة الانتظار بتلاشٍ متقاطع
+  // (بهذا لا تظهر أي لحظة سوداء بين الشاشتين).
   if (session) {
     await enterApp();
+
+    await revealApp();
 
     // إن جاء المستخدم من زر «رد سريع» في الإشعار: نُرسل الرد فوراً
     await handleUrlQuickReply();
   } else {
     showAuthScreen();
+
+    await revealApp();
   }
 
   // دورة FCM مرتبطة بمصدر الحقيقة الوحيد للمصادقة. نستخدم setTimeout حتى
@@ -142,13 +160,6 @@ async function boot() {
         showAuthScreen();
       }
     }, 0);
-  });
-
-  window.addEventListener("beforeunload", () => {
-    if (state.me) {
-      navigator.sendBeacon &&
-        navigator.sendBeacon("about:blank");
-    }
   });
 
   document.addEventListener("visibilitychange", async () => {
@@ -288,6 +299,10 @@ function showAuthScreen() {
   $("#app-shell")?.classList.add("hidden");
 
   refreshPWAInstallButton();
+
+  try {
+    renderQuickLogin();
+  } catch (e) {}
 }
 
 // ===============================================================
@@ -494,32 +509,182 @@ function wireAuthForms() {
     }
   });
 
+  // ===== إنشاء حساب: الرقم مطلوب، الاسم مطلوب، البريد اختياري وبلا كلمة مرور =====
   $("#signup-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const email = $("#signup-email").value.trim();
-    const password = $("#signup-password").value;
     const displayName = $("#signup-name").value.trim();
     const phone = $("#signup-phone").value.trim();
+    const email = $("#signup-email")?.value.trim() || "";
 
+    if (!displayName) {
+      showAuthError("أدخل الاسم الكامل");
+      return;
+    }
+
+    if (!isPhoneValid(phone)) {
+      showAuthError("أدخل رقم هاتف صحيح — مثال: 771234567 أو 967771234567");
+      return;
+    }
+
+    await withBusy("#signup-form button[type=submit]", "جارٍ إنشاء الحساب…", async () => {
+      try {
+        await signUpWithPhone({ displayName, phone, email });
+        await enterApp();
+      } catch (err) {
+        showAuthError(err.message);
+      }
+    });
+  });
+
+  // ===== الدخول برقم الهاتف (بلا كلمة مرور) =====
+  $("#btn-phone-mode")?.addEventListener("click", () => setLoginMode("phone"));
+  $("#btn-email-mode")?.addEventListener("click", () => setLoginMode("email"));
+
+  $("#btn-phone-login")?.addEventListener("click", async (e) => {
+    e.preventDefault();
+    await submitPhoneLogin();
+  });
+
+  $("#login-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    // إن كان مسار الهاتف ظاهراً فالنموذج يخصّه
+    if (!$("#login-phone-wrap")?.classList.contains("hidden")) {
+      await submitPhoneLogin();
+      return;
+    }
+
+    const email = $("#login-email").value.trim();
+    const password = $("#login-password").value;
+
+    if (!email || !password) {
+      showAuthError("أدخل البريد وكلمة المرور");
+      return;
+    }
+
+    await withBusy("#login-form button[type=submit]", "جارٍ الدخول…", async () => {
+      try {
+        await signIn({ email, password });
+        await enterApp();
+      } catch (err) {
+        showAuthError(err.message);
+      }
+    });
+  });
+
+  // ===== دخول سريع ببصمة هذا الجهاز =====
+  $("#btn-quick-login")?.addEventListener("click", async () => {
+    const id = getLocalIdentity();
+
+    if (!id?.phone || !id?.name) {
+      showAuthError("لا توجد بصمة محفوظة على هذا الجهاز — استخدم رقم الهاتف والاسم");
+      return;
+    }
+
+    await withBusy("#btn-quick-login", "جارٍ الدخول…", async () => {
+      try {
+        await signInWithPhone({ displayName: id.name, phone: id.phone });
+        await enterApp();
+      } catch (err) {
+        showAuthError(err.message);
+        setLoginMode("phone");
+        const p = $("#login-phone");
+        const n = $("#login-phone-name");
+
+        if (p) p.value = id.phonePretty || "";
+        if (n) n.value = id.name || "";
+      }
+    });
+  });
+
+  renderQuickLogin();
+}
+
+// -------------------- أدوات المصادقة --------------------
+
+function isPhoneValid(raw) {
+  const digits = String(raw || "")
+    .replace(/[^\d+]/g, "")
+    .replace(/^\+/, "");
+
+  return digits.length >= 8 && digits.length <= 15;
+}
+
+async function withBusy(selector, label, fn) {
+  const btn = document.querySelector(selector);
+  const original = btn?.textContent;
+
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.busy = "1";
+    btn.textContent = label;
+  }
+
+  try {
+    return await fn();
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      delete btn.dataset.busy;
+      if (original) btn.textContent = original;
+    }
+  }
+}
+
+function setLoginMode(mode) {
+  const phoneWrap = $("#login-phone-wrap");
+  const emailWrap = $("#login-email-wrap");
+
+  if (!phoneWrap || !emailWrap) return;
+
+  const isPhone = mode === "phone";
+
+  phoneWrap.classList.toggle("hidden", !isPhone);
+  emailWrap.classList.toggle("hidden", isPhone);
+}
+
+async function submitPhoneLogin() {
+  const phone = $("#login-phone")?.value.trim() || "";
+  const name = $("#login-phone-name")?.value.trim() || "";
+
+  if (!isPhoneValid(phone)) {
+    showAuthError("أدخل رقم هاتف صحيح");
+    return;
+  }
+
+  if (!name) {
+    showAuthError("أدخل الاسم كما سجّلت به");
+    return;
+  }
+
+  await withBusy("#btn-phone-login", "جارٍ الدخول…", async () => {
     try {
-      await signUp({
-        email,
-        password,
-        displayName,
-        phone,
-      });
-
-      await signIn({
-        email,
-        password,
-      });
-
+      await signInWithPhone({ displayName: name, phone });
       await enterApp();
     } catch (err) {
       showAuthError(err.message);
     }
   });
+}
+
+/** بطاقة الدخول السريع: تظهر إن وُجدت بصمة لهذا الجهاز */
+export function renderQuickLogin() {
+  const box = document.getElementById("login-quick");
+  const label = document.getElementById("login-quick-name");
+
+  if (!box || !label) return;
+
+  const id = getLocalIdentity();
+  const hasIdentity = Boolean(id?.phone && id?.name);
+
+  box.classList.toggle("hidden", !hasIdentity);
+
+  if (hasIdentity) {
+    label.textContent = `هذا الجهاز مسجّل باسم: ${id.name} — ${prettyPhone(id.phone)}${
+      id.fingerprint ? ` · بصمة ${String(id.fingerprint).slice(0, 8).toUpperCase()}` : ""
+    }`;
+  }
 }
 
 function switchAuthTab(which) {
@@ -2642,6 +2807,50 @@ function wireAppHeight() {
   document.addEventListener("focusin", () => setTimeout(syncAppHeight, 300));
 }
 
+// ===============================================================
+// شاشة الانتظار: مؤثر خروج هادئ ثم ظهور التطبيق
+// ===============================================================
+
+function splashElement() {
+  return document.getElementById("boot-loading");
+}
+
+async function revealApp() {
+  const el = splashElement();
+
+  if (!el || el.classList.contains("hidden")) {
+    document.body.classList.add("app-reveal");
+    return;
+  }
+
+  // أقل مدة عرض حتى تكتمل الحركة ولا تبدو الشاشة «قفزة»
+  const started = Number(window.__splashStart) || performance.now();
+  const MIN_SHOW = 820;
+  const elapsed = performance.now() - started;
+
+  if (elapsed < MIN_SHOW) {
+    await new Promise((r) => setTimeout(r, MIN_SHOW - elapsed));
+  }
+
+  el.classList.add("splash-out");
+  document.body.classList.add("app-reveal");
+
+  await new Promise((r) => setTimeout(r, 500));
+
+  el.classList.add("hidden");
+  el.setAttribute("aria-hidden", "true");
+}
+
+// تُستدعى من الحارس في الصفحة كشبكة أمان (إن تعثّر الإقلاع)
+window.__hideSplash = () => {
+  const el = splashElement();
+
+  if (!el || el.classList.contains("hidden")) return;
+
+  el.classList.add("splash-out");
+  setTimeout(() => el.classList.add("hidden"), 500);
+};
+
 function wireChrome() {
   wireAppHeight();
 
@@ -2787,6 +2996,21 @@ function syncSettingsValues() {
   };
 
   put("#value-profile", state.me?.display_name || state.me?.email || "");
+
+  // بصمة المستخدم (رقم + اسم + جهاز)
+  const idBox = document.getElementById("identity-box");
+
+  if (idBox) {
+    const local = getLocalIdentity();
+    const fp = local?.fingerprint ? String(local.fingerprint).slice(0, 10).toUpperCase() : "—";
+    const phone = state.me?.phone || local?.phonePretty || "—";
+
+    idBox.innerHTML = `
+      <div class="identity-row"><span>الاسم</span><b>${escapeHtml(state.me?.display_name || "—")}</b></div>
+      <div class="identity-row"><span>رقم الهاتف</span><b dir="ltr">${escapeHtml(phone)}</b></div>
+      <div class="identity-row"><span>الجهاز الحالي</span><b>${escapeHtml(deviceStamp())}</b></div>
+      <div class="identity-row"><span>بصمة المستخدم</span><b dir="ltr" class="identity-fp">${escapeHtml(fp)}</b></div>`;
+  }
 
   const modeEl = $("#theme-mode");
   const mode = (modeEl && modeEl.value) || localStorage.getItem("wa_theme_mode") || "manual";
