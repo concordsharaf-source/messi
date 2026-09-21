@@ -160,6 +160,7 @@ declare
   v_email  text;
   v_name   text;
   v_avatar text;
+  v_phone  text;
 begin
   v_email := lower(coalesce(new.email, ''));
 
@@ -167,10 +168,13 @@ begin
     v_email := lower(coalesce(nullif(new.raw_user_meta_data ->> 'contact_email', ''), ''));
   end if;
 
+  v_phone := nullif(new.raw_user_meta_data ->> 'phone', '');
+
   v_name := coalesce(
     nullif(new.raw_user_meta_data ->> 'display_name', ''),
     nullif(new.raw_user_meta_data ->> 'full_name', ''),
     nullif(new.raw_user_meta_data ->> 'name', ''),
+    v_phone,                              -- بلا اسم؟ نعرض رقم الهاتف
     nullif(split_part(v_email, '@', 1), ''),
     'مستخدم'
   );
@@ -185,7 +189,7 @@ begin
     new.id,
     nullif(v_email, ''),
     v_name,
-    nullif(new.raw_user_meta_data ->> 'phone', ''),
+    v_phone,
     v_avatar
   )
   on conflict (id) do update

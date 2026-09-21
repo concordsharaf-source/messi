@@ -6454,11 +6454,18 @@ body.viewing-chat #chat-panel-container,
    §31 إصلاحات: النص المقطوع في خانة الكتابة + ثبات لوحة التفاعل
    ============================================================= */
 
-/* خانة الكتابة: لا تقل عن سطر واحد مهما كان حجم الخط المختار */
+/* خانة الكتابة: كبيرة من البداية (كانت ضيقة قبل الكتابة ثم تتوسّع) */
 .composer textarea {
-  min-height: calc(42px * var(--wa-font-scale)) !important;
-  max-height: min(calc(130px * var(--wa-font-scale)), 46vh) !important;
+  min-height: calc(62px * var(--wa-font-scale)) !important;
+  max-height: min(calc(150px * var(--wa-font-scale)), 46vh) !important;
   line-height: 1.45 !important;
+  padding-top: 17px !important;
+  padding-bottom: 17px !important;
+}
+
+/* أزرار الإرسال/المايك تُوسَّط مقابل الخانة الكبيرة */
+.composer button {
+  align-self: center !important;
 }
 
 /* على الجوال: لا نسمح للضغط المطول بإظهار قوائم النظام أو تكبير الصفحة */
@@ -6478,4 +6485,85 @@ body.viewing-chat #chat-panel-container,
 .reaction-chip {
   animation: chipIn .16s ease-out;
   will-change: transform;
+}
+
+/* =============================================================
+   §32 نموذج الهاتف: قائمة الدول بجانب الرقم + تلميح المفتاح
+   ============================================================= */
+
+.phone-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.phone-row .country-select {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 44%;
+  min-width: 118px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(134, 150, 160, .28);
+  background: #202c33;
+  color: #e9edef;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #8696a0 50%),
+                    linear-gradient(135deg, #8696a0 50%, transparent 50%);
+  background-position: left 12px top 55%, left 17px top 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+body[data-theme="light"] .phone-row .country-select {
+  background-color: #ffffff;
+  color: #111b21;
+  border-color: rgba(0, 0, 0, .14);
+}
+
+.phone-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.phone-hint {
+  font-size: 11.5px;
+  color: #8696a0;
+  margin-top: -4px;
+  padding-inline-start: 4px;
+}
+
+/* حقل كلمة المرور داخل الإعدادات */
+#my-password {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(134, 150, 160, .28);
+  background: #202c33;
+  color: #e9edef;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+body[data-theme="light"] #my-password {
+  background: #ffffff;
+  color: #111b21;
+  border-color: rgba(0, 0, 0, .14);
+}
+
+#btn-save-password { margin-top: 8px; }
+
+/* تنبيه قابل للنقر (لضبط كلمة المرور) */
+.global-toast.toast-clickable {
+  cursor: pointer;
+  border: 1px solid rgba(37, 211, 102, .45);
+  background: #16281f;
+  color: #d8f7e4;
+  font-weight: 700;
 }

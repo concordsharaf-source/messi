@@ -1,12 +1,11 @@
 import { supabase } from "./supabaseClient.js";
 import { removeFcmToken } from "./push.js";
 import {
-  deriveCredentials,
-  buildFingerprint,
-  saveLocalIdentity,
-  getLocalIdentity,
-  normalizePhone,
+  buildFullPhone,
   isValidPhone,
+  prettyPhone,
+  internalEmail,
+  digitsOnly,
 } from "./identity.js";
 
 export async function signUp({ email, password, displayName, phone }) {
@@ -117,55 +116,51 @@ export async function getCurrentProfile() {
 }
 
 // =============================================================
-// التسجيل برقم الهاتف — بلا كلمة مرور
-// التطبيق يربط: الرقم + الاسم + معلومات الجهاز ⇒ بصمة مستخدم،
-// ويشتق بيانات الاعتماد تلقائياً (لا يكتب المستخدم كلمة مرور).
+// التسجيل والدخول برقم الهاتف + كلمة مرور
+//   · رقم الهاتف: مطلوب (مع مفتاح الدولة)
+//   · كلمة المرور: مطلوبة
+//   · الاسم: اختياري   · البريد: اختياري
+//   · لا بصمة جهاز: الحساب يعمل من أي جهاز بنفس الرقم وكلمة المرور
 // =============================================================
 
-export async function signUpWithPhone({ displayName, phone, email }) {
+export async function signUpWithPhone({ phone, dial, password, displayName, email }) {
+  const full = buildFullPhone(phone, dial);
+  const pretty = prettyPhone(full);
+
+  if (!isValidPhone(phone, dial)) {
+    throw new Error("رقم الهاتف غير صحيح — اكتب رقمك بعد مفتاح الدولة");
+  }
+
+  if (!password || password.length < 6) {
+    throw new Error("كلمة المرور مطلوبة (٦ أحرف على الأقل)");
+  }
+
   const name = (displayName || "").trim();
-
-  if (!name) throw new Error("الاسم مطلوب");
-  if (!isValidPhone(phone)) throw new Error("رقم الهاتف غير صحيح — أدخل الرقم مع مفتاح الدولة أو بدونه");
-
-  const creds = await deriveCredentials({ name, phone });
-  const fp = await buildFingerprint({ name, phone });
   const contactEmail = (email || "").trim().toLowerCase();
+  const account = internalEmail(full);
 
   const metadata = {
-    display_name: name,
-    phone: creds.phonePretty,
-    phone_number: creds.phonePretty,
+    display_name: name || null,
+    phone: pretty,
     contact_email: contactEmail || null,
     signup_method: "phone",
-    device_fingerprint: fp.fingerprint,
-    device_label: fp.device_label,
-    device_id: fp.device_id,
   };
 
-  let data = null;
-  let error = null;
-
-  ({ data, error } = await supabase.auth.signUp({
-    email: creds.email,
-    password: creds.password,
+  const { data, error } = await supabase.auth.signUp({
+    email: account,
+    password,
     options: { data: metadata },
-  }));
+  });
 
-  // الرقم مسجّل مسبقاً على هذا الاسم: ندخله مباشرة بدل إظهار خطأ
-  const already =
-    error &&
-    /already|registered|exists/i.test(error.message || "");
+  // الرقم مسجَّل مسبقاً: نجرّب الدخول بنفس كلمة المرور (يعني أنه نفس المستخدم)
+  const already = error && /already|registered|exists/i.test(error.message || "");
 
   if (already) {
-    const retry = await supabase.auth.signInWithPassword({
-      email: creds.email,
-      password: creds.password,
-    });
+    const retry = await supabase.auth.signInWithPassword({ email: account, password });
 
     if (retry.error) {
       const e = new Error(
-        "هذا الرقم مسجّل مسبقاً. سجّل الدخول بنفس الاسم الذي استخدمته أول مرة، أو راجع المشرف."
+        "هذا الرقم مسجَّل مسبقاً بكلمة مرور مختلفة. اكتب كلمة المرور الصحيحة، أو راجع المشرف لإعادة تعيينها."
       );
 
       e.code = "PHONE_TAKEN";
@@ -173,87 +168,82 @@ export async function signUpWithPhone({ displayName, phone, email }) {
       throw e;
     }
 
-    data = retry.data;
-  } else if (error) {
-    throw error;
+    await touchProfile(retry.data?.user, pretty);
+
+    return retry.data;
   }
 
-  if (data?.user) {
-    try {
-      await supabase.from("profiles").upsert(
-        {
-          id: data.user.id,
-          email: contactEmail || null,
-          display_name: name,
-          phone: creds.phonePretty,
-        },
-        { onConflict: "id" }
-      );
-    } catch (err) {
-      console.warn("Failed to upsert phone profile:", err);
-    }
+  if (error) throw error;
 
-    saveLocalIdentity({
-      ...fp,
-      name,
-      phone: creds.phone,
-      phonePretty: creds.phonePretty,
-      email: contactEmail,
-      user_id: data.user.id,
-    });
-  }
+  await touchProfile(data?.user, pretty, {
+    displayName: name || null,
+    contactEmail: contactEmail || null,
+  });
 
   return data;
 }
 
-export async function signInWithPhone({ displayName, phone }) {
-  const name = (displayName || "").trim();
+export async function signInWithPhone({ phone, dial, password }) {
+  const full = buildFullPhone(phone, dial);
+  const pretty = prettyPhone(full);
 
-  if (!name) throw new Error("أدخل الاسم الذي سجّلت به");
-  if (!isValidPhone(phone)) throw new Error("رقم الهاتف غير صحيح");
+  if (!isValidPhone(phone, dial)) {
+    throw new Error("أدخل رقم هاتف صحيح");
+  }
 
-  const creds = await deriveCredentials({ name, phone });
+  if (!password) {
+    throw new Error("أدخل كلمة المرور");
+  }
 
   const { data, error } = await supabase.auth.signInWithPassword({
-    email: creds.email,
-    password: creds.password,
+    email: internalEmail(full),
+    password,
   });
 
   if (error) {
-    const e = new Error(
-      "لم نجد حساباً مطابقاً لهذا الرقم والاسم. تأكد من الاسم كما كتبته أول مرة، أو راجع المشرف."
-    );
+    const e = new Error("رقم الهاتف أو كلمة المرور غير صحيحة");
 
     e.code = "PHONE_LOGIN_FAILED";
 
     throw e;
   }
 
-  if (data?.user) {
-    const fp = await buildFingerprint({ name, phone });
-
-    try {
-      await supabase
-        .from("profiles")
-        .update({ is_online: true, last_seen: new Date().toISOString(), phone: creds.phonePretty })
-        .eq("id", data.user.id);
-    } catch (err) {
-      console.warn("Failed to mark online on phone signIn:", err);
-    }
-
-    const previous = getLocalIdentity();
-
-    saveLocalIdentity({
-      ...fp,
-      name,
-      phone: creds.phone,
-      phonePretty: creds.phonePretty,
-      email: previous?.email || "",
-      user_id: data.user.id,
-    });
-  }
+  await touchProfile(data?.user, pretty);
 
   return data;
 }
 
-export { getLocalIdentity, normalizePhone, isValidPhone };
+/** ضبط كلمة مرور للحساب الحالي (يُستخدم للحسابات القديمة أو لتغيير الكلمة) */
+export async function setMyPassword(newPassword) {
+  if (!newPassword || newPassword.length < 6) {
+    throw new Error("كلمة المرور قصيرة — ٦ أحرف على الأقل");
+  }
+
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+  if (error) throw new Error(error.message || "تعذّر ضبط كلمة المرور");
+
+  return true;
+}
+
+/** تحديث بسيط للملف الشخصي بعد الدخول (رقم الهاتف وحالة الاتصال) */
+async function touchProfile(user, pretty, extra = {}) {
+  if (!user?.id) return;
+
+  const patch = {
+    is_online: true,
+    last_seen: new Date().toISOString(),
+  };
+
+  if (pretty) patch.phone = pretty;
+  if (extra.displayName) patch.display_name = extra.displayName;
+  if (extra.contactEmail) patch.email = extra.contactEmail;
+
+  try {
+    await supabase.from("profiles").update(patch).eq("id", user.id);
+  } catch (err) {
+    console.warn("Failed to update profile after phone auth:", err);
+  }
+}
+
+export { digitsOnly, prettyPhone, isValidPhone, buildFullPhone };

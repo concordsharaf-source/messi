@@ -1,308 +1,153 @@
 // =============================================================
-// هوية المستخدم (بصمة مستخدم):
-// يربط التطبيق «رقم الهاتف + الاسم + معلومات الجهاز» ويُنتج:
-//   1) بصمة مستخدم ثابتة (fingerprint) تُخزَّن في المتصفح وفي الملف الشخصي
-//   2) بيانات اعتماد تُشتق تلقائياً — بلا كلمة مرور يكتبها المستخدم
+// الهوية: قائمة الدول + أدوات أرقام الهاتف
+// الدخول صار: رقم الهاتف + كلمة مرور (بلا بصمة جهاز)
+// فيعمل الحساب من أي جهاز بنفس الرقم وكلمة المرور.
 // =============================================================
 
-const CC_DEFAULT = "967"; // اليمن
-const INTERNAL_DOMAIN = "wa-walid.app"; // نطاق داخلي لحساب المشغّل (لا يظهر للمستخدم)
-const SALT = "walid-identity-v1";
+const INTERNAL_DOMAIN = "wa-walid.app"; // نطاق داخلي لحساب المُشغِّل (لا يظهر للمستخدم)
 
-const DEVICE_KEY = "wa_device_id";
-const IDENTITY_KEY = "wa_identity";
+// ---------------- قائمة الدول ----------------
+// اليمن أولاً (الافتراضي) ثم بقية الدول العربية ثم الأكثر شيوعاً
+export const COUNTRIES = [
+  { code: "YE", dial: "967", flag: "🇾🇪", name: "اليمن" },
+  { code: "SA", dial: "966", flag: "🇸🇦", name: "السعودية" },
+  { code: "AE", dial: "971", flag: "🇦🇪", name: "الإمارات" },
+  { code: "OM", dial: "968", flag: "🇴🇲", name: "عُمان" },
+  { code: "QA", dial: "974", flag: "🇶🇦", name: "قطر" },
+  { code: "KW", dial: "965", flag: "🇰🇼", name: "الكويت" },
+  { code: "BH", dial: "973", flag: "🇧🇭", name: "البحرين" },
+  { code: "EG", dial: "20", flag: "🇪🇬", name: "مصر" },
+  { code: "JO", dial: "962", flag: "🇯🇴", name: "الأردن" },
+  { code: "LB", dial: "961", flag: "🇱🇧", name: "لبنان" },
+  { code: "SY", dial: "963", flag: "🇸🇾", name: "سوريا" },
+  { code: "IQ", dial: "964", flag: "🇮🇶", name: "العراق" },
+  { code: "PS", dial: "970", flag: "🇵🇸", name: "فلسطين" },
+  { code: "SD", dial: "249", flag: "🇸🇩", name: "السودان" },
+  { code: "LY", dial: "218", flag: "🇱🇾", name: "ليبيا" },
+  { code: "TN", dial: "216", flag: "🇹🇳", name: "تونس" },
+  { code: "DZ", dial: "213", flag: "🇩🇿", name: "الجزائر" },
+  { code: "MA", dial: "212", flag: "🇲🇦", name: "المغرب" },
+  { code: "MR", dial: "222", flag: "🇲🇷", name: "موريتانيا" },
+  { code: "SO", dial: "252", flag: "🇸🇴", name: "الصومال" },
+  { code: "DJ", dial: "253", flag: "🇩🇯", name: "جيبوتي" },
+  { code: "KM", dial: "269", flag: "🇰🇲", name: "جزر القمر" },
+  { code: "TR", dial: "90", flag: "🇹🇷", name: "تركيا" },
+  { code: "IR", dial: "98", flag: "🇮🇷", name: "إيران" },
+  { code: "PK", dial: "92", flag: "🇵🇰", name: "باكستان" },
+  { code: "IN", dial: "91", flag: "🇮🇳", name: "الهند" },
+  { code: "BD", dial: "880", flag: "🇧🇩", name: "بنغلاديش" },
+  { code: "ID", dial: "62", flag: "🇮🇩", name: "إندونيسيا" },
+  { code: "MY", dial: "60", flag: "🇲🇾", name: "ماليزيا" },
+  { code: "PH", dial: "63", flag: "🇵🇭", name: "الفلبين" },
+  { code: "ET", dial: "251", flag: "🇪🇹", name: "إثيوبيا" },
+  { code: "KE", dial: "254", flag: "🇰🇪", name: "كينيا" },
+  { code: "NG", dial: "234", flag: "🇳🇬", name: "نيجيريا" },
+  { code: "ZA", dial: "27", flag: "🇿🇦", name: "جنوب أفريقيا" },
+  { code: "GB", dial: "44", flag: "🇬🇧", name: "بريطانيا" },
+  { code: "DE", dial: "49", flag: "🇩🇪", name: "ألمانيا" },
+  { code: "FR", dial: "33", flag: "🇫🇷", name: "فرنسا" },
+  { code: "NL", dial: "31", flag: "🇳🇱", name: "هولندا" },
+  { code: "SE", dial: "46", flag: "🇸🇪", name: "السويد" },
+  { code: "IT", dial: "39", flag: "🇮🇹", name: "إيطاليا" },
+  { code: "ES", dial: "34", flag: "🇪🇸", name: "إسبانيا" },
+  { code: "RU", dial: "7", flag: "🇷🇺", name: "روسيا" },
+  { code: "CN", dial: "86", flag: "🇨🇳", name: "الصين" },
+  { code: "US", dial: "1", flag: "🇺🇸", name: "أمريكا" },
+  { code: "CA", dial: "1", flag: "🇨🇦", name: "كندا" },
+  { code: "AU", dial: "61", flag: "🇦🇺", name: "أستراليا" },
+];
 
-// ---------------------- أدوات مساعدة ----------------------
+const DEFAULT_COUNTRY = "YE";
+const PHONE_KEY = "wa_saved_phone";
 
-function toAsciiDigits(str) {
-  return String(str)
-    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660)) // ٠١٢٣
-    .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06f0)); // ۰۱۲۳
+export function countryByCode(code) {
+  return COUNTRIES.find((c) => c.code === code) || COUNTRIES[0];
 }
 
-/** يُنظّف الرقم: يحذف الرموز، ويضيف مفتاح الدولة الافتراضي عند الحاجة */
-export function normalizePhone(raw) {
-  if (!raw) return "";
-
-  let s = toAsciiDigits(raw).trim().replace(/[^\d+]/g, "");
-
-  if (s.startsWith("+")) s = s.slice(1);
-
-  if (s.startsWith("00")) s = s.slice(2);
-
-  if (s.startsWith("0")) s = CC_DEFAULT + s.slice(1);
-
-  if (s.length === 9 && s.startsWith("7")) s = CC_DEFAULT + s; // 7XXXXXXXX → 9677XXXXXXXX
-
-  return s;
+export function defaultCountryCode() {
+  // التطبيق موجَّه للسوق اليمني/الخليجي: اليمن افتراضية دائماً،
+  // وإن كان هناك رقم محفوظ على الجهاز فقائمته تُحدَّد من الرقم نفسه.
+  return DEFAULT_COUNTRY;
 }
 
-export function isValidPhone(raw) {
-  const p = normalizePhone(raw);
-
-  return /^\d{8,15}$/.test(p);
-}
-
-export function prettyPhone(raw) {
-  const p = normalizePhone(raw);
-
-  return p ? "+" + p : "";
-}
-
-function uuid() {
-  try {
-    if (globalThis.crypto?.randomUUID) return crypto.randomUUID();
-  } catch (e) {}
-
-  const bytes = new Uint8Array(16);
-
-  try {
-    (globalThis.crypto || {}).getRandomValues?.(bytes);
-  } catch (e) {}
-
-  bytes.forEach((b, i) => {
-    if (!b) bytes[i] = Math.floor(Math.random() * 256);
-  });
-
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-}
-
-// ---------------------- SHA-256 (مع بديل عند عدم توفر crypto.subtle) ----------------------
-
-function sha256Fallback(text) {
-  // تنفيذ مختصر لـ SHA-256 (يُستخدم فقط عند فتح الموقع بلا HTTPS)
-  function rr(n, x) {
-    return (x >>> n) | (x << (32 - n));
-  }
-
-  const K = [
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
-    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
-    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
-    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
-    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
-  ];
-
-  const bytes = new TextEncoder().encode(text);
-
-  const l = bytes.length;
-
-  const withOne = new Uint8Array(((l + 9 + 63) >> 6) << 6);
-
-  withOne.set(bytes);
-
-  withOne[l] = 0x80;
-
-  const bitLen = l * 8;
-
-  new DataView(withOne.buffer).setUint32(withOne.length - 4, bitLen >>> 0);
-
-  new DataView(withOne.buffer).setUint32(withOne.length - 8, Math.floor(bitLen / 4294967296));
-
-  let H = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
-
-  const w = new Array(64);
-
-  const dv = new DataView(withOne.buffer);
-
-  for (let i = 0; i < withOne.length; i += 64) {
-    for (let t = 0; t < 16; t++) w[t] = dv.getUint32(i + t * 4);
-
-    for (let t = 16; t < 64; t++) {
-      const s0 = rr(7, w[t - 15]) ^ rr(18, w[t - 15]) ^ (w[t - 15] >>> 3);
-
-      const s1 = rr(17, w[t - 2]) ^ rr(19, w[t - 2]) ^ (w[t - 2] >>> 10);
-
-      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) >>> 0;
-    }
-
-    let [a, b, c, d, e, f, g, h] = H;
-
-    for (let t = 0; t < 64; t++) {
-      const S1 = rr(6, e) ^ rr(11, e) ^ rr(25, e);
-
-      const ch = (e & f) ^ (~e & g);
-
-      const t1 = (h + S1 + ch + K[t] + w[t]) >>> 0;
-
-      const S0 = rr(2, a) ^ rr(13, a) ^ rr(22, a);
-
-      const mj = (a & b) ^ (a & c) ^ (b & c);
-
-      const t2 = (S0 + mj) >>> 0;
-
-      h = g; g = f; f = e; e = (d + t1) >>> 0;
-      d = c; c = b; b = a; a = (t1 + t2) >>> 0;
-    }
-
-    H = [ (H[0]+a)>>>0, (H[1]+b)>>>0, (H[2]+c)>>>0, (H[3]+d)>>>0, (H[4]+e)>>>0, (H[5]+f)>>>0, (H[6]+g)>>>0, (H[7]+h)>>>0 ];
-  }
-
-  return H.map((x) => x.toString(16).padStart(8, "0")).join("");
-}
-
-export async function sha256hex(text) {
-  try {
-    if (globalThis.crypto?.subtle && globalThis.isSecureContext) {
-      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-
-      return Array.from(new Uint8Array(buf), (b) => b.toString(16).padStart(2, "0")).join("");
-    }
-  } catch (e) {}
-
-  return sha256Fallback(text);
-}
-
-// ---------------------- معلومات الجهاز ----------------------
-
-export function getDeviceId() {
-  let id = "";
-
-  try {
-    id = localStorage.getItem(DEVICE_KEY) || "";
-  } catch (e) {}
-
-  if (!id) {
-    id = uuid();
-
-    try {
-      localStorage.setItem(DEVICE_KEY, id);
-    } catch (e) {}
-  }
-
-  return id;
-}
-
-function detectOS(ua) {
-  if (/iPhone|iPad|iPod/i.test(ua)) return "iOS";
-  if (/Android/i.test(ua)) return "Android";
-  if (/Windows/i.test(ua)) return "Windows";
-  if (/Macintosh|Mac OS X/i.test(ua)) return "macOS";
-  if (/Linux/i.test(ua)) return "Linux";
-
-  return "نظام غير معروف";
-}
-
-function detectBrowser(ua) {
-  if (/Edg\//i.test(ua)) return "Edge";
-  if (/OPR\//i.test(ua)) return "Opera";
-  if (/SamsungBrowser/i.test(ua)) return "Samsung";
-  if (/Chrome\//i.test(ua)) return "Chrome";
-  if (/Firefox\//i.test(ua)) return "Firefox";
-  if (/Safari\//i.test(ua)) return "Safari";
-
-  return "متصفح";
-}
-
-/** معلومات الجهاز التي تدخل في البصمة */
-export function deviceInfo() {
-  const ua = navigator.userAgent || "";
-
-  return {
-    id: getDeviceId(),
-    os: detectOS(ua),
-    browser: detectBrowser(ua),
-    platform: navigator.userAgentData?.platform || navigator.platform || "",
-    screen: `${screen?.width || 0}x${screen?.height || 0}@${window.devicePixelRatio || 1}`,
-    viewport: `${window.innerWidth}x${window.innerHeight}`,
-    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
-    lang: navigator.language || "",
-    cores: navigator.hardwareConcurrency || 0,
-    touch: "ontouchstart" in window || (navigator.maxTouchPoints || 0) > 0,
-    installed:
-      window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
-      navigator.standalone === true,
-  };
-}
-
-/** وصف قصير للجهاز يُعرض للمستخدم/المشرف */
-export function deviceStamp() {
-  const d = deviceInfo();
-
-  return `${d.os} · ${d.browser} · ${d.installed ? "تطبيق مثبّت" : "متصفح"}`;
-}
-
-// ---------------------- البصمة وبيانات الاعتماد ----------------------
-
-function nameKey(name) {
-  return String(name || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
-
-/** بصمة المستخدم: الرقم + الاسم + معلومات الجهاز */
-export async function buildFingerprint({ name, phone }) {
-  const d = deviceInfo();
-
-  const phoneN = normalizePhone(phone);
-
-  const nk = nameKey(name);
-
-  const fingerprint = await sha256hex(
-    [
-      SALT,
-      phoneN,
-      nk,
-      d.id,
-      d.platform,
-      d.os,
-      d.browser,
-      d.screen,
-      d.tz,
-      d.lang,
-      String(d.cores),
-    ].join("|")
-  );
-
-  return {
-    phone: phoneN,
-    phonePretty: prettyPhone(phoneN),
-    name: nk,
-    device_id: d.id,
-    device: d,
-    device_label: `${d.os} · ${d.browser}`,
-    fingerprint,
-    short: fingerprint.slice(0, 10).toUpperCase(),
-    created_at: new Date().toISOString(),
-  };
+/** يحوّل الأرقام العربية إلى إنجليزية ويُبقي الأرقام فقط */
+export function digitsOnly(raw) {
+  return String(raw || "")
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06F0-\u06F9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[^\d]/g, "");
 }
 
 /**
- * بيانات الاعتماد المشتقّة: لا يكتب المستخدم كلمة مرور أبداً.
- * الاشتقاق يعتمد على (الرقم + الاسم) حتى يبقى الحساب قابلاً للدخول من أي جهاز،
- * أما بصمة الجهاز فتُسجَّل كمعرّف إضافي للمستخدم وتُربط بحسابه.
+ * يبني الرقم الكامل (بلا +) من الرقم المحلي + مفتاح الدولة.
+ * يقبل أيضاً أن يكتب المستخدم المفتاح نفسه فيتجنّب تكراره.
  */
-export async function deriveCredentials({ name, phone }) {
-  const phoneN = normalizePhone(phone);
+export function buildFullPhone(localNumber, dialCode) {
+  let n = digitsOnly(localNumber);
+  const dial = digitsOnly(dialCode);
 
-  const nk = nameKey(name);
+  if (!n) return "";
 
-  const digest = await sha256hex([SALT, phoneN, nk].join("|"));
+  // كتب المستخدم الرقم بصيغة دولية: +967... أو 00967...
+  if (n.startsWith("00")) n = n.slice(2);
 
-  return {
-    phone: phoneN,
-    phonePretty: prettyPhone(phoneN),
-    name: nk,
-    email: `u${phoneN}@${INTERNAL_DOMAIN}`,
-    password: digest.slice(0, 40),
-  };
+  if (dial && n.startsWith(dial) && n.length > dial.length + 4) {
+    return n;
+  }
+
+  n = n.replace(/^0+/, ""); // صفر البداية لا يُستخدم مع مفتاح الدولة
+
+  return dial ? dial + n : n;
 }
 
-// ---------------------- التخزين المحلي ----------------------
+export function isValidPhone(localNumber, dialCode) {
+  const full = buildFullPhone(localNumber, dialCode);
 
-export function saveLocalIdentity(identity) {
+  return full.length >= 8 && full.length <= 15;
+}
+
+/** عرض مقروء: +967 771 234 567 */
+export function prettyPhone(fullPhone, dialCode) {
+  const n = digitsOnly(fullPhone);
+
+  if (!n) return "";
+
+  let dial = digitsOnly(dialCode || "");
+
+  if (!dial) {
+    const match = COUNTRIES.filter((c) => n.startsWith(c.dial)).sort(
+      (a, b) => b.dial.length - a.dial.length
+    )[0];
+
+    dial = match ? match.dial : n.slice(0, 3);
+  }
+
+  const rest = n.startsWith(dial) ? n.slice(dial.length) : n;
+  const grouped = rest.replace(/^(\d{3})(\d{3})(\d{0,4})$/, "$1 $2 $3").trim();
+
+  return `+${dial} ${grouped}`.trim();
+}
+
+/** بريد داخلي ثابت مشتق من الرقم — لا يظهر للمستخدم إطلاقاً */
+export function internalEmail(fullPhone) {
+  return `u${digitsOnly(fullPhone)}@${INTERNAL_DOMAIN}`;
+}
+
+export function isInternalEmail(email) {
+  return String(email || "").toLowerCase().endsWith(`@${INTERNAL_DOMAIN}`);
+}
+
+// ---------------- تذكّر آخر رقم على الجهاز (للتعبئة فقط، بلا دخول تلقائي) ----------------
+
+export function saveSavedPhone({ full, country }) {
   try {
-    localStorage.setItem(IDENTITY_KEY, JSON.stringify(identity));
+    localStorage.setItem(PHONE_KEY, JSON.stringify({ full, country, at: Date.now() }));
   } catch (e) {}
 }
 
-export function getLocalIdentity() {
+export function getSavedPhone() {
   try {
-    const raw = localStorage.getItem(IDENTITY_KEY);
+    const raw = localStorage.getItem(PHONE_KEY);
 
     return raw ? JSON.parse(raw) : null;
   } catch (e) {
@@ -310,8 +155,8 @@ export function getLocalIdentity() {
   }
 }
 
-export function clearLocalIdentity() {
+export function clearSavedPhone() {
   try {
-    localStorage.removeItem(IDENTITY_KEY);
+    localStorage.removeItem(PHONE_KEY);
   } catch (e) {}
 }

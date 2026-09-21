@@ -31,7 +31,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "27";
+  window.WA_BUILD = "28";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -90,7 +90,7 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=27" />
+  <link rel="stylesheet" href="./css/style.css?v=28" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -149,34 +149,51 @@
     <p id="auth-error" class="auth-error hidden"></p>
 
     <form id="login-form" class="auth-form">
-      <div id="login-quick" class="login-quick hidden">
-        <div class="login-quick-name" id="login-quick-name"></div>
-        <button type="button" id="btn-quick-login" class="login-quick-btn">👋 دخول سريع بهذا الجهاز</button>
+      <div id="login-phone-wrap">
+        <div class="phone-row">
+          <select id="login-country" class="country-select" aria-label="الدولة"></select>
+          <input id="login-phone" type="tel" inputmode="numeric" autocomplete="tel"
+                 placeholder="رقم الهاتف (بدون مفتاح الدولة)" />
+        </div>
+
+        <div class="phone-hint" id="login-phone-hint"></div>
+
+        <input id="login-phone-pass" type="password" autocomplete="current-password" placeholder="كلمة المرور" />
+
+        <button type="submit" id="btn-phone-login" class="auth-submit-phone">دخول</button>
+
+        <button type="button" id="btn-phone-prefill" class="auth-link hidden">📱 استخدم رقمي المحفوظ</button>
+        <button type="button" id="btn-email-mode" class="auth-link">✉️ الدخول بالبريد الإلكتروني (المشرفون)</button>
       </div>
 
-      <div id="login-email-wrap">
+      <div id="login-email-wrap" class="hidden">
         <input id="login-email" type="email" autocomplete="email" data-i18n-placeholder="email" placeholder="البريد الإلكتروني" />
         <input id="login-password" type="password" autocomplete="current-password" data-i18n-placeholder="password" placeholder="كلمة المرور" />
-        <button type="submit" data-i18n="login_btn">دخول</button>
-        <button type="button" id="btn-phone-mode" class="auth-link">📱 الدخول برقم الهاتف (بلا كلمة مرور)</button>
-      </div>
-
-      <div id="login-phone-wrap" class="hidden">
-        <input id="login-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="رقم الهاتف" />
-        <input id="login-phone-name" type="text" placeholder="الاسم كما سجّلت به" />
-        <button type="submit" id="btn-phone-login" class="auth-submit-phone">دخول برقم الهاتف</button>
-        <button type="button" id="btn-email-mode" class="auth-link">↩ الدخول بالبريد الإلكتروني</button>
+        <button type="submit">دخول</button>
+        <button type="button" id="btn-phone-mode" class="auth-link">📱 الدخول برقم الهاتف</button>
       </div>
     </form>
 
     <form id="signup-form" class="auth-form hidden">
-      <input id="signup-name" type="text" required autocomplete="name" placeholder="الاسم الكامل (مطلوب)" />
-      <input id="signup-phone" type="tel" required inputmode="tel" autocomplete="tel" placeholder="رقم الهاتف (مطلوب)" />
-      <input id="signup-email" type="email" autocomplete="email" placeholder="البريد الإلكتروني (اختياري)" />
-      <div class="auth-note">
-        📱 اكتب رقمك مباشرة (مثال: <b dir="ltr">771234567</b>) — نضيف مفتاح الدولة تلقائياً.<br>
-        🔒 لا تحتاج كلمة مرور: يعتمد التطبيق <b>بصمة مستخدم</b> من رقمك واسمك ومعلومات جهازك، ويسجّل دخولك تلقائياً.
+      <div class="phone-row">
+        <select id="signup-country" class="country-select" aria-label="الدولة"></select>
+        <input id="signup-phone" type="tel" required inputmode="numeric" autocomplete="tel"
+               placeholder="رقم الهاتف (بدون مفتاح الدولة)" />
       </div>
+
+      <div class="phone-hint" id="signup-phone-hint"></div>
+
+      <input id="signup-password" type="password" required minlength="6" autocomplete="new-password"
+             placeholder="كلمة المرور (مطلوبة — ٦ أحرف على الأقل)" />
+
+      <input id="signup-name" type="text" autocomplete="name" placeholder="الاسم (اختياري)" />
+      <input id="signup-email" type="email" autocomplete="email" placeholder="البريد الإلكتروني (اختياري)" />
+
+      <div class="auth-note">
+        🔐 الدخول برقم الهاتف وكلمة المرور، فيعمل حسابك من أي جهاز.<br>
+        الاسم والبريد اختياريان — البريد لإشعارك فقط إن أدخلته.
+      </div>
+
       <button type="submit" data-i18n="signup_btn">إنشاء الحساب</button>
     </form>
 
@@ -319,7 +336,16 @@
       <details class="admin-block">
         <summary>🔐 <span data-i18n="security">الأمان</span></summary>
 
-        <label data-i18n="change_password">تغيير كلمة المرور</label>
+        <label>كلمة مرور الدخول (لاستخدام التطبيق من أي جهاز)</label>
+
+        <div class="settings-inline">
+          <input id="my-password" type="password" autocomplete="new-password" placeholder="كلمة مرور جديدة (٦ أحرف على الأقل)" />
+          <button id="btn-save-password" type="button" class="admin-btn-primary">💾 حفظ كلمة المرور</button>
+        </div>
+
+        <div class="admin-hint" id="my-password-status"></div>
+
+        <label data-i18n="change_password">تغيير كلمة المرور بالطريقة القديمة</label>
         <input id="new-password" type="password" autocomplete="new-password" placeholder="كلمة المرور الجديدة" />
         <input id="new-password-confirm" type="password" autocomplete="new-password" placeholder="تأكيد كلمة المرور الجديدة" />
         <button id="btn-change-password" type="button" class="admin-btn-primary">💾 تغيير كلمة المرور</button>
@@ -381,7 +407,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v27</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v28</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -423,7 +449,7 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 <div id="global-toast" class="global-toast hidden"></div>
 
-<script type="module" src="./js/app.js?v=27"></script>
+<script type="module" src="./js/app.js?v=28"></script>
 
 </body>
 </html>

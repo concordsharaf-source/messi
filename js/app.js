@@ -6,13 +6,19 @@ import {
   getCurrentProfile,
   signUpWithPhone,
   signInWithPhone,
+  setMyPassword,
 } from "./auth.js";
 import {
-  getLocalIdentity,
-  clearLocalIdentity,
-  deviceStamp,
+  COUNTRIES,
+  countryByCode,
+  defaultCountryCode,
+  buildFullPhone,
+  isValidPhone,
   prettyPhone,
-  buildFingerprint,
+  isInternalEmail,
+  getSavedPhone,
+  saveSavedPhone,
+  clearSavedPhone,
 } from "./identity.js";
 import { applyLanguage } from "./i18n.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
@@ -34,7 +40,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "27";
+const BUILD = "28";
 
 const state = {
   me: null,
@@ -301,7 +307,7 @@ function showAuthScreen() {
   refreshPWAInstallButton();
 
   try {
-    renderQuickLogin();
+    initAuthPhoneUI();
   } catch (e) {}
 }
 
@@ -319,6 +325,8 @@ async function enterApp() {
 
   $("#auth-screen")?.classList.add("hidden");
   $("#app-shell")?.classList.remove("hidden");
+
+  maybePromptPassword();
 
   const moderationRoles = await getModerationRoles(state.me.id);
   state.me.chat_roles = moderationRoles;
@@ -509,27 +517,32 @@ function wireAuthForms() {
     }
   });
 
-  // ===== إنشاء حساب: الرقم مطلوب، الاسم مطلوب، البريد اختياري وبلا كلمة مرور =====
+  // ===== إنشاء حساب: الرقم + كلمة المرور مطلوبان، الاسم والبريد اختياريان =====
   $("#signup-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const displayName = $("#signup-name").value.trim();
-    const phone = $("#signup-phone").value.trim();
+    const dial = countryByCode($("#signup-country")?.value || defaultCountryCode()).dial;
+    const phone = $("#signup-phone")?.value.trim() || "";
+    const password = $("#signup-password")?.value || "";
+    const displayName = $("#signup-name")?.value.trim() || "";
     const email = $("#signup-email")?.value.trim() || "";
 
-    if (!displayName) {
-      showAuthError("أدخل الاسم الكامل");
+    if (!isValidPhone(phone, dial)) {
+      showAuthError("أدخل رقم هاتف صحيح بعد مفتاح الدولة");
       return;
     }
 
-    if (!isPhoneValid(phone)) {
-      showAuthError("أدخل رقم هاتف صحيح — مثال: 771234567 أو 967771234567");
+    if (password.length < 6) {
+      showAuthError("كلمة المرور مطلوبة (٦ أحرف على الأقل)");
       return;
     }
 
     await withBusy("#signup-form button[type=submit]", "جارٍ إنشاء الحساب…", async () => {
       try {
-        await signUpWithPhone({ displayName, phone, email });
+        await signUpWithPhone({ phone, dial, password, displayName, email });
+
+        saveSavedPhone({ full: buildFullPhone(phone, dial), country: $("#signup-country").value });
+
         await enterApp();
       } catch (err) {
         showAuthError(err.message);
@@ -537,9 +550,33 @@ function wireAuthForms() {
     });
   });
 
-  // ===== الدخول برقم الهاتف (بلا كلمة مرور) =====
+  // ===== الدخول: رقم الهاتف + كلمة المرور (الافتراضي) =====
   $("#btn-phone-mode")?.addEventListener("click", () => setLoginMode("phone"));
   $("#btn-email-mode")?.addEventListener("click", () => setLoginMode("email"));
+
+  $("#btn-phone-prefill")?.addEventListener("click", () => {
+    const saved = getSavedPhone();
+
+    if (!saved?.full) return;
+
+    const dial = String(saved.full).slice(0, 4);
+
+    // نستخرج مفتاح الدولة من الرقم المحفوظ
+    const match = COUNTRIES.filter((c) => String(saved.full).startsWith(c.dial)).sort(
+      (x, y) => y.dial.length - x.dial.length
+    )[0];
+
+    if (match) {
+      const sel = $("#login-country");
+      const inp = $("#login-phone");
+
+      if (sel) sel.value = match.code;
+      if (inp) inp.value = String(saved.full).slice(match.dial.length);
+      updatePhoneHint("login");
+    }
+
+    $("#login-phone-pass")?.focus();
+  });
 
   $("#btn-phone-login")?.addEventListener("click", async (e) => {
     e.preventDefault();
@@ -549,7 +586,6 @@ function wireAuthForms() {
   $("#login-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    // إن كان مسار الهاتف ظاهراً فالنموذج يخصّه
     if (!$("#login-phone-wrap")?.classList.contains("hidden")) {
       await submitPhoneLogin();
       return;
@@ -563,7 +599,7 @@ function wireAuthForms() {
       return;
     }
 
-    await withBusy("#login-form button[type=submit]", "جارٍ الدخول…", async () => {
+    await withBusy("#login-email-wrap button[type=submit]", "جارٍ الدخول…", async () => {
       try {
         await signIn({ email, password });
         await enterApp();
@@ -573,43 +609,10 @@ function wireAuthForms() {
     });
   });
 
-  // ===== دخول سريع ببصمة هذا الجهاز =====
-  $("#btn-quick-login")?.addEventListener("click", async () => {
-    const id = getLocalIdentity();
-
-    if (!id?.phone || !id?.name) {
-      showAuthError("لا توجد بصمة محفوظة على هذا الجهاز — استخدم رقم الهاتف والاسم");
-      return;
-    }
-
-    await withBusy("#btn-quick-login", "جارٍ الدخول…", async () => {
-      try {
-        await signInWithPhone({ displayName: id.name, phone: id.phone });
-        await enterApp();
-      } catch (err) {
-        showAuthError(err.message);
-        setLoginMode("phone");
-        const p = $("#login-phone");
-        const n = $("#login-phone-name");
-
-        if (p) p.value = id.phonePretty || "";
-        if (n) n.value = id.name || "";
-      }
-    });
-  });
-
-  renderQuickLogin();
+  initAuthPhoneUI();
 }
 
 // -------------------- أدوات المصادقة --------------------
-
-function isPhoneValid(raw) {
-  const digits = String(raw || "")
-    .replace(/[^\d+]/g, "")
-    .replace(/^\+/, "");
-
-  return digits.length >= 8 && digits.length <= 15;
-}
 
 async function withBusy(selector, label, fn) {
   const btn = document.querySelector(selector);
@@ -645,22 +648,26 @@ function setLoginMode(mode) {
 }
 
 async function submitPhoneLogin() {
+  const dial = countryByCode($("#login-country")?.value || defaultCountryCode()).dial;
   const phone = $("#login-phone")?.value.trim() || "";
-  const name = $("#login-phone-name")?.value.trim() || "";
+  const password = $("#login-phone-pass")?.value || "";
 
-  if (!isPhoneValid(phone)) {
-    showAuthError("أدخل رقم هاتف صحيح");
+  if (!isValidPhone(phone, dial)) {
+    showAuthError("أدخل رقم هاتف صحيح بعد مفتاح الدولة");
     return;
   }
 
-  if (!name) {
-    showAuthError("أدخل الاسم كما سجّلت به");
+  if (!password) {
+    showAuthError("أدخل كلمة المرور");
     return;
   }
 
   await withBusy("#btn-phone-login", "جارٍ الدخول…", async () => {
     try {
-      await signInWithPhone({ displayName: name, phone });
+      await signInWithPhone({ phone, dial, password });
+
+      saveSavedPhone({ full: buildFullPhone(phone, dial), country: $("#login-country").value });
+
       await enterApp();
     } catch (err) {
       showAuthError(err.message);
@@ -668,23 +675,110 @@ async function submitPhoneLogin() {
   });
 }
 
-/** بطاقة الدخول السريع: تظهر إن وُجدت بصمة لهذا الجهاز */
-export function renderQuickLogin() {
-  const box = document.getElementById("login-quick");
-  const label = document.getElementById("login-quick-name");
+// -------------------- واجهة الهاتف: قائمة الدول + تلميح المفتاح --------------------
 
-  if (!box || !label) return;
+function fillCountrySelect(select, selected) {
+  if (!select) return;
 
-  const id = getLocalIdentity();
-  const hasIdentity = Boolean(id?.phone && id?.name);
+  const wanted = selected || defaultCountryCode();
 
-  box.classList.toggle("hidden", !hasIdentity);
+  select.innerHTML = COUNTRIES.map(
+    (c) =>
+      `<option value="${c.code}">${c.flag} ${c.name} (+${c.dial})</option>`
+  ).join("");
 
-  if (hasIdentity) {
-    label.textContent = `هذا الجهاز مسجّل باسم: ${id.name} — ${prettyPhone(id.phone)}${
-      id.fingerprint ? ` · بصمة ${String(id.fingerprint).slice(0, 8).toUpperCase()}` : ""
-    }`;
+  select.value = COUNTRIES.some((c) => c.code === wanted) ? wanted : "YE";
+}
+
+function updatePhoneHint(which) {
+  const isSignup = which === "signup";
+  const dial = countryByCode($(isSignup ? "#signup-country" : "#login-country")?.value || "YE").dial;
+  const hint = $(isSignup ? "#signup-phone-hint" : "#login-phone-hint");
+  const input = $(isSignup ? "#signup-phone" : "#login-phone");
+
+  if (hint) {
+    hint.textContent = `مفتاح الدولة: +${dial} — اكتب رقمك بدونه`;
   }
+
+  if (input) {
+    input.placeholder = `رقم الهاتف (مثال: ${dial === "967" ? "771234567" : "5xxxxxxxx"})`;
+  }
+}
+
+/** يهيّئ قوائم الدول والتلميحات وحقل كلمة مرور الحساب */
+function initAuthPhoneUI() {
+  const saved = getSavedPhone();
+
+  fillCountrySelect($("#signup-country"));
+  fillCountrySelect($("#login-country"), saved?.country);
+
+  updatePhoneHint("signup");
+  updatePhoneHint("login");
+
+  ["#signup-country", "#login-country"].forEach((sel) => {
+    $(sel)?.addEventListener("change", () => updatePhoneHint(sel === "#signup-country" ? "signup" : "login"));
+  });
+
+  ["#signup-phone", "#login-phone"].forEach((sel) => {
+    $(sel)?.addEventListener("input", () => updatePhoneHint(sel === "#signup-phone" ? "signup" : "login"));
+  });
+
+  // زر تعبئة الرقم المحفوظ (تعبئة فقط — الدخول يتطلب كلمة المرور)
+  const prefillBtn = $("#btn-phone-prefill");
+
+  if (prefillBtn) {
+    prefillBtn.classList.toggle("hidden", !saved?.full);
+
+    if (saved?.full) {
+      prefillBtn.textContent = `📱 استخدم رقمي المحفوظ (${prettyPhone(saved.full)})`;
+    }
+  }
+
+  setLoginMode("phone");
+}
+
+// -------------------- كلمة مرور الحساب من الإعدادات --------------------
+
+async function saveMyPassword() {
+  const input = $("#my-password");
+  const status = $("#my-password-status");
+  const value = input?.value || "";
+
+  const setStatus = (msg, cls) => {
+    if (!status) return;
+
+    status.textContent = msg;
+    status.className = cls ? `admin-hint ${cls}` : "admin-hint";
+  };
+
+  if (value.length < 6) {
+    setStatus("كلمة المرور قصيرة — ٦ أحرف على الأقل", "err");
+    return;
+  }
+
+  setStatus("جارٍ الحفظ…");
+
+  try {
+    await setMyPassword(value);
+    saveSavedPhone({
+      full: currentFullPhoneHint(),
+      country: $("#signup-country")?.value || defaultCountryCode(),
+    });
+    if (input) input.value = "";
+    try {
+      localStorage.setItem("wa_password_set", state.me?.id || "1");
+    } catch (e) {}
+    setStatus("✅ تم حفظ كلمة المرور — يمكنك الدخول بها من أي جهاز", "ok");
+  } catch (err) {
+    setStatus(`تعذّر الحفظ: ${err.message}`, "err");
+  }
+}
+
+/** الرقم الكامل للمستخدم الحالي (من الملف الشخصي) */
+function currentFullPhoneHint() {
+  const digits = String(state.me?.phone || "").replace(/[^\d]/g, "");
+
+  return digits;
 }
 
 function switchAuthTab(which) {
@@ -2983,6 +3077,8 @@ function wireChrome() {
   // أزرار قسم التثبيت واللغة في الإعدادات
   $("#btn-install-settings")?.addEventListener("click", () => installPWA());
 
+  $("#btn-save-password")?.addEventListener("click", () => saveMyPassword());
+
 
   $("#btn-install-guide")?.addEventListener("click", () => openInstallGuide());
 
@@ -3038,15 +3134,13 @@ function syncSettingsValues() {
   const idBox = document.getElementById("identity-box");
 
   if (idBox) {
-    const local = getLocalIdentity();
-    const fp = local?.fingerprint ? String(local.fingerprint).slice(0, 10).toUpperCase() : "—";
-    const phone = state.me?.phone || local?.phonePretty || "—";
+    const phone = state.me?.phone || "—";
+    const mail = state.me?.email || getSavedPhone()?.email || "غير مُدخل";
 
     idBox.innerHTML = `
-      <div class="identity-row"><span>الاسم</span><b>${escapeHtml(state.me?.display_name || "—")}</b></div>
+      <div class="identity-row"><span>الاسم</span><b>${escapeHtml(state.me?.display_name || "بدون اسم")}</b></div>
       <div class="identity-row"><span>رقم الهاتف</span><b dir="ltr">${escapeHtml(phone)}</b></div>
-      <div class="identity-row"><span>الجهاز الحالي</span><b>${escapeHtml(deviceStamp())}</b></div>
-      <div class="identity-row"><span>بصمة المستخدم</span><b dir="ltr" class="identity-fp">${escapeHtml(fp)}</b></div>`;
+      <div class="identity-row"><span>البريد (اختياري)</span><b dir="ltr">${escapeHtml(mail)}</b></div>`;
   }
 
   const modeEl = $("#theme-mode");
@@ -3220,7 +3314,8 @@ function autoGrowComposer() {
 
   const lineHeight = parseFloat(cs.lineHeight) || 24;
   const paddingV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  const oneLine = Math.ceil(lineHeight + paddingV);
+  const cssMin = parseFloat(cs.minHeight) || 0;
+  const oneLine = Math.max(Math.ceil(lineHeight + paddingV), Math.ceil(cssMin));
   const MAX_HEIGHT = Math.round(Math.min(132 * scale, window.innerHeight * 0.45));
 
   box.style.height = "auto";
@@ -5071,6 +5166,10 @@ function openQuickReact(row, m) {
   if (!row || !m || m._pending) return;
 
   const wasOpen = row.classList.contains("react-open");
+
+  // لو فُتحت اللوحة للتوّ فلا نُغلقها بسبب حدث مكرّر (contextmenu/pointer ثانٍ)
+  if (wasOpen && performance.now() - quickReactOpenedAt < 900) return;
+
   closeQuickReact(true);
   if (wasOpen) return; // الضغط مرة أخرى على نفس الرسالة يُغلق اللوحة
 
@@ -5100,9 +5199,24 @@ function openQuickReact(row, m) {
 }
 
 function wireMessageLongPress(row, m, canDelete) {
+  // ضغط قصير جداً = نقرة عادية (لا إيموجي)
+  const MIN_HOLD_TO_REACT = 220;
+  // بعد هذه المدة تظهر الأيقونات أثناء الضغط (مثل واتساب)
+  const OPEN_WHILE_HOLDING = 260;
+
+  let pressActive = false;
+  let pressAt = 0;
+  let pressX = 0;
+  let pressY = 0;
+
   const cancel = () => {
     clearTimeout(longPressTimer);
     longPressTimer = null;
+  };
+
+  const openFor = () => {
+    if (canDelete) row.classList.add("long-pressed");
+    openQuickReact(row, m);
   };
 
   row.addEventListener("pointerdown", (event) => {
@@ -5111,45 +5225,72 @@ function wireMessageLongPress(row, m, canDelete) {
     // الأزرار والوسائط والروابط تعمل طبيعياً
     if (event.target.closest("button, a, input, textarea, audio, video")) return;
 
-    longPressStart = { x: event.clientX, y: event.clientY };
+    pressActive = true;
+    pressAt = performance.now();
+    pressX = event.clientX;
+    pressY = event.clientY;
+
     cancel();
 
     longPressTimer = setTimeout(() => {
       longPressTimer = null;
-      if (canDelete) row.classList.add("long-pressed");
-      openQuickReact(row, m);
-    }, 400);
+      openFor();
+    }, OPEN_WHILE_HOLDING);
   });
 
   row.addEventListener("pointermove", (event) => {
-    if (!longPressTimer || !longPressStart) return;
+    if (!pressActive) return;
+
     const moved =
-      Math.abs(event.clientX - longPressStart.x) +
-      Math.abs(event.clientY - longPressStart.y);
-    if (moved > 12) cancel(); // تمرير/سحب ⇒ ليس ضغطاً مطوّلاً
+      Math.abs(event.clientX - pressX) + Math.abs(event.clientY - pressY);
+
+    // سحب/تمرير حقيقي ⇒ ليس ضغطاً
+    if (moved > 22) {
+      pressActive = false;
+      cancel();
+    }
   });
 
-  // عند رفع الإصبع: نمنع النقرة الناتجة من الوصول إلى الخلفية المعتمة
-  // (كانت تُغلق اللوحة فوراً في بداية الضغط المطول على الجوال)
-  row.addEventListener("pointerup", () => {
-    const openedByPress = row.classList.contains("react-open");
+  // أهم تغيير: عند رفع الإصبع لا تُغلق الأيقونات أبداً، وإن لم تكن ظهرت
+  // بعد (ضغط متوسط) تظهر في هذه اللحظة — مهما طالت مدة الضغط.
+  const finishPress = (event) => {
+    const wasActive = pressActive;
+    const held = performance.now() - pressAt;
+
+    pressActive = false;
     cancel();
-    if (openedByPress) swallowClickUntil = performance.now() + 300;
-  });
 
-  // الانزلاق البسيط أو إلغاء المؤشر (يحدث كثيراً في آيفون) يُلغي المؤقّت فقط،
-  // ولا يُغلق لوحة ظاهرة أبداً.
-  row.addEventListener("pointercancel", cancel);
+    if (!wasActive) return;
+
+    if (!row.classList.contains("react-open") && held >= MIN_HOLD_TO_REACT) {
+      openFor();
+    }
+
+    if (row.classList.contains("react-open")) {
+      swallowClickUntil = performance.now() + 450;
+    }
+  };
+
+  row.addEventListener("pointerup", finishPress);
+  row.addEventListener("pointercancel", finishPress);
+
   row.addEventListener("pointerleave", (event) => {
+    // المؤشر بالفأرة فقط: لا نُلغي شيئاً على اللمس
     if (event.pointerType === "touch") return;
+
+    pressActive = false;
     cancel();
   });
 
-  // على الحاسوب: زر الفأرة الأيمن يفتح اللوحة أيضاً
+  // قائمة المتصفح: على أندرويد تُطلق عند الضغط الطويل، وكانت تُغلق اللوحة
+  // التي فُتحت للتو (سِت المشكلة: «تريد أن ترفع إصبعك بسرعة»).
+  // الآن: تُلغى دائماً، ولا تفتح اللوحة إلا إن كانت مغلقة.
   row.addEventListener("contextmenu", (event) => {
     event.preventDefault();
-    if (canDelete) row.classList.add("long-pressed");
-    openQuickReact(row, m);
+
+    if (row.classList.contains("react-open")) return;
+
+    openFor();
   });
 }
 
@@ -5161,6 +5302,23 @@ document.addEventListener(
       event.stopPropagation();
       event.preventDefault();
     }
+  },
+  true
+);
+
+// منع قائمة المتصفح الأصلية (Android/iOS) عند الضغط المطول على الرسائل
+document.addEventListener(
+  "contextmenu",
+  (event) => {
+    if (event.target.closest?.("#chat-messages, .bubble")) event.preventDefault();
+  },
+  true
+);
+
+document.addEventListener(
+  "selectstart",
+  (event) => {
+    if (event.target.closest?.(".bubble")) event.preventDefault();
   },
   true
 );
@@ -8018,6 +8176,58 @@ document.addEventListener("DOMContentLoaded", () => {
   const buildLabel = document.getElementById("value-build");
   if (buildLabel) buildLabel.textContent = `v${BUILD}`;
 });
+
+// ===============================================================
+// تنبيه: حساب بلا كلمة مرور (أُنشئ قبل التحديث) ⇒ نطلب ضبطها
+// ===============================================================
+
+function maybePromptPassword() {
+  const me = state.me;
+
+  if (!me) return;
+
+  // حسابات الهاتف فقط (بلا بريد)
+  if (!me.phone || me.email) return;
+
+  try {
+    if (localStorage.getItem("wa_password_set") === me.id) return;
+  } catch (e) {}
+
+  setTimeout(() => {
+    showAuthError("🔐 احمِ حسابك: اضبط كلمة مرور لتستطيع الدخول من أي جهاز — اضغط هنا");
+
+    const toast = document.getElementById("global-toast");
+
+    if (!toast) return;
+
+    toast.classList.add("toast-clickable");
+    toast.onclick = () => {
+      toast.classList.add("hidden");
+      toast.onclick = null;
+
+      openPasswordSection();
+    };
+  }, 2600);
+}
+
+function openPasswordSection() {
+  const panel = document.getElementById("settings-panel");
+
+  panel?.classList.remove("hidden");
+  document.getElementById("settings-backdrop")?.classList.remove("hidden");
+
+  const input = document.getElementById("my-password");
+  const details = input?.closest("details");
+
+  if (details) details.open = true;
+
+  setTimeout(() => {
+    details?.scrollIntoView({ block: "center", behavior: "smooth" });
+    input?.focus();
+    document.getElementById("my-password-status").textContent =
+      "اكتب كلمة مرور (٦ أحرف على الأقل) واحفظها — ستحتاجها للدخول من أي جهاز";
+  }, 250);
+}
 
 // ===============================================================
 // START
