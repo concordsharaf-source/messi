@@ -598,7 +598,7 @@ function setAdminStatusText(el, msg, kind = "") {
   el.className = "admin-hint" + (kind ? " " + kind : "");
 }
 
-function addReplyButtonRow(label = "", value = "") {
+function addReplyButtonRow(label = "", value = "", reply = "") {
   const wrap = $("#auto-reply-buttons");
   if (!wrap) return;
 
@@ -612,10 +612,12 @@ function addReplyButtonRow(label = "", value = "") {
   row.innerHTML = `
     <input class="rb-label" type="text" maxlength="40" placeholder="نص الزر" />
     <input class="rb-value" type="text" maxlength="200" placeholder="ما يُرسل عند الضغط" />
+    <input class="rb-reply" type="text" maxlength="400" placeholder="↩ الردّ التلقائي عند اختياره" />
     <button class="rb-remove" type="button" title="حذف الزر">✕</button>
   `;
   row.querySelector(".rb-label").value = label;
   row.querySelector(".rb-value").value = value;
+  row.querySelector(".rb-reply").value = reply;
   wrap.appendChild(row);
 }
 
@@ -625,8 +627,9 @@ function collectReplyButtons() {
   for (const row of rows) {
     const label = row.querySelector(".rb-label")?.value.trim() || "";
     const value = row.querySelector(".rb-value")?.value.trim() || "";
+    const reply = row.querySelector(".rb-reply")?.value.trim() || "";
     if (!label && !value) continue;   // صف فارغ يُتجاهل
-    out.push({ label, value });       // التحقق النهائي يتم في قاعدة البيانات
+    out.push({ label, value, reply });  // التحقق النهائي يتم في قاعدة البيانات
   }
   return out;
 }
@@ -641,7 +644,12 @@ function renderReplyPreview() {
   box.innerHTML =
     `<div>${escapeHtml(greeting)}</div>` +
     buttons
-      .map((b) => `<div class="pv-btn">${escapeHtml(b.label || b.value)}</div>`)
+      .map(
+        (b) =>
+          `<div class="pv-btn">${escapeHtml(b.label || b.value)}` +
+          (b.reply ? `<span class="pv-reply">↩ ${escapeHtml(b.reply)}</span>` : "") +
+          `</div>`
+      )
       .join("");
   box.classList.remove("hidden");
 }
@@ -663,7 +671,11 @@ async function loadAutoReplySettings() {
   }
 
   if (!data) {
-    addReplyButtonRow("🛠️ طلب دعم فني", "طلب دعم فني");
+    addReplyButtonRow(
+      "🛠️ طلب دعم فني",
+      "طلب دعم فني",
+      "تم استلام طلبك للدعم الفني ✅ سيتواصل معك أحد أعضاء الفريق قريباً."
+    );
     setAdminStatusText($("#auto-reply-status"), "لا توجد إعدادات محفوظة بعد");
     return;
   }
@@ -675,7 +687,9 @@ async function loadAutoReplySettings() {
   if (enabledEl) enabledEl.checked = Boolean(data.is_enabled);
 
   const list = Array.isArray(data.buttons) ? data.buttons : [];
-  list.forEach((b) => addReplyButtonRow(b?.label || "", b?.value || ""));
+  list.forEach((b) =>
+    addReplyButtonRow(b?.label || "", b?.value || "", b?.reply || "")
+  );
 
   setAdminStatusText($("#auto-reply-status"), "");
 }
@@ -5300,39 +5314,7 @@ async function sendMessage({
     );
   }
 
-  const preview =
-    content ||
-    messagePreviewText({
-      attachment_type:
-        finalAttachmentType,
-    });
-
-  try {
-    const {
-      error: convUpdateError,
-    } = await supabase
-      .from("conversations")
-      .update({
-        last_message: preview,
-        last_message_at:
-          new Date().toISOString(),
-        last_sender_id: state.me.id,
-        last_message_status: "sent",
-      })
-      .eq("id", conv.id);
-
-    if (convUpdateError) {
-      console.error(
-        "تعذّر تحديث معاينة آخر رسالة:",
-        convUpdateError
-      );
-    }
-  } catch (err) {
-    console.error(
-      "خطأ شبكة أثناء تحديث المحادثة:",
-      err
-    );
-  }
+  // ملخّص المحادثة يُحدَّث تلقائياً من تريغر القاعدة bump_conversation_summary
 
   clearReply();
 
@@ -5801,31 +5783,10 @@ async function flushOutbox() {
     if (!error) {
       await removeFromOutbox(local_id);
 
-      try {
-        await supabase
-          .from("conversations")
-          .update({
-            last_message:
-              msg.content ||
-              messagePreviewText({
-                attachment_type:
-                  msg.attachment_type,
-              }),
-            last_message_at:
-              new Date().toISOString(),
-            last_sender_id: msg.sender_id,
-            last_message_status: "sent",
-          })
-          .eq(
-            "id",
-            msg.conversation_id
-          );
-      } catch (err) {
-        console.error(
-          "Outbox conversation update failed:",
-          err
-        );
-      }
+      // ملخّص المحادثة يُحدَّث من تريغر القاعدة bump_conversation_summary
+      // (مصدر واحد للحقيقة) — لا نكتبه من التطبيق.
+      const outboxConvUpdate = null;
+      void outboxConvUpdate;
 
       if (inserted) {
         const recipientId = await getConversationRecipientId(msg.conversation_id, msg.sender_id);

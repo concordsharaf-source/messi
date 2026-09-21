@@ -3325,8 +3325,15 @@ body[data-theme="light"] .in-app-notification { background: #fff; }
   font-family: inherit;
   font-size: 12px;
 }
-.reply-btn-row input.rb-label { flex: 1.2; }
+.reply-btn-row input.rb-label { flex: 1; }
 .reply-btn-row input.rb-value { flex: 1; }
+.reply-btn-row input.rb-reply { flex: 1.35; }
+@media (max-width: 560px) {
+  .reply-btn-row { flex-wrap: wrap; }
+  .reply-btn-row input.rb-label,
+  .reply-btn-row input.rb-value { flex: 1 1 40%; }
+  .reply-btn-row input.rb-reply { flex: 1 1 100%; }
+}
 .reply-btn-row button {
   flex: 0 0 auto;
   width: 26px;
@@ -3361,6 +3368,16 @@ body[data-theme="light"] .in-app-notification { background: #fff; }
   font-size: 12px;
   cursor: default;
   text-align: center;
+}
+.admin-preview .pv-btn .pv-reply {
+  display: block;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(255, 255, 255, .18);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--wa-text-secondary, #8696a0);
+  text-align: start;
 }
 
 .admin-stats {

@@ -193,3 +193,245 @@ select is_enabled   as "مُفعَّل",
 --
 -- لإيقاف الرد التلقائي مؤقتاً:
 -- update public.auto_reply_settings set is_enabled = false, updated_at = now();
+
+
+-- ============================================================================
+-- 9) الرد التلقائي على اختيار المستخدم من قائمة الأزرار
+-- ----------------------------------------------------------------------------
+--  الفكرة:
+--    رسالة الترحيب تحمل أزراراً (label + value). عند الضغط على زر يُرسل
+--    التطبيق «value» كرسالة من المستخدم. بدون هذه الدالة يتوقف الأمر هنا.
+--    الآن: إن أضاف المشرف حقل "reply" لكل زر، يرد النظام تلقائياً باسم
+--    المشرف صاحب المحادثة بنص ذلك الرد.
+--
+--  مثال إعدادات الأزرار:
+--    [{"label":"🛠️ طلب دعم فني","value":"طلب دعم فني",
+--      "reply":"تم استلام طلبك ✅ سيتواصل معك الفريق قريباً."}]
+--
+--  الأمان: لا يستطيع العميل إرسال رسالة تحمل buttons (سياسة messages_insert)،
+--  والدالة تعمل بصلاحيات المالك. ولا حلقة لا نهائية: الرد يُرسل من المشرف
+--  لا من المستخدم، فتتجاهله الدالة في أول شرط.
+-- ============================================================================
+
+create or replace function public.auto_reply_on_menu_choice()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_settings public.auto_reply_settings;
+  v_admin_id uuid;
+  v_user_id  uuid;
+  v_btn      jsonb;
+  v_reply    text;
+begin
+  if new.buttons is not null or new.content is null then
+    return new;
+  end if;
+
+  -- المحادثة وطرفاها
+  select c.admin_id, c.user_id
+    into v_admin_id, v_user_id
+    from public.conversations c
+   where c.id = new.conversation_id;
+
+  -- الرد موجَّه لرسائل المستخدم العادي وحده
+  if v_admin_id is null or new.sender_id is distinct from v_user_id then
+    return new;
+  end if;
+
+  select * into v_settings
+    from public.auto_reply_settings
+   where is_enabled = true
+   order by updated_at desc
+   limit 1;
+
+  if not found then
+    return new;
+  end if;
+
+  -- هل نص الرسالة يطابق قيمة أحد أزرار القائمة؟
+  select b
+    into v_btn
+    from jsonb_array_elements(v_settings.buttons) b
+   where btrim(b ->> 'value') = btrim(new.content)
+   limit 1;
+
+  if v_btn is null then
+    return new;
+  end if;
+
+  v_reply := btrim(coalesce(v_btn ->> 'reply', ''));
+
+  if v_reply = '' then
+    return new;   -- الزر بلا رد مُعدّ
+  end if;
+
+  if length(v_reply) > 400 then
+    v_reply := left(v_reply, 400);
+  end if;
+
+  insert into public.messages (conversation_id, sender_id, content, status)
+  values (new.conversation_id, v_admin_id, v_reply, 'sent');
+
+  update public.conversations
+     set last_message        = v_reply,
+         last_message_at     = now(),
+         last_sender_id      = v_admin_id,
+         last_message_status = 'sent'
+   where id = new.conversation_id;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_auto_reply_on_menu_choice on public.messages;
+create trigger trg_auto_reply_on_menu_choice
+  after insert on public.messages
+  for each row execute function public.auto_reply_on_menu_choice();
+
+
+-- ============================================================================
+-- 10) ملخّص المحادثة يتحدّث من القاعدة نفسها
+-- ----------------------------------------------------------------------------
+--  كان التطبيق يحدّث conversations.last_message بنفسه بعد الإرسال. مشكلة ذلك:
+--  عند اختيار المستخدم زراً من القائمة يُدرج التريغر الردّ التلقائي فوراً،
+--  ثم يأتي تحديث التطبيق بعده فيطمس الرد ويُظهر نص المستخدم في القائمة.
+--  الحل: مصدر واحد للحقيقة — هذا التريغر.
+--  (اسمه يبدأ بـ aa ليعمل قبل تريغر الرد التلقائي، فيبقى آخر ما يظهر هو الرد)
+-- ============================================================================
+
+create or replace function public.bump_conversation_summary()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_preview text;
+  v_at      timestamptz := coalesce(new.created_at, now());
+begin
+  v_preview := coalesce(
+    nullif(btrim(coalesce(new.content, '')), ''),
+    case coalesce(new.attachment_type, '')
+      when 'image' then '📷 صورة'
+      when 'audio' then '🎤 رسالة صوتية'
+      when 'video' then '🎬 فيديو'
+      when 'file'  then '📎 ملف'
+      else 'رسالة'
+    end
+  );
+
+  update public.conversations c
+     set last_message        = left(v_preview, 300),
+         last_message_at     = v_at,
+         last_sender_id      = new.sender_id,
+         last_message_status = coalesce(new.status, 'sent')
+   where c.id = new.conversation_id
+     and v_at >= coalesce(c.last_message_at, '-infinity'::timestamptz);
+
+  return new;
+end;
+$$;
+
+drop trigger if exists aa_bump_conversation_summary on public.messages;
+create trigger aa_bump_conversation_summary
+  after insert on public.messages
+  for each row execute function public.bump_conversation_summary();
+
+
+-- ============================================================================
+-- 11) update_auto_reply: يقبل ويُنظّف حقل «الردّ التلقائي» لكل زر
+-- ----------------------------------------------------------------------------
+--  كل زر صار {label, value, reply}: label = نص الزر الظاهر، value = ما يُرسله
+--  المستخدم عند الضغط، reply = ما يردّ به المشرف تلقائياً (اختياري، ≤ 400 حرف).
+--  الدالة تُدقّق الثلاثة وتُخزّن نسخة منظّفة (trim + حذف reply الفارغ).
+-- ============================================================================
+
+create or replace function public.update_auto_reply(
+  p_greeting text,
+  p_buttons  jsonb   default '[]'::jsonb,
+  p_enabled  boolean default true
+) returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_is_admin boolean;
+  v_btn      jsonb;
+  v_buttons  jsonb;
+  v_id       uuid;
+begin
+  select coalesce(p.is_admin, false) into v_is_admin
+    from public.profiles p where p.id = auth.uid();
+
+  if not coalesce(v_is_admin, false) then
+    raise exception 'هذه العملية للمشرفين فقط';
+  end if;
+
+  if p_greeting is null or length(btrim(p_greeting)) = 0 then
+    raise exception 'نص الترحيب لا يمكن أن يكون فارغاً';
+  end if;
+
+  if length(btrim(p_greeting)) > 400 then
+    raise exception 'نص الترحيب طويل جداً (الحد 400 حرف)';
+  end if;
+
+  if p_buttons is null or jsonb_typeof(p_buttons) <> 'array' then
+    raise exception 'الأزرار يجب أن تكون مصفوفة';
+  end if;
+
+  if jsonb_array_length(p_buttons) > 6 then
+    raise exception 'لا يمكن إضافة أكثر من 6 أزرار';
+  end if;
+
+  for v_btn in select * from jsonb_array_elements(p_buttons) loop
+    if jsonb_typeof(v_btn) <> 'object'
+       or not (v_btn ? 'label') or not (v_btn ? 'value')
+       or length(btrim(coalesce(v_btn ->> 'label', ''))) = 0
+       or length(btrim(coalesce(v_btn ->> 'value', ''))) = 0 then
+      raise exception 'كل زر يحتاج "label" و "value" غير فارغين';
+    end if;
+    if length(btrim(v_btn ->> 'label')) > 40 or length(btrim(v_btn ->> 'value')) > 200 then
+      raise exception 'نص الزر طويل جداً (الحد 40 للعنوان و200 للقيمة)';
+    end if;
+    if length(btrim(coalesce(v_btn ->> 'reply', ''))) > 400 then
+      raise exception 'الردّ التلقائي للزر طويل جداً (الحد 400 حرف)';
+    end if;
+  end loop;
+
+  -- نسخة منظّفة: trim للحقول وحذف مفتاح reply إن كان فارغاً
+  select coalesce(
+           jsonb_agg(
+             jsonb_strip_nulls(
+               jsonb_build_object(
+                 'label', btrim(btn ->> 'label'),
+                 'value', btrim(btn ->> 'value'),
+                 'reply', nullif(btrim(coalesce(btn ->> 'reply', '')), '')
+               )
+             )
+             order by ord
+           ),
+           '[]'::jsonb
+         )
+    into v_buttons
+    from jsonb_array_elements(p_buttons) with ordinality as e(btn, ord);
+
+  select id into v_id from public.auto_reply_settings
+   order by updated_at desc limit 1;
+
+  if v_id is null then
+    insert into public.auto_reply_settings (greeting, buttons, is_enabled)
+    values (btrim(p_greeting), v_buttons, coalesce(p_enabled, true));
+  else
+    update public.auto_reply_settings
+       set greeting   = btrim(p_greeting),
+           buttons    = v_buttons,
+           is_enabled = coalesce(p_enabled, true),
+           updated_at = now()
+     where id = v_id;
+  end if;
+end;
+$$;
