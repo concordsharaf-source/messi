@@ -2581,7 +2581,7 @@ function wireAdminFeatures() {
   $("#btn-refresh-summary")?.addEventListener("click", renderDailySummary);
   $("#btn-save-signature")?.addEventListener("click", saveMySignature);
 
-  const themeToggle = $("#theme-toggle");
+  const themeToggle = $("#auth-theme-toggle");
   themeToggle?.addEventListener("click", () => {
     // أي نقرة على زر المظهر تُلغي الوضع التلقائي
     localStorage.setItem("wa_theme_mode", "manual");
@@ -2618,16 +2618,6 @@ function wireChrome() {
     await signOut(state.me?.id);
     location.reload();
   });
-
-  $("#lang-toggle")?.addEventListener(
-    "click",
-    toggleLanguage
-  );
-
-  $("#theme-toggle")?.addEventListener(
-    "click",
-    toggleTheme
-  );
 
   $("#auth-lang-toggle")?.addEventListener(
     "click",
@@ -2791,7 +2781,30 @@ function toggleTheme() {
 // CHAT PANEL
 // ===============================================================
 
+function wireReactionChips() {
+  const box = $("#chat-messages");
+  if (!box || box.dataset.reactWired === "1") return;
+
+  box.dataset.reactWired = "1";
+
+  // نقر على شريحة تفاعل (مُفوَّض ⇒ يعمل بعد أي إعادة رسم)
+  box.addEventListener("click", (event) => {
+    const chip = event.target.closest(".reaction-chip");
+    if (!chip) return;
+
+    const messageId = chip.closest(".bubble-row")?.dataset.messageId;
+    const emoji = chip.dataset.emoji;
+
+    if (messageId && emoji) toggleReaction(messageId, emoji);
+  });
+
+  // التمرير يُغلق لوحة التفاعلات
+  box.addEventListener("scroll", closeQuickReact, { passive: true });
+}
+
 function wireChatPanel() {
+  wireReactionChips();
+
   $("#composer-form")?.addEventListener(
     "submit",
     async (e) => {
@@ -4101,8 +4114,8 @@ function buildReactionsHtml(m) {
       ${Object.entries(grouped)
         .map(
           ([emoji, g]) => `
-            <span class="reaction-chip ${g.mine ? "mine" : ""}" data-emoji="${escapeHtml(emoji)}">
-              ${emoji} ${g.count}
+            <span class="reaction-chip ${g.mine ? "mine" : ""}" data-emoji="${escapeHtml(emoji)}" title="اضغط للتفاعل أو الإزالة">
+              ${emoji}${g.count > 1 ? ` ${g.count}` : ""}
             </span>
           `
         )
@@ -4374,8 +4387,6 @@ function buildMessageBubble(m) {
       ${reactionsHtml}
       ${buttonsHtml}
 
-      <div class="quick-react-panel hidden"></div>
-
     </div>
   `;
 
@@ -4434,85 +4445,20 @@ function buildMessageBubble(m) {
     wireMediaLongPress(mediaElement, m);
   }
 
-  wireMessageLongPress(div, canDeleteMessage);
+  wireMessageLongPress(div, m, canDeleteMessage);
 
   const reactBtn =
     div.querySelector(
       ".bubble-action-react"
     );
 
-  const quickPanel =
-    div.querySelector(
-      ".quick-react-panel"
-    );
+  reactBtn?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openQuickReact(div, m);
+  });
 
-  const quickEmojis = [
-    "❤️",
-    "👍",
-    "😂",
-    "😮",
-    "😢",
-    "🙏",
-  ];
-
-  if (quickPanel) {
-    quickPanel.innerHTML =
-      quickEmojis
-        .map(
-          (e) =>
-            `
-            <span
-              class="quick-react-opt"
-              data-emoji="${e}"
-            >
-              ${e}
-            </span>
-          `
-        )
-        .join("");
-
-    reactBtn?.addEventListener(
-      "click",
-      () => {
-        quickPanel.classList.toggle(
-          "hidden"
-        );
-      }
-    );
-
-    quickPanel.addEventListener(
-      "click",
-      (e) => {
-        const emoji =
-          e.target.dataset.emoji;
-
-        if (emoji) {
-          toggleReaction(
-            m.id,
-            emoji
-          );
-
-          quickPanel.classList.add(
-            "hidden"
-          );
-        }
-      }
-    );
-  }
-
-  div
-    .querySelectorAll(".reaction-chip")
-    .forEach((chip) => {
-      chip.addEventListener(
-        "click",
-        () => {
-          toggleReaction(
-            m.id,
-            chip.dataset.emoji
-          );
-        }
-      );
-    });
+  // النقر على شريحة تفاعل يتم عبر تفويض واحد على قائمة الرسائل (wireReactionChips)
+  // حتى يبقى يعمل بعد أي إعادة رسم — لا نربط كل شريحة يدوياً.
 
   wireSwipeToReply(div, m);
 
@@ -4611,30 +4557,182 @@ function wireMediaLongPress(mediaElement, message) {
   });
 }
 
-function wireMessageLongPress(row, canDelete) {
-  if (!canDelete) return;
-  let timer = null;
-  let longPressed = false;
+// ===============================================================
+// الضغط المطول على رسالة ⇒ لوحة التفاعلات (👍 ❤️ 😂 😮 😢 🙏)
+// ---------------------------------------------------------------
+//  سلوك واتساب: ضغطة مطوّلة (أو زر الفأرة الأيمن على الحاسوب) تُظهر شريط
+//  التفاعلات فوق الرسالة مع تعتيم خفيف، وتُغلق عند اللمس خارجها.
+// ===============================================================
+
+let longPressTimer = null;
+let longPressStart = null;
+
+// الإيموجيات الستة كما في واتساب (الأول 👍)
+const QUICK_REACT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+let quickReactTarget = null;
+
+// ---------------------------------------------------------------
+// التعتيم: يُضاف داخل منطقة المحادثة فقط حتى تبقى الرسالة المضغوطة
+// عليها ظاهرة فوقه (z-index أعلى)، وتُغلق اللوحة باللمس عليه.
+// ---------------------------------------------------------------
+function getReactBackdrop() {
+  let backdrop = $("#react-backdrop");
+
+  if (!backdrop) {
+    backdrop = document.createElement("div");
+    backdrop.id = "react-backdrop";
+    backdrop.className = "react-backdrop hidden";
+    backdrop.addEventListener("click", closeQuickReact);
+    backdrop.addEventListener("contextmenu", (event) => event.preventDefault());
+
+    (document.querySelector(".chat-panel") || document.body).appendChild(backdrop);
+  }
+
+  return backdrop;
+}
+
+// ---------------------------------------------------------------
+// اللوحة: عنصر واحد ثابت في الصفحة يُوضع فوق الرسالة المضغوطة
+// (خارج صندوق التمرير ⇒ لا تُقتطع ولا تتحرك مع التمرير).
+// ---------------------------------------------------------------
+function getQuickReactPanel() {
+  let panel = $("#quick-react-panel-global");
+
+  if (!panel) {
+    panel = document.createElement("div");
+    panel.id = "quick-react-panel-global";
+    panel.className = "quick-react-panel hidden";
+    panel.setAttribute("role", "menu");
+    panel.innerHTML = QUICK_REACT_EMOJIS.map(
+      (emoji) =>
+        `<button type="button" class="quick-react-opt" role="menuitem" data-emoji="${emoji}">${emoji}</button>`
+    ).join("");
+
+    panel.addEventListener("click", (event) => {
+      const emoji = event.target.closest(".quick-react-opt")?.dataset.emoji;
+      if (!emoji) return;
+
+      event.stopPropagation();
+
+      const messageId = quickReactTarget?.id;
+      closeQuickReact();
+      if (messageId) toggleReaction(messageId, emoji);
+    });
+
+    document.body.appendChild(panel);
+  }
+
+  return panel;
+}
+
+function closeQuickReact() {
+  document
+    .querySelectorAll(".bubble-row.react-open, .bubble-row.long-pressed")
+    .forEach((row) => row.classList.remove("react-open", "long-pressed"));
+
+  $("#quick-react-panel-global")?.classList.add("hidden");
+  $("#react-backdrop")?.classList.add("hidden");
+
+  quickReactTarget = null;
+}
+
+function openQuickReact(row, m) {
+  if (!row || !m || m._pending) return;
+
+  const wasOpen = row.classList.contains("react-open");
+  closeQuickReact();
+  if (wasOpen) return; // الضغط مرة أخرى على نفس الرسالة يُغلق اللوحة
+
+  const bubble = row.querySelector(".bubble") || row;
+  const panel = getQuickReactPanel();
+
+  row.classList.add("react-open");
+
+  panel.classList.remove("hidden");
+  panel.style.visibility = "hidden";
+  panel.style.top = "0px";
+  panel.style.left = "0px";
+
+  // الموضع: فوق الرسالة ومحاذاة منتصفها، وإن لم يتّسع نعرضها تحتها
+  const rect = bubble.getBoundingClientRect();
+  const pw = panel.offsetWidth;
+  const ph = panel.offsetHeight;
+  const margin = 8;
+  const gap = 10;
+
+  let top = rect.top - ph - gap;
+  if (top < margin) top = Math.min(rect.bottom + gap, window.innerHeight - ph - margin);
+  let left = rect.left + rect.width / 2 - pw / 2;
+
+  left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin));
+  top = Math.max(margin, Math.min(top, window.innerHeight - ph - margin));
+
+  panel.style.top = `${Math.round(top)}px`;
+  panel.style.left = `${Math.round(left)}px`;
+  panel.style.visibility = "visible";
+
+  getReactBackdrop().classList.remove("hidden");
+
+  quickReactTarget = m;
+
+  if (navigator.vibrate) {
+    try {
+      navigator.vibrate(12);
+    } catch (_) {
+      /* تجاهل */
+    }
+  }
+}
+
+function wireMessageLongPress(row, m, canDelete) {
+  const cancel = () => {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  };
 
   row.addEventListener("pointerdown", (event) => {
-    if (event.target.closest("button, a, input, audio, video, img")) return;
-    longPressed = false;
-    timer = setTimeout(() => {
-      longPressed = true;
-      row.classList.add("long-pressed");
-      if (navigator.vibrate) navigator.vibrate(15);
-    }, 650);
+    if (event.button !== undefined && event.button !== 0) return;
+
+    // الأزرار والوسائط والروابط تعمل طبيعياً
+    if (event.target.closest("button, a, input, textarea, audio, video")) return;
+
+    longPressStart = { x: event.clientX, y: event.clientY };
+    cancel();
+
+    longPressTimer = setTimeout(() => {
+      longPressTimer = null;
+      if (canDelete) row.classList.add("long-pressed");
+      openQuickReact(row, m);
+    }, 450);
   });
 
-  ["pointerup", "pointercancel", "pointerleave"].forEach((name) => {
-    row.addEventListener(name, () => clearTimeout(timer));
+  row.addEventListener("pointermove", (event) => {
+    if (!longPressTimer || !longPressStart) return;
+    const moved =
+      Math.abs(event.clientX - longPressStart.x) +
+      Math.abs(event.clientY - longPressStart.y);
+    if (moved > 12) cancel(); // تمرير/سحب ⇒ ليس ضغطاً مطوّلاً
   });
 
+  ["pointerup", "pointercancel", "pointerleave"].forEach((name) =>
+    row.addEventListener(name, cancel)
+  );
+
+  // على الحاسوب: زر الفأرة الأيمن يفتح اللوحة أيضاً
   row.addEventListener("contextmenu", (event) => {
     event.preventDefault();
-    row.classList.add("long-pressed");
+    if (canDelete) row.classList.add("long-pressed");
+    openQuickReact(row, m);
   });
 }
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeQuickReact();
+});
+
+window.addEventListener("resize", closeQuickReact);
+window.addEventListener("orientationchange", closeQuickReact);
 
 async function deleteMessage(message) {
   if (!isActiveChatModerator() || !message?.id || message._pending) return;
@@ -4724,6 +4822,9 @@ function wireSwipeToReply(row, message) {
     "touchmove",
     (e) => {
       if (!dragging) return;
+
+      // لا سحب للإرجاع أثناء فتح لوحة التفاعلات
+      if (row.classList.contains("react-open")) return;
 
       const touch =
         e.touches[0];
@@ -4860,32 +4961,54 @@ function clearReply() {
 // REACTIONS
 // ===============================================================
 
-async function toggleReaction(
-  messageId,
-  emoji
-) {
-  const existing =
-    (
-      state.reactions[messageId] || []
-    ).find(
-      (r) =>
-        r.user_id === state.me.id &&
-        r.emoji === emoji
-    );
+async function toggleReaction(messageId, emoji) {
+  if (!messageId || !emoji || !state.me?.id) return;
 
+  const list = state.reactions[messageId] || (state.reactions[messageId] = []);
+  const existing = list.find((r) => r.user_id === state.me.id && r.emoji === emoji);
+  const others = list.filter(
+    (r) => r.user_id === state.me.id && r.emoji !== emoji && !String(r.id).startsWith("tmp-")
+  );
+
+  // ---------------------------------------------------------------
+  // تحديث فوري في الواجهة (Optimistic) ثم المزامنة مع القاعدة.
+  // واتساب يسمح بتفاعل واحد لكل مستخدم على الرسالة نفسها.
+  // ---------------------------------------------------------------
   if (existing) {
-    await supabase
-      .from("message_reactions")
-      .delete()
-      .eq("id", existing.id);
+    state.reactions[messageId] = list.filter((r) => r !== existing);
   } else {
-    await supabase
-      .from("message_reactions")
-      .insert({
+    state.reactions[messageId] = list.filter(
+      (r) => r.user_id !== state.me.id || r.emoji === emoji
+    );
+    state.reactions[messageId].push({
+      id: `tmp-${Date.now()}`,
+      message_id: messageId,
+      user_id: state.me.id,
+      emoji,
+    });
+  }
+
+  renderMessages();
+
+  try {
+    // إزالة تفاعل المستخدم السابق على نفس الرسالة (يبقى تفاعل واحد فقط)
+    for (const previous of others) {
+      await supabase.from("message_reactions").delete().eq("id", previous.id);
+    }
+
+    if (existing && !String(existing.id).startsWith("tmp-")) {
+      await supabase.from("message_reactions").delete().eq("id", existing.id);
+    } else if (!existing) {
+      const { error } = await supabase.from("message_reactions").insert({
         message_id: messageId,
         user_id: state.me.id,
         emoji,
       });
+
+      if (error) console.error("تعذّر حفظ التفاعل:", error.message);
+    }
+  } catch (error) {
+    console.error("خطأ في التفاعل:", error?.message || error);
   }
 
   await loadReactionsForConversation();

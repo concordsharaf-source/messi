@@ -98,9 +98,13 @@
         </div>
       </div>
       <div class="sidebar-actions">
-        <button id="lang-toggle" title="اللغة">🌐</button>
-        <button id="theme-toggle" title="المظهر">🌓</button>
-        <button id="btn-settings" title="الإعدادات">⚙️</button>
+        <button id="btn-settings" type="button" title="الإعدادات" aria-label="الإعدادات">
+          <svg class="kebab-icon" viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+            <circle cx="12" cy="5" r="2.1" fill="currentColor" />
+            <circle cx="12" cy="12" r="2.1" fill="currentColor" />
+            <circle cx="12" cy="19" r="2.1" fill="currentColor" />
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -118,9 +122,13 @@
       <details class="admin-block" open>
         <summary>👤 <span data-i18n="profile">الملف الشخصي</span><span class="block-value" id="value-profile"></span></summary>
 
-        <label data-i18n="profile_picture">الصورة الشخصية</label>
-        <input id="avatar-input" type="file" accept="image/*" />
-        <button id="btn-remove-avatar" class="settings-danger" type="button">حذف الصورة الشخصية</button>
+        <details class="admin-sub">
+          <summary>🖼️ <span data-i18n="profile_picture">الصورة الشخصية</span></summary>
+
+          <label data-i18n="profile_picture">الصورة الشخصية</label>
+          <input id="avatar-input" type="file" accept="image/*" />
+          <button id="btn-remove-avatar" class="settings-danger" type="button">حذف الصورة الشخصية</button>
+        </details>
 
         <label id="signature-label" class="hidden">التوقيع التلقائي (للمشرفين)</label>
         <input id="signature-input" type="text" maxlength="200" class="hidden" placeholder="مثال: مع تحيات فريق الدعم" />

@@ -5788,3 +5788,198 @@ body[data-theme="light"] .block-value { background: rgba(0, 0, 0, .07); }
 @media (max-width: 420px) {
   .block-value { max-width: 40%; font-size: 10.5px; }
 }
+
+/* =============================================================
+   24) لوحة التفاعلات السريعة (الضغط المطول) — مثل واتساب
+   ============================================================= */
+
+/* تعتيم منطقة المحادثة فقط — الرسالة المضغوطة تبقى ظاهرة فوقه */
+.react-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, .38);
+  animation: reactFade .14s ease-out;
+}
+
+.chat-panel { position: relative; }
+
+@keyframes reactFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.bubble-row.react-open { z-index: 62; position: relative; }
+
+.bubble-row.react-open .bubble {
+  box-shadow: 0 0 0 2px var(--wa-green), 0 6px 20px rgba(0, 0, 0, .35);
+}
+
+/* أزرار الإجراءات لا تظهر أثناء فتح لوحة التفاعلات */
+.bubble-row.react-open .bubble-actions { display: none !important; }
+
+/* اللوحة: عنصر ثابت في الصفحة يُوضع فوق الرسالة المضغوطة */
+#quick-react-panel-global {
+  position: fixed;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100vw - 16px);
+  padding: 5px 7px;
+  border-radius: 999px;
+  background: var(--wa-panel-dark, #233138);
+  box-shadow: 0 8px 26px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .06);
+  animation: reactPop .16s cubic-bezier(.2, 1.3, .5, 1);
+  touch-action: manipulation;
+}
+
+#quick-react-panel-global.hidden { display: none; }
+
+body[data-theme="light"] #quick-react-panel-global { background: #ffffff; }
+
+@keyframes reactPop {
+  from { opacity: 0; transform: scale(.72) translateY(6px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.quick-react-opt {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: calc(24px * var(--wa-font-scale));
+  line-height: 1;
+  border-radius: 50%;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .12s ease, background .12s ease;
+}
+
+.quick-react-opt:hover,
+.quick-react-opt:active {
+  transform: scale(1.28);
+  background: rgba(134, 150, 160, .18);
+}
+
+/* منع قائمة المتصفح الأصلية والنسخ عند الضغط المطول على الفقاعة */
+.bubble {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.bubble a,
+.bubble audio,
+.bubble video,
+.bubble input,
+.bubble textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* شريحة التفاعل على الرسالة */
+.reaction-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 5px;
+  flex-wrap: wrap;
+}
+
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(134, 150, 160, .22);
+  font-size: calc(13px * var(--wa-font-scale));
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  animation: chipIn .16s ease-out;
+}
+
+.reaction-chip.mine {
+  background: rgba(0, 168, 132, .35);
+  box-shadow: inset 0 0 0 1px var(--wa-green);
+}
+
+@keyframes chipIn {
+  from { transform: scale(.6); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+@media (max-width: 480px) {
+  .quick-react-opt { width: 36px; height: 36px; font-size: calc(22px * var(--wa-font-scale)); }
+}
+
+/* =============================================================
+   25) زر الإعدادات (⋮) + الأقسام الفرعية داخل الإعدادات
+   ============================================================= */
+
+.sidebar-actions { gap: 2px; }
+
+.sidebar-actions button {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border-radius: 50%;
+  color: var(--wa-text-secondary);
+}
+
+.sidebar-actions button:hover { background: rgba(134, 150, 160, .16); }
+
+.sidebar-actions .kebab-icon { display: block; pointer-events: none; }
+
+#btn-settings { color: var(--wa-text-primary); }
+
+/* خانة فرعية منطوية داخل أقسام الإعدادات (مثل: الصورة الشخصية) */
+.admin-sub,
+.settings-panel .admin-sub {
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .03);
+  padding: 0;
+  overflow: hidden;
+}
+
+.admin-sub > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 11px;
+  font-size: calc(12.5px * var(--wa-font-scale));
+  font-weight: 600;
+  color: var(--wa-text-primary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.admin-sub > summary::-webkit-details-marker { display: none; }
+.admin-sub > summary::after { content: "▾"; margin-inline-start: auto; color: var(--wa-text-secondary); }
+.admin-sub[open] > summary { border-bottom: 1px solid rgba(255, 255, 255, .07); }
+.admin-sub[open] > summary::after { content: "▴"; }
+.admin-sub[open] { padding-bottom: 10px; }
+.admin-sub > *:not(summary) { margin: 8px 11px 0; }
+
+body[data-theme="light"] .admin-sub {
+  background: rgba(0, 0, 0, .02);
+  border-color: rgba(0, 0, 0, .08);
+}
+body[data-theme="light"] .admin-sub[open] > summary { border-bottom-color: rgba(0, 0, 0, .08); }
+
+/* اللمس: لا نُظهر أزرار الإجراءات قبل الضغط المطول على الجوال */
+@media (hover: none) {
+  .bubble-row .bubble-actions { display: none; }
+  .bubble-row.long-pressed .bubble-actions,
+  .bubble-row.react-open .bubble-actions { display: flex; }
+}
