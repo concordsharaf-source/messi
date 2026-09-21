@@ -5983,3 +5983,141 @@ body[data-theme="light"] .admin-sub[open] > summary { border-bottom-color: rgba(
   .bubble-row.long-pressed .bubble-actions,
   .bubble-row.react-open .bubble-actions { display: flex; }
 }
+
+/* =============================================================
+   26) إصلاح جذري: الأقسام المغلقة كانت تُظهر محتواها!
+   -------------------------------------------------------------
+   المتصفح يُخفي محتوى <details> غير المفتوح بقاعدة خاصة، لكن أي قاعدة في
+   ملفنا تُعطي عنصراً داخلياً display (flex/grid/block) تتغلّب عليها، فيظهر
+   محتوى الأقسام المغلقة متراكماً أسفل الصفحة (سطور فارغة ومحتوى مبعثر).
+   ============================================================= */
+
+details:not([open]) > *:not(summary) {
+  display: none !important;
+}
+
+/* مسافات النافذة: مسافة واحدة بين البطاقات (كانت مضاعفة: 12 + 12) */
+.settings-panel .admin-block { margin: 0 !important; }
+
+/* لا نُظهر شارة فارغة بجانب العنوان */
+.block-value:empty { display: none !important; }
+
+/* رأس النافذة: مضغوط وثابت أعلى النافذة */
+.settings-head {
+  padding: 4px 2px 8px !important;
+  margin: 0 !important;
+  font-size: calc(15px * var(--wa-font-scale));
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+body[data-theme="dark"] .settings-head {
+  background: var(--wa-pane-dark);
+  background: color-mix(in srgb, var(--wa-pane-dark) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+body[data-theme="light"] .settings-head {
+  background: var(--wa-pane-light);
+  background: color-mix(in srgb, var(--wa-pane-light) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.settings-panel { padding-top: 6px !important; }
+
+.settings-note { margin: 0 !important; padding: 0 2px 2px !important; font-size: 11px !important; }
+
+/* صفوف الأقسام: العنوان في البداية، والقيمة والسهم في النهاية */
+.settings-panel .admin-block > summary { padding: 10px 12px; }
+.settings-panel .admin-block > summary::after { margin-inline-start: 6px; }
+.settings-panel .admin-block > summary:has(.block-value)::after { margin-inline-start: 6px; }
+
+/* =============================================================
+   27) مقاسات الأزرار الصغيرة داخل الإعدادات
+   -------------------------------------------------------------
+   قاعدة .settings-panel button { width: 100% } كانت تتمدّد على أزرار صغيرة
+   (زر تجربة النغمة، زر حذف صف الرد) فتصبح بعرض النافذة — نُعيد لها حجمها.
+   ============================================================= */
+
+.settings-panel .tone-play {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  min-height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.settings-panel .tone-row { min-height: 44px; padding: 6px 10px; gap: 8px; }
+.settings-panel .tone-name { font-size: calc(13.5px * var(--wa-font-scale)); }
+
+.settings-panel .reply-btn-row button,
+.settings-panel .reply-btn-row .rb-remove {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  line-height: 1;
+}
+
+/* شبكة الخلفيات: مقاسات مرنة بلا تمرير أفقي */
+.settings-panel .wallpaper-grid {
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+  gap: 8px;
+}
+
+/* أزرار الخيارات (حجم الخط / اللغة) لا تتمدّد عمودياً */
+.settings-panel .settings-choice { padding: 10px 2px; min-height: 40px; }
+
+/* حقول الإدخال والقوائم داخل البطاقات: عرض كامل بلا تجاوز (كانت القائمة
+   الطويلة تتمدّد خارج البطاقة لأن عرضها التلقائي = عرض أطول خيار) */
+.settings-panel .admin-block > input,
+.settings-panel .admin-block > select,
+.settings-panel .admin-block > textarea,
+.settings-panel .admin-sub > input,
+.settings-panel .admin-sub > select,
+.settings-panel .admin-sub > textarea {
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+  text-overflow: ellipsis;
+}
+
+/* القوائم المنسدلة وأشرطة التمرير: كامل العرض داخل الإطار */
+.settings-panel select { width: 100% !important; max-width: 100% !important; }
+
+/* حقول الملفات: لا تتجاوز البطاقة */
+.settings-panel input[type="file"] { width: 100%; max-width: 100%; font-size: 12px; }
+
+/* =============================================================
+   28) الأقسام لا تُضغط عند فتح أكثر من قسم
+   -------------------------------------------------------------
+   النافذة flex عمودي، وعناصرها تُقلَّص تلقائياً عند تجاوز الارتفاع فتظهر
+   سطوراً مقصوصة فارغة. نجعل كل قسم بحجمه الطبيعي دائماً ويتم التمرير.
+   ============================================================= */
+
+.settings-panel > * {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.settings-panel .admin-block,
+.settings-panel .admin-sub { flex: 0 0 auto; }
+
+/* داخل الأقسام: لا ضغط للعناصر */
+.settings-panel .admin-block > *,
+.settings-panel .admin-sub > *,
+.settings-panel .tone-list > *,
+.settings-panel .wallpaper-grid > *,
+.settings-panel .settings-choices > * {
+  flex-shrink: 0;
+}
+
+.settings-panel .admin-block > summary,
+.settings-panel .admin-sub > summary { flex-shrink: 0; min-height: 40px; }

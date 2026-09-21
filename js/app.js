@@ -4966,9 +4966,6 @@ async function toggleReaction(messageId, emoji) {
 
   const list = state.reactions[messageId] || (state.reactions[messageId] = []);
   const existing = list.find((r) => r.user_id === state.me.id && r.emoji === emoji);
-  const others = list.filter(
-    (r) => r.user_id === state.me.id && r.emoji !== emoji && !String(r.id).startsWith("tmp-")
-  );
 
   // ---------------------------------------------------------------
   // تحديث فوري في الواجهة (Optimistic) ثم المزامنة مع القاعدة.
@@ -4991,14 +4988,11 @@ async function toggleReaction(messageId, emoji) {
   renderMessages();
 
   try {
-    // إزالة تفاعل المستخدم السابق على نفس الرسالة (يبقى تفاعل واحد فقط)
-    for (const previous of others) {
-      await supabase.from("message_reactions").delete().eq("id", previous.id);
-    }
-
-    if (existing && !String(existing.id).startsWith("tmp-")) {
-      await supabase.from("message_reactions").delete().eq("id", existing.id);
-    } else if (!existing) {
+    if (existing) {
+      if (!String(existing.id).startsWith("tmp-")) {
+        await supabase.from("message_reactions").delete().eq("id", existing.id);
+      }
+    } else {
       const { error } = await supabase.from("message_reactions").insert({
         message_id: messageId,
         user_id: state.me.id,
@@ -5006,11 +5000,19 @@ async function toggleReaction(messageId, emoji) {
       });
 
       if (error) console.error("تعذّر حفظ التفاعل:", error.message);
+
+      // تفاعل واحد فقط لكل مستخدم على الرسالة: نُزيل أي تفاعل آخر لنفس
+      // المستخدم على نفس الرسالة (يشمل ما أُضيف في نافذة تحديث سابقة).
+      await supabase
+        .from("message_reactions")
+        .delete()
+        .eq("message_id", messageId)
+        .eq("user_id", state.me.id)
+        .neq("emoji", emoji);
     }
   } catch (error) {
     console.error("خطأ في التفاعل:", error?.message || error);
   }
-
   await loadReactionsForConversation();
 }
 
