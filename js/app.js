@@ -42,7 +42,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "34";
+const BUILD = "35";
 
 const state = {
   me: null,
@@ -2929,6 +2929,29 @@ function applyThemeMode() {
   applyChatBackground();
 }
 
+/** اختيار الشكل يدوياً (داكن/فاتح) — يضبط الوضع إلى «يدوي» */
+function setThemeStyle(theme) {
+  localStorage.setItem("wa_theme_mode", "manual");
+  localStorage.setItem("wa_theme", theme);
+
+  state.theme = theme;
+
+  const select = $("#theme-mode");
+  if (select) select.value = "manual";
+
+  applyThemeMode();
+  applyThemeVars();
+  paintThemeChoices();
+}
+
+/** تلوين الزر المطابق للشكل الحالي */
+function paintThemeChoices() {
+  const dark = document.body.getAttribute("data-theme") === "dark";
+
+  $("#theme-dark")?.classList.toggle("active", dark);
+  $("#theme-light")?.classList.toggle("active", !dark);
+}
+
 function wireThemeMode() {
   const select = $("#theme-mode");
   if (!select || select.dataset.wired === "1") return;
@@ -3016,13 +3039,6 @@ function wireAdminFeatures() {
   $("#btn-refresh-summary")?.addEventListener("click", renderDailySummary);
   $("#btn-save-signature")?.addEventListener("click", saveMySignature);
 
-  const themeToggle = $("#auth-theme-toggle");
-  themeToggle?.addEventListener("click", () => {
-    // أي نقرة على زر المظهر تُلغي الوضع التلقائي
-    localStorage.setItem("wa_theme_mode", "manual");
-    const select = $("#theme-mode");
-    if (select) select.value = "manual";
-  });
 }
 
 // ===============================================================
@@ -3238,16 +3254,6 @@ function wireChrome() {
     location.reload();
   });
 
-  $("#auth-lang-toggle")?.addEventListener(
-    "click",
-    toggleLanguage
-  );
-
-  $("#auth-theme-toggle")?.addEventListener(
-    "click",
-    toggleTheme
-  );
-
   wireAvatarEditor();
 
   $("#btn-remove-avatar")?.addEventListener("click", removeAvatar);
@@ -3305,6 +3311,9 @@ function wireChrome() {
 
   $("#lang-ar")?.addEventListener("click", () => setLanguage("ar"));
   $("#lang-en")?.addEventListener("click", () => setLanguage("en"));
+
+  $("#theme-dark")?.addEventListener("click", () => setThemeStyle("dark"));
+  $("#theme-light")?.addEventListener("click", () => setThemeStyle("light"));
 
   // أي تفاعل داخل الإعدادات يُحدّث القيم المعروضة بجانب العناوين
   $("#settings-panel")?.addEventListener("click", () => setTimeout(syncSettingsValues, 80));
@@ -3392,6 +3401,8 @@ function syncSettingsValues() {
 
   put("#value-install", isPWAInstalled() ? "مثبَّت ✔" : "غير مثبَّت");
   put("#value-lang", state.lang === "en" ? "English" : "العربية");
+
+  paintThemeChoices();
 
   $("#lang-ar")?.classList.toggle("active", state.lang !== "en");
   $("#lang-en")?.classList.toggle("active", state.lang === "en");
