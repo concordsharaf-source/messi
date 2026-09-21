@@ -154,6 +154,10 @@ export async function signInWithGoogleBridge() {
   const auth = getFirebaseAuth();
 
   const provider = new GoogleAuthProvider();
+
+  // نطلب البريد والملف الشخصي صراحةً (بعض الحسابات لا ترسلهما افتراضياً)
+  provider.addScope("email");
+  provider.addScope("profile");
   provider.setCustomParameters({ prompt: "select_account" });
 
   let result = null;

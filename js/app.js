@@ -42,7 +42,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "33";
+const BUILD = "34";
 
 const state = {
   me: null,
@@ -82,6 +82,9 @@ const state = {
   typingTimeout: null,
   onlineMap: {},
   heartbeatInterval: null,
+
+  // وقت دخول المستخدم للتطبيق (أساس حساب «آخر ظهور» المعروض)
+  entryAt: 0,
 
   recording: null,
 
@@ -342,6 +345,11 @@ function showAuthScreen() {
 
 async function enterApp() {
   state.me = await getCurrentProfile();
+
+  // وقت الدخول: يُضبط مرة واحدة عند دخول الجلسة (لا يتغيّر أثناءها)
+  if (!state.entryAt) state.entryAt = Date.now();
+
+  window.__waEntry = state.entryAt; // مرجع للاختبار
 
   if (!state.me) {
     showAuthScreen();
@@ -8253,6 +8261,36 @@ function subscribeGlobalPresence() {
 // PRESENCE LABEL
 // ===============================================================
 
+// =================================================================
+// «آخر ظهور» كما يراه المستخدم
+// -----------------------------------------------------------------
+//  القاعدة (بطلب المستخدم):
+//   • إن كان آخر ظهور للمشرف أقل من ٦ ساعات → يُعرض كما هو بالضبط.
+//   • إن كان أكثر من ٦ ساعات (أو قبل أيام) → يُعرض «وقت دخول المستخدم − ٦ ساعات»
+//     محسوباً وبتوقيت الساعة نفسه — فلا يرى المستخدم مدة أطول من ذلك أبداً.
+//   • المشرفون (من يرون لوحة الإدارة) يرون الحقيقة كاملة كما هي.
+// =================================================================
+
+const LAST_SEEN_MAX_MS = 6 * 60 * 60 * 1000; // ٦ ساعات
+
+/** متجه آخر ظهور محسوب للمستخدم (ms) أو null إن لا قيمة */
+function viewedLastSeenMs(iso, viewedIsAdmin) {
+  const real = new Date(iso).getTime();
+
+  if (!Number.isFinite(real)) return null;
+
+  // أصحاب الصلاحية الإدارية يرون الحقيقة
+  if (state.me?.is_admin || state.me?.can_moderate) return real;
+
+  // القاعدة تخصّ ظهور المشرفين أمام المستخدمين
+  if (!viewedIsAdmin) return real;
+
+  const entry = state.entryAt || Date.now();
+  const cap = entry - LAST_SEEN_MAX_MS;
+
+  return real >= cap ? real : cap;
+}
+
 async function refreshPresenceLabel(
   otherId
 ) {
@@ -8278,7 +8316,7 @@ async function refreshPresenceLabel(
       error,
     } = await supabase
       .from("profiles")
-      .select("last_seen")
+      .select("last_seen, is_admin")
       .eq("id", otherId)
       .single();
 
@@ -8297,10 +8335,14 @@ async function refreshPresenceLabel(
     );
   }
 
-  if (profile?.last_seen) {
+  const shownMs = profile?.last_seen
+    ? viewedLastSeenMs(profile.last_seen, Boolean(profile.is_admin))
+    : null;
+
+  if (shownMs !== null) {
     const d =
       new Date(
-        profile.last_seen
+        shownMs
       );
 
     const time =

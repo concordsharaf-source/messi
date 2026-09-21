@@ -20,6 +20,8 @@
 //   • نرفض أي معرّف لمشروع Firebase غير مشروعنا (aud/iss)
 //   • نقبل فقط الدخول بحساب جوجل (sign_in_provider = google.com)
 //   • البريد مقبول متى كان المزوّد google.com (جوجل يوثّق البريد بنفسه)
+//   • وإن لم يُرسل الحساب بريداً: نجلبه من Firebase بالرمز نفسه،
+//     وإلا نُنشئ عنواناً داخلياً ثابتاً من معرّف جوجل (بلا رفض للدخول)
 //   • مفتاح الخدمة (service role) لا يغادر الخادم أبداً
 //   • الدالة تُنشر بـ --no-verify-jwt لأن المستخدم لم يسجّل دخوله بعد
 //     (ولا حاجة: التحقق يجري من معرّف Firebase الموقّع)
@@ -29,6 +31,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const FIREBASE_PROJECT_ID = "messenger-4f50d";
+
+// مفتاح الويب العام لمشروع Firebase (نفس الموجود في التطبيق — ليس سراً)
+// يُستخدم فقط لجلب بريد صاحب الرمز من خدمة Firebase عندما لا يحمله الرمز.
+const FIREBASE_API_KEY = "AIzaSyBwKUp6U1TdatxX20rPQSFdGUyPUHAksYw";
 
 const JWKS_URL =
   "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
@@ -151,9 +157,70 @@ async function verifyFirebaseIdToken(idToken: string) {
     );
   }
 
-  if (!payload.email || typeof payload.email !== "string") throw new Error("email_missing");
+  // بلا بريد؟ لا نرفض: صاحب الدالة يجلب البريد من Firebase أو يُنشئ عنواناً
+  // داخلياً ثابتاً من معرّف جوجل (sub). (كان الرفض هنا سبب رسالة
+  // «لا يوجد بريد في حساب جوجل — استخدم الدخول برقم الهاتف».)
+  if (!payload.email || typeof payload.email !== "string") {
+    console.warn("[google-signin] الرمز بلا بريد — سنعتمد على معرّف جوجل.");
+  }
 
   return payload;
+}
+
+// ---------------------------------------------------------------
+// بريد الحساب: من الرمز، أو من Firebase، أو عنوان داخلي ثابت
+// ---------------------------------------------------------------
+//  بعض حسابات جوجل (خصوصاً المنشأة برقم هاتف أو حسابات العمل المقيّدة)
+//  لا تُرسل بريداً في رمز الهوية إطلاقاً — وهذا ليس خطأ أمنياً، لكنه
+//  كان يمنع الدخول برسالة «لا يوجد بريد في حساب جوجل». الآن نتبع:
+//   ١) بريد الرمز نفسه (email أو firebase.identities.email)
+//   ٢) خدمة Firebase (accounts:lookup) بالرمز نفسه — لا يمكن انتحال بريد غيرك
+//   ٣) عنوان داخلي ثابت مبني على معرّف جوجل (sub) فيبقى الحساب واحداً دائماً
+// ---------------------------------------------------------------
+
+function emailFromClaims(claims: any): string {
+  const direct = String(claims?.email || "").trim().toLowerCase();
+
+  if (direct) return direct;
+
+  const identities = claims?.firebase?.identities?.email;
+
+  if (Array.isArray(identities) && identities.length) {
+    const first = String(identities[0] || "").trim().toLowerCase();
+
+    if (first) return first;
+  }
+
+  return "";
+}
+
+async function lookupFirebaseEmail(idToken: string): Promise<string> {
+  try {
+    const response = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${FIREBASE_API_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      },
+    );
+
+    if (!response.ok) return "";
+
+    const data = await response.json();
+    const user = Array.isArray(data?.users) ? data.users[0] : null;
+
+    return String(user?.email || "").trim().toLowerCase();
+  } catch (_) {
+    return "";
+  }
+}
+
+/** عنوان داخلي ثابت من معرّف مستخدم جوجل — لا يُعرض للمستخدم */
+function syntheticEmailFor(sub: string): string {
+  const safe = String(sub || "").replace(/[^a-zA-Z0-9]/g, "").slice(0, 40) || "user";
+
+  return `g${safe}@wa-walid.app`;
 }
 
 // ---------------------------------------------------------------
@@ -180,9 +247,23 @@ serve(async (req) => {
       return json({ error: "invalid_token", reason: error.message }, 401);
     }
 
-    const email = String(claims.email).trim().toLowerCase();
-    const fullName = String(claims.name || "").trim();
+    let email = emailFromClaims(claims);
+
+    if (!email) email = await lookupFirebaseEmail(idToken);
+
+    const synthetic = !email;
+
+    if (synthetic) email = syntheticEmailFor(String(claims.sub));
+
+    const fullName =
+      String(claims.name || "").trim() ||
+      (synthetic ? "مستخدم جوجل" : email.split("@")[0]);
     const picture = String(claims.picture || "").trim();
+
+    console.log(
+      "[google-signin] الدخول بجوجل:",
+      synthetic ? "حساب بلا بريد معلن → عنوان داخلي ثابت" : "بريد من الحساب",
+    );
 
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -221,6 +302,7 @@ serve(async (req) => {
       token_hash: tokenHash,
       email,
       is_new: !!created.data?.user,
+      synthetic,
     });
   } catch (error) {
     console.error("[google-signin] unexpected:", error?.message);
