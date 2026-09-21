@@ -2590,7 +2590,51 @@ function wireAdminFeatures() {
   });
 }
 
+// ===============================================================
+// ارتفاع الشاشة الحقيقي (يُصلح ظهور شريط الكتابة نصفه مخفي أسفل الصفحة)
+// ---------------------------------------------------------------
+//  position: fixed مع inset:0 يمدّ العنصر إلى "أسفل الصفحة" الذي يقع تحت
+//  شريط المتصفح على الجوال (خلف شريط العناوين/الأزرار)، فيبدو شريط الكتابة
+//  غائراً ولا يظهر إلا عند الكتابة (حين يختفي شريط المتصفح).
+//  الحل: نقيس الارتفاع المرئي فعلياً من visualViewport ونضعه في --app-height.
+// ===============================================================
+
+function syncAppHeight() {
+  const vv = window.visualViewport;
+
+  const h = Math.round(
+    (vv && vv.height) || window.innerHeight || document.documentElement.clientHeight || 0
+  );
+
+  const top = Math.round((vv && vv.offsetTop) || 0);
+
+  if (h > 0) {
+    document.documentElement.style.setProperty("--app-height", `${h}px`);
+    document.documentElement.style.setProperty("--app-top", `${top}px`);
+  }
+}
+
+let appHeightWired = false;
+
+function wireAppHeight() {
+  syncAppHeight();
+
+  if (appHeightWired) {
+    return;
+  }
+
+  appHeightWired = true;
+
+  window.visualViewport?.addEventListener("resize", syncAppHeight);
+  window.visualViewport?.addEventListener("scroll", syncAppHeight);
+  window.addEventListener("resize", syncAppHeight);
+  window.addEventListener("orientationchange", () => setTimeout(syncAppHeight, 250));
+  document.addEventListener("focusin", () => setTimeout(syncAppHeight, 300));
+}
+
 function wireChrome() {
+  wireAppHeight();
+
   $("#btn-settings")?.addEventListener("click", () => {
     const panel = $("#settings-panel");
     if (!panel) return;
@@ -2697,6 +2741,9 @@ function wireChrome() {
   wireEmojiPicker();
 }
 
+// قياس الارتفاع المرئي فور التحميل (لا ينتظر تسجيل الدخول)
+wireAppHeight();
+
 // ===============================================================
 // LANGUAGE
 // ===============================================================
@@ -2798,8 +2845,8 @@ function wireReactionChips() {
     if (messageId && emoji) toggleReaction(messageId, emoji);
   });
 
-  // التمرير يُغلق لوحة التفاعلات
-  box.addEventListener("scroll", closeQuickReact, { passive: true });
+  // التمرير يُبقي اللوحة ملتصقة بالرسالة (بدل إغلاقها)
+  box.addEventListener("scroll", scheduleQuickReactReposition, { passive: true });
 }
 
 function wireChatPanel() {
@@ -4571,10 +4618,13 @@ let longPressStart = null;
 const QUICK_REACT_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
 let quickReactTarget = null;
+let quickReactOpenedAt = 0;      // وقت الفتح (لتفادي الإغلاق الفوري بالخطأ)
+let swallowClickUntil = 0;       // نبتلع النقرة الشبحية بعد رفع الإصبع
+let reactRafId = null;
 
 // ---------------------------------------------------------------
 // التعتيم: يُضاف داخل منطقة المحادثة فقط حتى تبقى الرسالة المضغوطة
-// عليها ظاهرة فوقه (z-index أعلى)، وتُغلق اللوحة باللمس عليه.
+// عليها ظاهرة فوقه، وتُغلق اللوحة باللمس عليه.
 // ---------------------------------------------------------------
 function getReactBackdrop() {
   let backdrop = $("#react-backdrop");
@@ -4583,7 +4633,7 @@ function getReactBackdrop() {
     backdrop = document.createElement("div");
     backdrop.id = "react-backdrop";
     backdrop.className = "react-backdrop hidden";
-    backdrop.addEventListener("click", closeQuickReact);
+    backdrop.addEventListener("click", () => closeQuickReact());
     backdrop.addEventListener("contextmenu", (event) => event.preventDefault());
 
     (document.querySelector(".chat-panel") || document.body).appendChild(backdrop);
@@ -4616,7 +4666,7 @@ function getQuickReactPanel() {
       event.stopPropagation();
 
       const messageId = quickReactTarget?.id;
-      closeQuickReact();
+      closeQuickReact(true);
       if (messageId) toggleReaction(messageId, emoji);
     });
 
@@ -4626,35 +4676,15 @@ function getQuickReactPanel() {
   return panel;
 }
 
-function closeQuickReact() {
-  document
-    .querySelectorAll(".bubble-row.react-open, .bubble-row.long-pressed")
-    .forEach((row) => row.classList.remove("react-open", "long-pressed"));
+// يحسب موضع اللوحة من موضع الرسالة الحالي (يُستدعى عند الفتح وأثناء التمرير)
+function positionQuickReactPanel() {
+  const panel = $("#quick-react-panel-global");
+  if (!panel || panel.classList.contains("hidden") || !quickReactTarget) return;
 
-  $("#quick-react-panel-global")?.classList.add("hidden");
-  $("#react-backdrop")?.classList.add("hidden");
-
-  quickReactTarget = null;
-}
-
-function openQuickReact(row, m) {
-  if (!row || !m || m._pending) return;
-
-  const wasOpen = row.classList.contains("react-open");
-  closeQuickReact();
-  if (wasOpen) return; // الضغط مرة أخرى على نفس الرسالة يُغلق اللوحة
+  const row = document.querySelector(`[data-message-id="${quickReactTarget.id}"]`);
+  if (!row) return;
 
   const bubble = row.querySelector(".bubble") || row;
-  const panel = getQuickReactPanel();
-
-  row.classList.add("react-open");
-
-  panel.classList.remove("hidden");
-  panel.style.visibility = "hidden";
-  panel.style.top = "0px";
-  panel.style.left = "0px";
-
-  // الموضع: فوق الرسالة ومحاذاة منتصفها، وإن لم يتّسع نعرضها تحتها
   const rect = bubble.getBoundingClientRect();
   const pw = panel.offsetWidth;
   const ph = panel.offsetHeight;
@@ -4663,18 +4693,55 @@ function openQuickReact(row, m) {
 
   let top = rect.top - ph - gap;
   if (top < margin) top = Math.min(rect.bottom + gap, window.innerHeight - ph - margin);
-  let left = rect.left + rect.width / 2 - pw / 2;
 
+  let left = rect.left + rect.width / 2 - pw / 2;
   left = Math.max(margin, Math.min(left, window.innerWidth - pw - margin));
   top = Math.max(margin, Math.min(top, window.innerHeight - ph - margin));
 
   panel.style.top = `${Math.round(top)}px`;
   panel.style.left = `${Math.round(left)}px`;
+}
+
+function closeQuickReact(force = false) {
+  // ---------------------------------------------------------------
+  // مهلة سماح: التمرير/تغيّر المقاس/النقرة الشبحية بعد رفع الإصبع كانت
+  // تُغلق اللوحة فور فتحها فتظهر "تومض وتختفي". لا نُغلق داخل المهلة.
+  // ---------------------------------------------------------------
+  if (!force && performance.now() - quickReactOpenedAt < 350) return;
+
+  document
+    .querySelectorAll(".bubble-row.react-open, .bubble-row.long-pressed")
+    .forEach((row) => row.classList.remove("react-open", "long-pressed"));
+
+  $("#quick-react-panel-global")?.classList.add("hidden");
+  $("#react-backdrop")?.classList.add("hidden");
+
+  quickReactTarget = null;
+  quickReactOpenedAt = 0;
+}
+
+function openQuickReact(row, m) {
+  if (!row || !m || m._pending) return;
+
+  const wasOpen = row.classList.contains("react-open");
+  closeQuickReact(true);
+  if (wasOpen) return; // الضغط مرة أخرى على نفس الرسالة يُغلق اللوحة
+
+  const panel = getQuickReactPanel();
+
+  row.classList.add("react-open");
+  quickReactTarget = m;
+  quickReactOpenedAt = performance.now();
+
+  panel.classList.remove("hidden");
+  panel.style.visibility = "hidden";
+  panel.style.top = "0px";
+  panel.style.left = "0px";
+
+  positionQuickReactPanel();
   panel.style.visibility = "visible";
 
   getReactBackdrop().classList.remove("hidden");
-
-  quickReactTarget = m;
 
   if (navigator.vibrate) {
     try {
@@ -4704,7 +4771,7 @@ function wireMessageLongPress(row, m, canDelete) {
       longPressTimer = null;
       if (canDelete) row.classList.add("long-pressed");
       openQuickReact(row, m);
-    }, 450);
+    }, 400);
   });
 
   row.addEventListener("pointermove", (event) => {
@@ -4715,7 +4782,15 @@ function wireMessageLongPress(row, m, canDelete) {
     if (moved > 12) cancel(); // تمرير/سحب ⇒ ليس ضغطاً مطوّلاً
   });
 
-  ["pointerup", "pointercancel", "pointerleave"].forEach((name) =>
+  // عند رفع الإصبع: نمنع النقرة الناتجة من الوصول إلى الخلفية المعتمة
+  // (كانت تُغلق اللوحة فوراً في بداية الضغط المطول على الجوال)
+  row.addEventListener("pointerup", () => {
+    const openedByPress = row.classList.contains("react-open");
+    cancel();
+    if (openedByPress) swallowClickUntil = performance.now() + 300;
+  });
+
+  ["pointercancel", "pointerleave"].forEach((name) =>
     row.addEventListener(name, cancel)
   );
 
@@ -4727,12 +4802,38 @@ function wireMessageLongPress(row, m, canDelete) {
   });
 }
 
+// ابتلاع النقرة الشبحية التي تُولّدها المتصفحات بعد الضغط المطول
+document.addEventListener(
+  "click",
+  (event) => {
+    if (performance.now() < swallowClickUntil) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  },
+  true
+);
+
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeQuickReact();
+  if (event.key === "Escape") closeQuickReact(true);
 });
 
-window.addEventListener("resize", closeQuickReact);
-window.addEventListener("orientationchange", closeQuickReact);
+// ---------------------------------------------------------------
+// التمرير وتغيّر المقاس: نُعيد حساب موضع اللوحة بدل إغلاقها
+// (كان الإغلاق الفوري يسبب الوميض عند أدنى تمرير أو تغيّر مقاس)
+// ---------------------------------------------------------------
+function scheduleQuickReactReposition() {
+  if (reactRafId) return;
+  reactRafId = requestAnimationFrame(() => {
+    reactRafId = null;
+    positionQuickReactPanel();
+  });
+}
+
+window.addEventListener("resize", scheduleQuickReactReposition);
+window.visualViewport?.addEventListener("resize", scheduleQuickReactReposition);
+window.visualViewport?.addEventListener("scroll", scheduleQuickReactReposition);
+window.addEventListener("orientationchange", () => setTimeout(scheduleQuickReactReposition, 250));
 
 async function deleteMessage(message) {
   if (!isActiveChatModerator() || !message?.id || message._pending) return;

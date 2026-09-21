@@ -3217,7 +3217,7 @@ body[data-theme="light"] .in-app-notification { background: #fff; }
 /* ==========================================================================
    لوحة المشرف — تنسيقات خيارات الإدارة داخل لوحة الإعدادات
    ========================================================================== */
-.settings-panel { max-height: calc(100vh - var(--wa-header-height) - 24px); overflow-y: auto; }
+.settings-panel { overflow-y: auto; }
 
 .admin-divider {
   height: 1px;
@@ -6121,3 +6121,54 @@ body[data-theme="light"] .settings-head {
 
 .settings-panel .admin-block > summary,
 .settings-panel .admin-sub > summary { flex-shrink: 0; min-height: 40px; }
+
+/* =============================================================
+   29) ارتفاع الشاشة الحقيقي على الجوال (شريط الكتابة كان غائراً)
+   -------------------------------------------------------------
+   العناصر الثابتة كانت مضبوطة بـ inset:0 مع height:100dvh — وعند وجود
+   top و bottom معاً يُلغى الـ height ويتمدّد العنصر إلى "أسفل الصفحة"
+   الذي يقع تحت شريط المتصفح، فيظهر شريط الكتابة نصفه مخفي ولا يكتمل
+   إلا عند الكتابة. نجعل الارتفاع من متغيّر --app-height (يُحدّثه JS من
+   visualViewport) مع bottom:auto، ونضيف هامش الأمان السفلي للآيفون.
+   ============================================================= */
+
+#app-shell,
+.app-shell,
+#chat-panel-container,
+body.viewing-chat #chat-panel-container,
+.chat-panel,
+.sidebar,
+.auth-screen,
+.settings-panel,
+#media-viewer-modal,
+.install-guide-card {
+  height: var(--app-height, 100dvh);
+  max-height: var(--app-height, 100dvh);
+  bottom: auto;
+}
+
+#app-shell,
+.app-shell,
+.auth-screen,
+#chat-panel-container,
+body.viewing-chat #chat-panel-container,
+.chat-panel,
+.sidebar {
+  top: var(--app-top, 0px);
+}
+
+/* شريط الكتابة: لا يقع تحت مؤشّر الآيفون أو شريط المتصفح */
+.composer {
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+}
+
+.sidebar { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+@media (max-width: 768px) {
+  .composer { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+}
+
+/* نافذة الإعدادات لا تتجاوز الارتفاع المرئي */
+.settings-panel {
+  max-height: calc(var(--app-height, 100dvh) - var(--wa-header-height) - 16px);
+}

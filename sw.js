@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v22";  // صفحة رئيسية كواتساب + صوت داخلي
+const CACHE_NAME = "wa-clone-shell-v23";  // صفحة رئيسية كواتساب + صوت داخلي
 const APP_SHELL = [
   "./",
   "./index.html",
