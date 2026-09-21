@@ -20,7 +20,39 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="واتساب الوليد">
   <meta name="theme-color" content="#111b21" />
-  <link rel="stylesheet" href="./css/style.css" />
+  <script>
+  // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
+  window.WA_BUILD = "25";
+  (function () {
+    try {
+      var KEY = "wa_build_seen";
+      // بلا اتصال: لا نمسح النسخة المخزّنة (حتى لا يتعطّل التطبيق)، ونؤجّل التنظيف لأول فتح مع اتصال
+      if (navigator.onLine === false) return;
+      if (localStorage.getItem(KEY) === window.WA_BUILD) return;
+      localStorage.setItem(KEY, window.WA_BUILD);
+      var flag = "wa_build_reloaded";
+      if (sessionStorage.getItem(flag) === window.WA_BUILD) return;
+      sessionStorage.setItem(flag, window.WA_BUILD);
+      var jobs = [];
+      try {
+        if (window.caches && caches.keys) {
+          jobs.push(caches.keys().then(function (keys) {
+            return Promise.all(keys.map(function (k) { return caches.delete(k); }));
+          }));
+        }
+      } catch (e) {}
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+          jobs.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+            return Promise.all(rs.map(function (r) { return r.unregister(); }));
+          }));
+        }
+      } catch (e) {}
+      Promise.all(jobs).catch(function () {}).then(function () { location.reload(); });
+    } catch (e) {}
+  })();
+</script>
+  <link rel="stylesheet" href="./css/style.css?v=25" />
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 
@@ -257,6 +289,15 @@
         </details>
       </section>
 
+      <!-- ============ 8) التحديثات ============ -->
+      <details class="admin-block">
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v25</span></summary>
+
+        <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
+        <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
+        <div class="admin-hint" id="update-status"></div>
+      </details>
+
       <button id="btn-logout" class="logout-btn" data-i18n="logout">تسجيل الخروج</button>
     </div>
 
@@ -292,7 +333,7 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 <div id="global-toast" class="global-toast hidden"></div>
 
-<script type="module" src="./js/app.js"></script>
+<script type="module" src="./js/app.js?v=25"></script>
 
 </body>
 </html>

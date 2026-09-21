@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v24";  // صفحة رئيسية كواتساب + صوت داخلي
+const CACHE_NAME = "wa-clone-shell-v25";  // v25: كسر الكاش + تحديث تلقائي مضمون
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -13,6 +13,7 @@ const APP_SHELL = [
   "./js/push.js",
   "./js/google-signin.js",
   "./manifest.json",
+  "./version.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/apple-touch-icon.png",
@@ -35,7 +36,12 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Network-first for navigations and API calls, cache-first for static assets.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+// أهم تغيير في v25: الملفات الثابتة صارت «الشبكة أولاً» ثم الكاش عند انقطاع الاتصال.
+// سابقاً كان الكاش أولاً، فبقيت نسخة قديمة من style.css/app.js محتجزة على الجهاز.
 self.addEventListener("fetch", (event) => {
   const request = event.request;
 
@@ -46,7 +52,6 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   const isSupabase = url.hostname.endsWith(".supabase.co");
   const isSameOrigin = url.origin === self.location.origin;
-  const isStaticAsset = /\.(css|js|png|jpg|jpeg|gif|svg|webp|mp3|json|html|ico|woff2?)$/i.test(url.pathname);
 
   if (request.mode === "navigate") {
     event.respondWith(
@@ -68,24 +73,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (isStaticAsset) {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        if (cached) return cached;
-
-        return fetch(request).then((response) => {
-          if (response && response.ok) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
-          }
-          return response;
-        }).catch(() => cached);
-      })
-    );
-    return;
-  }
-
+  // الشبكة أولاً لكل ما هو من نفس الموقع (html/css/js/json/صور/صوت)
   event.respondWith(
-    fetch(request).catch(() => caches.match(request).then((cached) => cached || new Response(null, { status: 503 })))
+    fetch(request)
+      .then((response) => {
+        if (response && response.ok && response.type === "basic") {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+        }
+        return response;
+      })
+      .catch(() =>
+        caches.match(request).then(
+          (cached) =>
+            cached ||
+            caches.match("./index.html").then((shell) => shell || new Response(null, { status: 503 }))
+        )
+      )
   );
 });

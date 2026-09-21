@@ -19,6 +19,9 @@ import {
   listenForForegroundMessages,
 } from "./push.js";
 
+// رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
+const BUILD = "25";
+
 const state = {
   me: null,
   t: null,
@@ -266,7 +269,7 @@ function updateOfflineBanner() {
 // ===============================================================
 
 async function loadChatPanelPartial() {
-  const res = await fetch("./partials/chat-panel.html");
+  const res = await fetch(`./partials/chat-panel.html?v=${BUILD}`);
   const html = await res.text();
 
   const container = $("#chat-panel-container");
@@ -2733,6 +2736,8 @@ function wireChrome() {
 
   // أزرار قسم التثبيت واللغة في الإعدادات
   $("#btn-install-settings")?.addEventListener("click", () => installPWA());
+
+
   $("#btn-install-guide")?.addEventListener("click", () => openInstallGuide());
 
   $("#lang-ar")?.addEventListener("click", () => setLanguage("ar"));
@@ -7571,15 +7576,79 @@ function hidePWAInstallButton() {
 // ===============================================================
 
 if ("serviceWorker" in navigator) {
-  window.addEventListener(
-    "load",
-    () => {
-      navigator.serviceWorker
-        .register("./sw.js")
-        .catch(() => {});
-    }
-  );
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register(`./sw.js?v=${BUILD}`, { updateViaCache: "none" })
+      .then((reg) => {
+        // تحقّق فوري من وجود نسخة جديدة من ملف الـ SW نفسه
+        reg.update().catch(() => {});
+
+        // إعادة التحقق كلما عاد التطبيق للمقدمة (مهم في تطبيق آيفون المثبّت)
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") reg.update().catch(() => {});
+        });
+        window.addEventListener("online", () => reg.update().catch(() => {}));
+      })
+      .catch(() => {});
+  });
+
+  // عند تبنّي نسخة جديدة فعلياً: أعِد التحميل مرة واحدة فقط (وبلا حلقة).
+  // إن لم تكن الصفحة مسيطراً عليها من قبل، فهذا أول تثبيت — لا داعي لإعادة التحميل.
+  const hadControllerAtLoad = !!navigator.serviceWorker.controller;
+  let reloadingForNewWorker = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloadingForNewWorker) return;
+    if (!hadControllerAtLoad) return;
+    if (!navigator.serviceWorker.controller) return;
+    if (sessionStorage.getItem("wa_sw_reloaded") === BUILD) return;
+    reloadingForNewWorker = true;
+    sessionStorage.setItem("wa_sw_reloaded", BUILD);
+    location.reload();
+  });
 }
+
+// زر «تحديث التطبيق الآن» في الإعدادات: يمسح كل الكاش ويُلغي الـ SW ويعيد التحميل
+async function forceAppUpdate() {
+  const status = document.getElementById("update-status");
+  const setStatus = (msg, cls) => {
+    if (status) {
+      status.textContent = msg;
+      status.className = cls ? `admin-hint ${cls}` : "admin-hint";
+    }
+  };
+
+  setStatus("جارٍ مسح النسخة القديمة…");
+
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    }
+  } catch (e) {}
+
+  try {
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+    }
+  } catch (e) {}
+
+  try {
+    localStorage.removeItem("wa_build_seen");
+    sessionStorage.removeItem("wa_sw_reloaded");
+  } catch (e) {}
+
+  setStatus("تم — جارٍ إعادة التحميل…", "ok");
+  setTimeout(() => location.reload(), 350);
+}
+
+// زر «تحديث التطبيق الآن» + رقم الإصدار: يُربطان دائماً (حتى قبل تسجيل الدخول)
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("btn-force-update")?.addEventListener("click", () => forceAppUpdate());
+
+  const buildLabel = document.getElementById("value-build");
+  if (buildLabel) buildLabel.textContent = `v${BUILD}`;
+});
 
 // ===============================================================
 // START
