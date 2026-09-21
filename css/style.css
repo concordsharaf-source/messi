@@ -6660,6 +6660,99 @@ body[data-theme="light"] .country-item { color: #111b21; }
 }
 
 /* ================================================================
+   أزرار «المحادثات»: محادثاتي / كل مشرف / كل المحادثات
+   ================================================================ */
+.section-heading-chats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.section-heading-chats > span {
+  flex: 0 0 auto;
+}
+
+.owner-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 0 3px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.owner-filter::-webkit-scrollbar { display: none; }
+
+.owner-filter.hidden { display: none; }
+
+.owner-chip {
+  flex: 0 0 auto;
+  border: 1px solid rgba(134, 150, 160, .3);
+  background: #202c33;
+  color: #e9edef;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+  max-width: 46vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+body[data-theme="light"] .owner-chip {
+  background: #ffffff;
+  color: #111b21;
+  border-color: rgba(0, 0, 0, .13);
+}
+
+.owner-chip .owner-count {
+  opacity: .7;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.owner-chip.active {
+  background: #25d366;
+  border-color: #25d366;
+  color: #07231a;
+}
+
+body[data-theme="light"] .owner-chip.active {
+  background: #25d366;
+  border-color: #25d366;
+  color: #07231a;
+}
+
+.owner-empty {
+  padding: 14px 8px;
+  text-align: center;
+  color: #8696a0;
+  font-size: 12.5px;
+}
+
+/* الأرقام (الهاتف/المفاتيح): من اليسار إلى اليمين دائماً */
+.num-ltr,
+[data-num] {
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
+}
+
+/* نص الرسالة: يتبع أول حرف قوي (رقم فقط = من اليسار لليمين) */
+.bubble-text {
+  unicode-bidi: plaintext;
+}
+
+/* ================================================================
    الأسماء: تُعرض من اليسار إلى اليمين بشكل صحيح
    (يتبع المتصفح أول حرف قوي: لاتيني → LTR، عربي → RTL)
    ================================================================ */

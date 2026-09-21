@@ -291,6 +291,23 @@ as $$
   );
 $$;
 
+-- المشرف يقرأ بروفايل أي مستخدم له معه محادثة (ليظهر اسمه ورقمه في قائمة محادثاته).
+-- دالة SECURITY DEFINER لتفادي تكرار (recursion) سياسات profiles مع conversations.
+create or replace function public.is_admin_of_conversation_user(target uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+      from public.conversations c
+     where c.user_id = target
+       and c.admin_id = auth.uid()
+  );
+$$;
+
 -- ---------- profiles ----------
 drop policy if exists "profiles_select_own_or_admin" on public.profiles;
 create policy "profiles_select_own_or_admin"
@@ -300,6 +317,12 @@ create policy "profiles_select_own_or_admin"
     or is_admin = true
     or public.current_is_super_admin()
   );
+
+-- يقرأ المشرف بروفايل مستخدمي محادثاته (لظهور الاسم/الرقم في القائمة والرأس)
+drop policy if exists "profiles_select_my_chat_users" on public.profiles;
+create policy "profiles_select_my_chat_users"
+  on public.profiles for select to authenticated
+  using (public.is_admin_of_conversation_user(id));
 
 -- ⚠️ تشديد: صفّك الشخصي فقط، ولا ادّعاء صلاحيات.
 --    بدون هذا الشرط كان بإمكان أي مستخدم — لو غاب صفّه لأي سبب (فشل الـ trigger

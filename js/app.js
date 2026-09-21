@@ -41,7 +41,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "29";
+const BUILD = "30";
 
 const state = {
   me: null,
@@ -51,6 +51,14 @@ const state = {
 
   contacts: [],
   contactRowsByConversation: {},
+
+  // فلتر قسم «المحادثات»: mine | all | <adminId>
+  conversationRows: [],
+  otherAdminProfiles: [],
+  ownerFilter:
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem("wa_owner_filter") || "mine"
+      : "mine",
 
   // =============================================================
   // LIVE UI INDEX
@@ -337,6 +345,7 @@ async function enterApp() {
   );
 
   $("#my-name").textContent = state.me.display_name;
+  $("#my-name")?.setAttribute("dir", nameDirection(state.me.display_name));
 
   if (state.me.avatar_url) {
     $("#my-avatar").src = state.me.avatar_url;
@@ -840,7 +849,9 @@ function updatePhoneHint(which) {
   const input = $(isSignup ? "#signup-phone" : "#login-phone");
 
   if (hint) {
-    hint.textContent = `مفتاح الدولة: +${dial} — اكتب رقمك بدونه`;
+    hint.innerHTML = `مفتاح الدولة: <span class="num-ltr" dir="ltr">+${escapeHtml(
+      String(dial)
+    )}</span> — اكتب رقمك بدونه`;
   }
 
   if (input) {
@@ -877,7 +888,9 @@ function initAuthPhoneUI() {
     prefillBtn.classList.toggle("hidden", !saved?.full);
 
     if (saved?.full) {
-      prefillBtn.textContent = `📱 استخدم رقمي المحفوظ (${prettyPhone(saved.full)})`;
+      prefillBtn.innerHTML = `📱 استخدم رقمي المحفوظ (<span class="num-ltr" dir="ltr">${escapeHtml(
+        prettyPhone(saved.full)
+      )}</span>)`;
     }
   }
 
@@ -1203,7 +1216,7 @@ async function loadAdminUsers() {
         </div>
 
         <div class="admin-user-info">
-          <b>${escapeHtml(p.display_name || "بدون اسم")}</b>
+          <b dir="${nameDirection(p.display_name)}">${escapeHtml(p.display_name || "بدون اسم")}</b>
           <span>${escapeHtml(p.email || "بدون بريد")}</span>
         </div>
 
@@ -2242,6 +2255,8 @@ function applyContactFilters() {
 }
 
 function wireContactFilters() {
+  wireOwnerFilter();
+
   const bar = $("#chat-filters");
   if (bar && bar.dataset.wired !== "1") {
     bar.dataset.wired = "1";
@@ -2840,108 +2855,6 @@ async function saveMySignature() {
 // 6) تصدير المحادثة (Excel / PDF)
 // ---------------------------------------------------------------
 
-function downloadTextFile(filename, text, mime) {
-  const blob = new Blob([text], { type: mime });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-
-  setTimeout(() => URL.revokeObjectURL(url), 4000);
-}
-
-function conversationFileBase() {
-  const conv = state.activeConversation;
-  const name = conv?.otherProfile?.display_name || "محادثة";
-  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-  return `${name}-${stamp}`;
-}
-
-function exportConversationCSV() {
-  const rows = [
-    ["التاريخ والوقت", "المرسل", "النص", "النوع", "رابط المرفق"],
-  ];
-
-  state.messages.forEach((m) => {
-    rows.push([
-      new Date(m.created_at).toLocaleString("ar-SA"),
-      isMessageMine(m) ? "أنا" : state.me?.is_admin ? "المستخدم" : "المشرف",
-      (m.content || "").replace(/[\r\n]+/g, " "),
-      m.attachment_type || "نص",
-      m.attachment_url || "",
-    ]);
-  });
-
-  const csv =
-    "\uFEFF" +
-    rows
-      .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\r\n");
-
-  downloadTextFile(`${conversationFileBase()}.csv`, csv, "text/csv;charset=utf-8;");
-  showAuthError("✔ تم تصدير المحادثة (ملف CSV يفتح في Excel).");
-}
-
-function printConversation() {
-  const conv = state.activeConversation;
-  if (!conv) return;
-
-  const name = conv.otherProfile?.display_name || "محادثة";
-
-  const body = state.messages
-    .map((m) => {
-      const mine = isMessageMine(m);
-      const who = mine ? "أنا" : name;
-      const when = new Date(m.created_at).toLocaleString("ar-SA");
-      const text = escapeHtml(m.content || (m.attachment_type ? `[${m.attachment_type}]` : ""));
-      return `
-        <div class="m ${mine ? "mine" : "theirs"}">
-          <div class="head"><b>${escapeHtml(who)}</b><span>${when}</span></div>
-          <div class="txt">${text}</div>
-        </div>`;
-    })
-    .join("");
-
-  const win = window.open("", "_blank");
-  if (!win) {
-    showAuthError("اسمح بالنوافذ المنبثقة للطباعة أو الحفظ PDF.");
-    return;
-  }
-
-  win.document.write(`<!DOCTYPE html>
-<html dir="rtl" lang="ar">
-<head>
-<meta charset="utf-8">
-<title>محادثة ${escapeHtml(name)}</title>
-<style>
-  body { font-family: "Segoe UI", Tahoma, sans-serif; padding: 24px; color: #111b21; }
-  h1 { font-size: 20px; margin: 0 0 4px; }
-  .meta { color: #667781; font-size: 12px; margin-bottom: 18px; }
-  .m { border: 1px solid #e9edef; border-radius: 8px; padding: 8px 12px; margin: 8px 0; page-break-inside: avoid; }
-  .m.mine { background: #d9fdd3; }
-  .head { display: flex; justify-content: space-between; font-size: 12px; color: #54656f; }
-  .txt { white-space: pre-wrap; font-size: 14px; margin-top: 4px; }
-  @media print { .m { border-color: #ddd; } }
-</style>
-</head>
-<body>
-  <h1>محادثة: ${escapeHtml(name)}</h1>
-  <div class="meta">
-    عدد الرسائل: ${state.messages.length} ·
-    تاريخ الطباعة: ${new Date().toLocaleString("ar-SA")}
-  </div>
-  ${body}
-  <script>setTimeout(function(){ window.print(); }, 350);<\/script>
-</body>
-</html>`);
-
-  win.document.close();
-}
-
 // ---------------------------------------------------------------
 // 7) سجل النشاط + الملخص اليومي
 // ---------------------------------------------------------------
@@ -3437,7 +3350,9 @@ function syncSettingsValues() {
     const mail = state.me?.email || getSavedPhone()?.email || "غير مُدخل";
 
     idBox.innerHTML = `
-      <div class="identity-row"><span>الاسم</span><b>${escapeHtml(state.me?.display_name || "بدون اسم")}</b></div>
+      <div class="identity-row"><span>الاسم</span><b dir="${nameDirection(
+        state.me?.display_name
+      )}">${escapeHtml(state.me?.display_name || "بدون اسم")}</b></div>
       <div class="identity-row"><span>رقم الهاتف</span><b dir="ltr">${escapeHtml(phone)}</b></div>
       <div class="identity-row"><span>البريد (اختياري)</span><b dir="ltr">${escapeHtml(mail)}</b></div>`;
   }
@@ -3939,15 +3854,11 @@ async function loadContactsFromNetwork() {
     );
   });
 
-  $("#users-section").innerHTML = "";
+  state.otherAdminProfiles = otherAdmins || [];
+  state.conversationRows = userContacts.sort(compareContactsByActivity);
 
-  userContacts.sort(compareContactsByActivity).forEach((c) => {
-    $("#users-section").appendChild(
-      buildContactRow(c, {
-        withUnread: true,
-      })
-    );
-  });
+  wireOwnerFilter();
+  renderConversationSection();
 
   await cacheContacts([
     ...(otherAdmins || []),
@@ -3988,6 +3899,165 @@ function formatContactTime(iso) {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+// ---------------------------------------------------------------
+// فلتر «المحادثات»: محادثاتي / كل مشرف على حدة / كل المحادثات
+// ---------------------------------------------------------------
+
+const OWNER_FILTER_KEY = "wa_owner_filter";
+
+function readOwnerFilter() {
+  try {
+    return localStorage.getItem(OWNER_FILTER_KEY) || "mine";
+  } catch (_) {
+    return "mine";
+  }
+}
+
+function saveOwnerFilter(value) {
+  try {
+    localStorage.setItem(OWNER_FILTER_KEY, value);
+  } catch (_) {}
+}
+
+function conversationOwnerId(contact) {
+  return String(contact?._adminId || "");
+}
+
+/** أزرار القائمة حسب ما يراه المشرف فعلاً */
+function buildOwnerChips(rows) {
+  const meId = String(state.me?.id || "");
+  const isSuper = Boolean(state.me?.is_super_admin);
+  const items = [];
+
+  const countOf = (id) => rows.filter((c) => conversationOwnerId(c) === id).length;
+
+  items.push({ key: "mine", label: "محادثاتي", count: countOf(meId) });
+
+  // قائمة المشرفين (للمشرف العام: كل المشرفين، لغيره: من تظهر محادثاتهم)
+  const adminChips = [];
+
+  if (isSuper) {
+    items.push({ key: "all", label: "كل المحادثات", count: rows.length });
+
+    (state.otherAdminProfiles || []).forEach((p) => {
+      adminChips.push({ key: String(p.id), label: p.display_name || "مشرف" });
+    });
+  } else {
+    const ids = [...new Set(rows.map(conversationOwnerId).filter((id) => id && id !== meId))];
+
+    ids.forEach((id) => {
+      const row = rows.find((c) => conversationOwnerId(c) === id);
+      adminChips.push({ key: id, label: row?._ownerAdminName || "مشرف" });
+    });
+  }
+
+  adminChips.forEach((chip) => items.push({ ...chip, count: countOf(chip.key) }));
+
+  // إزالة التكرار مع حفظ الترتيب
+  const seen = new Set();
+
+  return items.filter((item) => {
+    if (seen.has(item.key)) return false;
+    seen.add(item.key);
+    return true;
+  });
+}
+
+/** يرسم قسم «المحادثات» حسب الفلتر المختار */
+function renderConversationSection() {
+  const host = $("#users-section");
+  if (!host) return;
+
+  const rows = state.conversationRows || [];
+  const meId = String(state.me?.id || "");
+  const bar = $("#conversation-owner-filter");
+  const items = buildOwnerChips(rows);
+
+  if (bar) {
+    const showBar = items.length > 1;
+
+    // لا تعرض الفلتر إن كان الخيار واحداً (مشرف عادي لا يرى إلا محادثاته)
+    bar.classList.toggle("hidden", !showBar);
+
+    bar.innerHTML = showBar
+      ? items
+          .map(
+            (item) => `
+        <button type="button" class="owner-chip${
+          item.key === state.ownerFilter ? " active" : ""
+        }" data-owner="${escapeHtml(item.key)}">
+          ${escapeHtml(item.label)}
+          <span class="owner-count">${item.count}</span>
+        </button>`
+          )
+          .join("")
+      : "";
+
+    const active = items.find((i) => i.key === state.ownerFilter);
+
+    if (!active) {
+      state.ownerFilter = "mine";
+      saveOwnerFilter("mine");
+      bar.querySelectorAll(".owner-chip").forEach((b) => {
+        b.classList.toggle("active", b.dataset.owner === "mine");
+      });
+    }
+  }
+
+  const filter = state.ownerFilter;
+
+  const visible = rows.filter((c) => {
+    if (filter === "all") return true;
+    if (filter === "mine") return conversationOwnerId(c) === meId;
+    return conversationOwnerId(c) === filter;
+  });
+
+  host.innerHTML = "";
+
+  if (!visible.length) {
+    const empty = document.createElement("div");
+
+    empty.className = "owner-empty";
+    empty.textContent =
+      filter === "mine"
+        ? "لا توجد محادثات لك أنت حتى الآن."
+        : filter === "all"
+        ? "لا توجد محادثات على الإطلاق."
+        : "لا توجد محادثات لهذا المشرف حتى الآن.";
+
+    host.appendChild(empty);
+  } else {
+    visible.forEach((c) => host.appendChild(buildContactRow(c, { withUnread: true })));
+  }
+
+  applyContactFilters();
+}
+
+function wireOwnerFilter() {
+  const bar = $("#conversation-owner-filter");
+  if (!bar || bar.dataset.wired === "1") return;
+
+  bar.dataset.wired = "1";
+
+  bar.addEventListener("click", (event) => {
+    const btn = event.target.closest(".owner-chip");
+    if (!btn) return;
+
+    state.ownerFilter = btn.dataset.owner;
+    saveOwnerFilter(state.ownerFilter);
+    renderConversationSection();
+  });
+}
+
+/** اتجاه عرض الاسم: الأرقام (اسم = رقم هاتف) من اليسار لليمين، والباقي تلقائي */
+function nameDirection(text) {
+  const value = String(text || "").trim();
+
+  if (value && /^[+()\-\s\d]+$/.test(value) && /\d/.test(value)) return "ltr";
+
+  return "auto";
 }
 
 function buildContactRow(c, opts = {}) {
@@ -4036,7 +4106,7 @@ function buildContactRow(c, opts = {}) {
     </div>
 
     <div class="contact-info">
-      <div class="contact-name" dir="auto">
+      <div class="contact-name" dir="${nameDirection(c.display_name)}">
         ${escapeHtml(c.display_name)}
         ${
           c._ownerAdminName
@@ -4522,7 +4592,7 @@ async function openConversation(otherProfile) {
     $("#chat-header-name").textContent =
       otherProfile.display_name;
 
-    $("#chat-header-name")?.setAttribute("dir", "auto");
+    $("#chat-header-name")?.setAttribute("dir", nameDirection(otherProfile.display_name));
 
     $("#chat-header-avatar").src =
       otherProfile.avatar_url || "";
