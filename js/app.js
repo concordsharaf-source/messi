@@ -33,6 +33,7 @@ import {
   queueOutboxMessage,
   getOutbox,
   removeFromOutbox,
+  clearAllCache,
 } from "./db.js";
 import {
   enablePushNotifications,
@@ -42,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "36";
+const BUILD = "37";
 
 const state = {
   me: null,
@@ -126,15 +127,18 @@ async function boot() {
 
   state.t = applyLanguage(state.lang);
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  // بلا إنترنت: لا ننتظر الشبكة (قد تُحاول المكتبة تجديد الجلسة فتتأخّر الإقلاع).
+  // الجلسة المخزّنة محلياً تكفي، والملف الشخصي يأتي من النسخة المحفوظة.
+  const session = navigator.onLine === false
+    ? null
+    : (await supabase.auth.getSession()).data?.session || null;
 
   // ننسخ الجلسة لمُشغِّل الخدمة (للرد من الإشعار بلا فتح التطبيق)
   mirrorSession(session);
 
   // تحديث النسخة دورياً حتى لا تنتهي صلاحية الرد السريع
   setInterval(() => {
+    if (navigator.onLine === false) return;
     supabase.auth
       .getSession()
       .then(({ data }) => mirrorSession(data?.session))
@@ -146,7 +150,11 @@ async function boot() {
 
   // نُظهر الشاشة المطلوبة أولاً، ثم نُخرج شاشة الانتظار بتلاشٍ متقاطع
   // (بهذا لا تظهر أي لحظة سوداء بين الشاشتين).
-  if (session) {
+  // من دخل سابقاً على هذا الجهاز يستطيع فتح التطبيق والعمل بلا إنترنت
+  // (الجلسة المخزّنة لا تحتاج شبكة، والبيانات تُعرض من الكاش المحلي).
+  const canEnterOffline = !navigator.onLine && Boolean(readCachedProfile()?.id);
+
+  if (session || canEnterOffline) {
     await enterApp();
 
     await revealApp();
@@ -175,6 +183,11 @@ async function boot() {
 
       if (event === "SIGNED_OUT") {
         await removeFcmToken();
+        clearCachedProfile();
+        // لا تبقى محادثات/رسائل المستخدم السابق مخزّنة على الجهاز
+        try {
+          await clearAllCache();
+        } catch (err) {}
         state.me = null;
         showAuthScreen();
       }
@@ -197,8 +210,16 @@ async function boot() {
   window.addEventListener("online", () => {
     state.isOnline = true;
     updateOfflineBanner();
-    flushOutbox();
     resubscribeRealtime();
+
+    // بعد عودة الاتصال: نُرسل ما كُتب بلا إنترنت ثم نُحدّث القائمة والرسائل
+    Promise.resolve(flushOutbox())
+      .then(() => {
+        if (!state.me) return;
+        loadContacts();
+        if (state.activeConversation?.id) loadMessages(state.activeConversation.id);
+      })
+      .catch(() => {});
   });
 
   window.addEventListener("offline", () => {
@@ -296,6 +317,11 @@ function closeChatView() {
 
   $("#chat-panel")?.classList.remove("mobile-visible");
   $("#sidebar")?.classList.remove("mobile-hidden");
+
+  // نُعيد اللوحة إلى حالتها الأصلية («اختر محادثة») حتى لا تبقى نصف مفتوحة
+  // إذا تعذّر فتح المحادثة (بلا إنترنت مثلاً).
+  $("#chat-active")?.classList.add("hidden");
+  $("#chat-empty-state")?.classList.remove("hidden");
 }
 
 // ===============================================================
@@ -343,8 +369,65 @@ function showAuthScreen() {
 // ENTER APP
 // ===============================================================
 
+// الملف الشخصي بلا إنترنت: نحفظ نسخة محلية عند كل دخول ناجح، ونستعملها
+// عند انقطاع الاتصال حتى يقلع التطبيق ويُظهر المحادثات والرسائل المخزّنة.
+const PROFILE_CACHE_KEY = "wa_cache_profile";
+
+function cacheMyProfile(profile) {
+  try {
+    if (profile?.id) {
+      localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    }
+  } catch (err) {}
+}
+
+function readCachedProfile() {
+  try {
+    const raw = localStorage.getItem(PROFILE_CACHE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.id ? parsed : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function clearCachedProfile() {
+  try {
+    localStorage.removeItem(PROFILE_CACHE_KEY);
+  } catch (err) {}
+}
+
+// يجلب الملف الشخصي من السيرفر، وإن تعذّر (بلا إنترنت) يُكمل من النسخة المحلية
+async function resolveMyProfile() {
+  const cached = readCachedProfile();
+
+  // بلا إنترنت: ندخل فوراً من النسخة المحلية (لا نداء شبكة إطلاقاً)
+  if (navigator.onLine === false) {
+    return cached ? { ...cached, _offline_profile: true } : null;
+  }
+
+  let sessionUserId = null;
+  try {
+    const { data } = await supabase.auth.getSession();
+    sessionUserId = data?.session?.user?.id || null;
+  } catch (err) {}
+
+  const profile = await getCurrentProfile();
+
+  if (profile) {
+    cacheMyProfile(profile);
+    return profile;
+  }
+
+  if (cached && (!sessionUserId || cached.id === sessionUserId)) {
+    return { ...cached, _offline_profile: true };
+  }
+
+  return null;
+}
+
 async function enterApp() {
-  state.me = await getCurrentProfile();
+  state.me = await resolveMyProfile();
 
   // وقت الدخول: يُضبط مرة واحدة عند دخول الجلسة (لا يتغيّر أثناءها)
   if (!state.entryAt) state.entryAt = Date.now();
@@ -500,6 +583,9 @@ async function handleForegroundNotification(notification) {
 
 async function touchLastSeen(online) {
   if (!state.me) return;
+
+  // بلا إنترنت: لا نداء شبكة (يُحدَّث آخر ظهور عند عودة الاتصال)
+  if (!state.isOnline) return;
 
   try {
     await supabase
@@ -2088,6 +2174,7 @@ state.msgSearch = state.msgSearch || { query: "", hits: [], index: -1 };
 
 async function loadAdminMeta() {
   if (!state.me?.is_admin) return;
+  if (!state.isOnline) return;
 
   try {
     const { data, error } = await supabase.rpc("admin_conversations_overview");
@@ -2473,6 +2560,7 @@ async function toggleConversationArchive(conversationId) {
 
 async function logConversationView(conversationId) {
   if (!state.me?.is_admin || !conversationId) return;
+  if (!state.isOnline) return;
   try {
     await supabase.rpc("log_conversation_view", { p_conversation_id: conversationId });
   } catch (_) {}
@@ -3208,6 +3296,10 @@ function wireChrome() {
 
   $("#btn-logout")?.addEventListener("click", async () => {
     closeSettings();
+    clearCachedProfile();
+    try {
+      await clearAllCache();
+    } catch (err) {}
     await signOut(state.me?.id);
     location.reload();
   });
@@ -4476,6 +4568,7 @@ function updateConversationOptions() {
 
 async function getModerationRoles(userId) {
   if (!userId) return [];
+  if (!state.isOnline) return [];
   const { data, error } = await supabase
     .from("chat_members")
     .select("role")
@@ -4490,6 +4583,7 @@ async function getModerationRoles(userId) {
 
 async function getChatMemberRole(conversationId, userId) {
   if (!conversationId || !userId) return null;
+  if (!state.isOnline) return null;
   const { data, error } = await supabase
     .from("chat_members")
     .select("role")
@@ -4539,6 +4633,12 @@ async function openConversation(otherProfile) {
 
     let conversationId =
       otherProfile._conversationId;
+
+    // بلا إنترنت: المحادثات الموجودة تُفتح من الكاش، أما بدء محادثة جديدة
+    // فيحتاج اتصالاً — نوضّح ذلك بهدوء بدل تعليق التطبيق.
+    if (!conversationId && !state.isOnline) {
+      throw new Error("offline-new-chat");
+    }
 
     if (!conversationId) {
       const {
@@ -4638,12 +4738,18 @@ async function openConversation(otherProfile) {
       err
     );
 
-    showAuthError(
-      "تعذّر فتح المحادثة: " +
-        (err?.message ||
-          "خطأ غير معروف") +
-        " — تأكد من تشغيل sql/schema.sql بالكامل ومن صحة SUPABASE_URL/ANON_KEY في js/config.js"
-    );
+    if (!state.isOnline || err?.message === "offline-new-chat") {
+      showAuthError(
+        "لا يوجد اتصال بالإنترنت — يمكنك فتح محادثاتك السابقة والقراءة والكتابة، وستُرسل رسائلك تلقائياً عند عودة الاتصال."
+      );
+    } else {
+      showAuthError(
+        "تعذّر فتح المحادثة: " +
+          (err?.message ||
+            "خطأ غير معروف") +
+          " — تأكد من تشغيل sql/schema.sql بالكامل ومن صحة SUPABASE_URL/ANON_KEY في js/config.js"
+      );
+    }
 
     closeChatView();
   }
@@ -4653,14 +4759,40 @@ async function openConversation(otherProfile) {
 // LOAD MESSAGES
 // ===============================================================
 
+// الرسائل المكتوبة بلا إنترنت (صندوق الصادر) تُعرض كذلك بعد إغلاق التطبيق وفتحه
+async function getPendingOutboxMessages(conversationId) {
+  try {
+    const items = await getOutbox();
+
+    return (items || [])
+      .filter((item) => String(item.conversation_id) === String(conversationId))
+      .map((item) => ({
+        id: `local-${item.local_id}`,
+        conversation_id: item.conversation_id,
+        sender_id: item.sender_id,
+        content: item.content ?? null,
+        attachment_url: item.attachment_url || null,
+        attachment_type: item.attachment_type || null,
+        reply_to_id: item.reply_to_id || null,
+        status: "pending",
+        created_at: item.queued_at || new Date().toISOString(),
+        _pending: true,
+      }));
+  } catch (err) {
+    return [];
+  }
+}
+
 async function loadMessages(conversationId) {
   const cached =
     await getCachedMessages(
       conversationId
     );
 
-  if (cached.length) {
-    state.messages = cached;
+  const pendingOutbox = await getPendingOutboxMessages(conversationId);
+
+  if (cached.length || pendingOutbox.length) {
+    state.messages = [...cached, ...pendingOutbox];
     renderMessages();
   }
 
@@ -4688,13 +4820,16 @@ async function loadMessages(conversationId) {
     return;
   }
 
-  state.messages = data || [];
+  state.messages = [
+    ...(data || []),
+    ...(await getPendingOutboxMessages(conversationId)),
+  ];
 
   renderMessages();
 
   await cacheMessages(
     conversationId,
-    state.messages
+    data || []
   );
 }
 
@@ -4703,6 +4838,9 @@ async function loadMessages(conversationId) {
 // ===============================================================
 
 async function loadReactionsForConversation() {
+  // بلا إنترنت: نُبقي التفاعلات المعروفة كما هي (لا نداء شبكة)
+  if (!state.isOnline) return;
+
   // نحتفظ بالتفاعلات التي أضافها المستخدم ولم تُحفظ بعد (المعلّقة) حتى لا
   // «تختفي» شريحة التفاعل إذا تأخر الحفظ أو تعذّرت قراءته.
   const pending = {};
@@ -7999,6 +8137,9 @@ async function markConversationRead(
     return;
   }
 
+  // بلا إنترنت: تُعلَّم الرسائل مقروءة تلقائياً عند عودة الاتصال
+  if (!state.isOnline) return;
+
   try {
     const { error } =
       await supabase
@@ -8264,6 +8405,12 @@ async function refreshPresenceLabel(
     $("#chat-header-status");
 
   if (!label) return;
+
+  // بلا إنترنت: لا نعرف آخر ظهور من الشبكة — لا نُظهر معلومة قديمة مضلِّلة
+  if (!state.isOnline) {
+    label.textContent = "";
+    return;
+  }
 
   if (
     state.onlineMap[otherId]

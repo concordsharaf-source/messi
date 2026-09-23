@@ -9,6 +9,7 @@ OLD=$(grep -oE 'wa-clone-shell-v[0-9]+' sw.js | head -1 | grep -oE '[0-9]+')
 sed -i "s/wa-clone-shell-v${OLD}/wa-clone-shell-v${NEW}/" sw.js
 sed -i "s/\.\/css\/style\.css?v=${OLD}/.\/css\/style.css?v=${NEW}/" index.html
 sed -i "s/\.\/js\/app\.js?v=${OLD}/.\/js\/app.js?v=${NEW}/" index.html
+sed -i "s|\.\/vendor\/supabase-js\.js?v=${OLD}|./vendor/supabase-js.js?v=${NEW}|" index.html
 sed -i "s/window.WA_BUILD = \"${OLD}\"/window.WA_BUILD = \"${NEW}\"/" index.html
 sed -i "s/id=\"value-build\">v${OLD}/id=\"value-build\">v${NEW}/" index.html
 sed -i "s/const BUILD = \"${OLD}\"/const BUILD = \"${NEW}\"/" js/app.js

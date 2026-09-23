@@ -1,6 +1,6 @@
 importScripts(
-  "https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js",
-  "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js"
+  "./vendor/firebase/firebase-app-compat.js",
+  "./vendor/firebase/firebase-messaging-compat.js"
 );
 
 self.addEventListener("install", (event) => {

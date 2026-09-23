@@ -2,13 +2,13 @@
 // Firebase Cloud Messaging - Push Notifications
 // ===============================================================
 
-import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { initializeApp, getApps } from "../vendor/firebase/firebase-app.js";
 import {
   getMessaging,
   getToken,
   deleteToken,
   onMessage,
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js";
+} from "../vendor/firebase/firebase-messaging.js";
 
 // ---------------------------------------------------------------
 // Firebase Configuration

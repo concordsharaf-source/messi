@@ -16,14 +16,14 @@
 //   الطريق الأصلي تلقائياً ويتجاهل هذا الجسر (انظر signInWithGoogle في app.js).
 // ===============================================================
 
-import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { initializeApp, getApps } from "../vendor/firebase/firebase-app.js";
 import {
   getAuth,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   GoogleAuthProvider,
-} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+} from "../vendor/firebase/firebase-auth.js";
 
 import { supabase } from "./supabaseClient.js";
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from "./config.js";
