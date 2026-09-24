@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "41";
+const BUILD = "42";
 
 const state = {
   me: null,
@@ -320,6 +320,9 @@ function closeChatView() {
 
   // v41: نُفرّغ قائمة الرسائل حتى لا تظهر محادثة سابقة عند إعادة الفتح
   clearChatViewMessages();
+
+  // v42: نُغلق لوحة الإيموجي أيضاً
+  closeEmojiPanel();
 
   document.body.classList.remove("viewing-chat");
   closeMediaViewer();
@@ -3698,6 +3701,12 @@ function wireChatPanel() {
   });
 
   $("#attach-input")?.addEventListener(
+    "change",
+    handleAttachmentUpload
+  );
+
+  // v42: زر الصورة (الكاميرا) داخل الخانة — نفس مسار المرفقات
+  $("#photo-input")?.addEventListener(
     "change",
     handleAttachmentUpload
   );
@@ -10393,103 +10402,690 @@ function playNotificationSound() {
 // EMOJI PICKER
 // ===============================================================
 
-function wireEmojiPicker() {
-  const btn =
-    $("#emoji-toggle");
+// ===============================================================
+// EMOJI PICKER (v42) — مثل واتساب: الأكثر استخداماً + تصنيفات + بحث
+// ===============================================================
+const EMOJI_RECENT_KEY = "wa_recent_emojis";
+const EMOJI_RECENT_MAX = 36;
 
-  const panel =
-    $("#emoji-panel");
+const EMOJI_CATEGORIES = [
+  { key: "recent", tab: "🕘", title: "الأكثر استخداماً", list: [] },
+  { key: "smileys", tab: "😀", title: "الوجوه والمشاعر", list: "😀 😃 😄 😁 😆 😅 😂 🤣 🥲 🥹 ☺️ 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 😝 😜 🤪 🤨 🧐 🤓 😎 🥸 🤩 🥳 😏 😒 😞 😔 😟 😕 🙁 ☹️ 😣 😖 😫 😩 🥺 😢 😭 😮‍💨 😤 😠 😡 🤬 🤯 😳 🥵 🥶 😱 😨 😰 😥 😓 🫣 🤗 🫡 🤔 🤫 🫠 🤥 😶 😶‍🌫️ 😐 😑 😬 🫨 😯 😦 😧 😮 😲 🥱 😴 🤤 😪 😵 😵‍💫 🤐 🥴 🤢 🤮 🤧 😷 🤒 🤕 🤑 🤠 😈 👿 👹 👺 🤡 👻 💀 ☠️ 👽 👾 🤖 🎃 😺 😸 😹 😻 😼 😽 🙀 😿 😾 🙈 🙉 🙊 💋 💌 💘 💝 💖 💗 💓 💞 💕 💟 ❣️ 💔 ❤️ 🧡 💛 💚 💙 💜 🤎 🖤 🤍 💯 💢 💥 💫 💦 💨 💬 💭 💤".split(" ") },
+  { key: "people", tab: "👍", title: "الأيدي والأشخاص", list: "👋 🤚 🖐️ ✋ 🖖 👌 🤌 🤏 ✌️ 🤞 🤟 🤘 🤙 👈 👉 👆 🖕 👇 ☝️ 👍 👎 ✊ 👊 🤛 🤜 👏 🙌 👐 🤲 🤝 🙏 ✍️ 💅 🤳 💪 🦾 🦿 🦵 🦶 👂 🦻 👃 🧠 🦷 🦴 👀 👁️ 👅 👄 👶 🧒 👦 👧 🧑 👱 👨 🧔 👩 🧓 👴 👵 🙍 🙎 🙅 🙆 💁 🙋 🧏 🙇 🤦 🤷 👮 🕵️ 💂 👷 🤴 👸 👳 👲 🧕 🤵 👰 🤰 🤱 👼 🎅 🤶 🦸 🦹 🧙 🧚 🧛 🧜 🧝 🧞 🧟 💆 💇 🚶 🧍 🧎 🏃 💃 🕺 👯 🧖 🧗 🤺 🏇 ⛷️ 🏂 🏌️ 🏄 🚣 🏊 ⛹️ 🏋️ 🚴 🚵 🤸 🤼 🤽 🤾 🤹 🧘 🛌 👭 👫 👬 💏 💑 👪 🗣️ 👤 👥".split(" ") },
+  { key: "nature", tab: "🐻", title: "الحيوانات والطبيعة", list: "🐶 🐱 🐭 🐹 🐰 🦊 🐻 🐼 🐨 🐯 🦁 🐮 🐷 🐽 🐸 🐵 🐒 🐔 🐧 🐦 🐤 🐣 🐥 🦆 🦅 🦉 🦇 🐺 🐗 🐴 🦄 🐝 🐛 🦋 🐌 🐞 🐜 🦟 🦗 🕷️ 🕸️ 🦂 🐢 🐍 🦎 🦖 🦕 🐙 🦑 🦐 🦞 🦀 🐡 🐠 🐟 🐬 🐳 🐋 🦈 🐊 🐅 🐆 🦓 🦍 🦧 🐘 🦛 🦏 🐪 🐫 🦒 🦘 🐃 🐂 🐄 🐎 🐖 🐏 🐑 🦙 🐐 🦌 🐕 🐩 🐈 🐓 🦃 🦚 🦜 🦢 🦩 🕊️ 🐇 🦝 🦨 🦡 🦦 🦥 🐁 🐀 🐿️ 🦔 🐾 🐉 🐲 🌵 🎄 🌲 🌳 🌴 🌱 🌿 ☘️ 🍀 🎍 🎋 🍃 🍂 🍁 🍄 🐚 🌾 💐 🌷 🌹 🥀 🌺 🌸 🌼 🌻 🌞 🌝 🌛 🌜 🌚 🌕 🌖 🌗 🌘 🌑 🌒 🌓 🌔 🌙 🌎 🌍 🌏 🪐 ⭐ 🌟 ✨ ⚡ ☄️ 🔥 🌪️ 🌈 ☀️ 🌤️ ⛅ 🌥️ ☁️ 🌦️ 🌧️ ⛈️ 🌩️ 🌨️ ❄️ ☃️ ⛄ 🌬️ 💧 💦 ☔ ☂️ 🌊 🌫️".split(" ") },
+  { key: "food", tab: "🍔", title: "الطعام والشراب", list: "🍇 🍈 🍉 🍊 🍋 🍌 🍍 🥭 🍎 🍏 🍐 🍑 🍒 🍓 🥝 🍅 🥥 🥑 🍆 🥔 🥕 🌽 🌶️ 🥒 🥬 🥦 🧄 🧅 🥜 🌰 🍞 🥐 🥖 🥨 🥯 🥞 🧇 🧀 🍖 🍗 🥩 🥓 🍔 🍟 🍕 🌭 🥪 🌮 🌯 🥙 🧆 🥚 🍳 🥘 🍲 🥣 🥗 🍿 🧈 🧂 🥫 🍱 🍘 🍙 🍚 🍛 🍜 🍝 🍠 🍢 🍣 🍤 🍥 🥮 🍡 🥟 🥠 🥡 🦪 🍦 🍧 🍨 🍩 🍪 🎂 🍰 🧁 🥧 🍫 🍬 🍭 🍮 🍯 🍼 🥛 ☕ 🍵 🍶 🍾 🍷 🍸 🍹 🍺 🍻 🥂 🥃 🥤 🧃 🧉 🧊 🥢 🍽️ 🍴 🥄".split(" ") },
+  { key: "activity", tab: "⚽", title: "الأنشطة والرياضة", list: "⚽ 🏀 🏈 ⚾ 🥎 🎾 🏐 🏉 🥏 🎱 🪀 🏓 🏸 🏒 🏑 🥍 🏏 🥅 ⛳ 🪁 🏹 🎣 🤿 🥊 🥋 🎽 🛹 🛼 🛷 ⛸️ 🥌 🎿 🪂 🏆 🥇 🥈 🥉 🏅 🎖️ 🏵️ 🎗️ 🎫 🎟️ 🎪 🤹 🎭 🩰 🎨 🎬 🎤 🎧 🎼 🎹 🥁 🎷 🎺 🎸 🪕 🎻 🎲 ♟️ 🎯 🎳 🎮 🎰 🧩".split(" ") },
+  { key: "travel", tab: "✈️", title: "السفر والأماكن", list: "🚗 🚕 🚙 🚌 🚎 🏎️ 🚓 🚑 🚒 🚐 🚚 🚛 🚜 🛴 🚲 🛵 🏍️ 🛺 🚨 🚔 🚍 🚘 🚖 🚡 🚠 🚟 🚃 🚋 🚞 🚝 🚄 🚅 🚈 🚂 🚆 🚇 🚊 🚉 ✈️ 🛫 🛬 🛩️ 💺 🛰️ 🚀 🛸 🚁 🛶 ⛵ 🚤 🛥️ 🛳️ ⛴️ 🚢 ⚓ ⛽ 🚧 🚦 🚥 🚏 🗺️ 🗿 🗽 🗼 🏰 🏯 🏟️ 🎡 🎢 🎠 ⛲ ⛱️ 🏖️ 🏝️ 🏜️ 🌋 ⛰️ 🏔️ 🗻 🏕️ ⛺ 🏠 🏡 🏘️ 🏚️ 🏗️ 🏭 🏢 🏬 🏣 🏤 🏥 🏦 🏨 🏪 🏫 🏩 💒 🏛️ ⛪ 🕌 🕍 🛕 🕋 ⛩️ 🛤️ 🛣️ 🗾 🎑 🏞️ 🌅 🌄 🌠 🎇 🎆 🌇 🌆 🏙️ 🌃 🌌 🌉 🌁".split(" ") },
+  { key: "objects", tab: "💡", title: "الأشياء", list: "⌚ 📱 📲 💻 ⌨️ 🖥️ 🖨️ 🖱️ 🖲️ 🕹️ 💽 💾 💿 📀 📼 📷 📸 📹 🎥 📽️ 🎞️ 📞 ☎️ 📟 📠 📺 📻 🎙️ 🎚️ 🎛️ 🧭 ⏱️ ⏲️ ⏰ 🕰️ ⌛ ⏳ 📡 🔋 🔌 💡 🔦 🕯️ 🪔 🧯 🛢️ 💸 💵 💴 💶 💷 💰 💳 💎 ⚖️ 🧰 🔧 🔨 ⚒️ 🛠️ ⛏️ 🔩 ⚙️ 🧱 ⛓️ 🧲 🔫 💣 🧨 🪓 🔪 🗡️ ⚔️ 🛡️ 🚬 ⚰️ ⚱️ 🏺 🔮 📿 🧿 💈 ⚗️ 🔭 🔬 🩹 🩺 💊 💉 🩸 🧬 🦠 🧫 🧪 🌡️ 🧹 🧺 🧻 🚽 🚰 🚿 🛁 🧼 🪒 🧽 🧴 🛎️ 🔑 🗝️ 🚪 🪑 🛋️ 🛏️ 🧸 🖼️ 🛍️ 🛒 🎁 🎈 🎏 🎀 🎊 🎉 🎎 🏮 🎐 🧧 ✉️ 📩 📨 📧 📥 📤 📦 🏷️ 📪 📫 📬 📭 📮 📯 📜 📃 📄 📑 🧾 📊 📈 📉 🗒️ 🗓️ 📆 📅 🗑️ 📇 🗃️ 🗳️ 🗄️ 📋 📁 📂 🗂️ 🗞️ 📰 📓 📔 📒 📕 📗 📘 📙 📚 📖 🔖 🧷 🔗 📎 🖇️ 📐 📏 🧮 📌 📍 ✂️ 🖊️ 🖋️ ✒️ 🖌️ 🖍️ 📝 ✏️ 🔍 🔎 🔏 🔐 🔒 🔓".split(" ") },
+  { key: "symbols", tab: "❤️", title: "الرموز", list: "❤️ 💔 ✨ ✅ ❌ ⭕ 🛑 ⛔ 📛 🚫 💯 ♨️ 🚷 🚯 🚳 🚱 🔞 📵 🚭 ❗ ❕ ❓ ❔ ‼️ ⁉️ 🔅 🔆 〽️ ⚠️ 🚸 🔱 ⚜️ 🔰 ♻️ 🈯 💹 ❇️ ✳️ ❎ 🌐 💠 Ⓜ️ 🌀 💤 🏧 🚾 ♿ 🅿️ 🈳 🈂️ 🛂 🛃 🛄 🛅 🚹 🚺 🚼 🚻 🚮 🎦 📶 🈁 🔣 ℹ️ 🔤 🔡 🔠 🆖 🆗 🆙 🆒 🆕 🆓 0️⃣ 1️⃣ 2️⃣ 3️⃣ 4️⃣ 5️⃣ 6️⃣ 7️⃣ 8️⃣ 9️⃣ 🔟 🔢 #️⃣ *️⃣ ▶️ ⏸️ ⏹️ ⏺️ ⏭️ ⏮️ ⏩ ⏪ ⏫ ⏬ ◀️ 🔼 🔽 ➡️ ⬅️ ⬆️ ⬇️ ↗️ ↘️ ↙️ ↖️ ↕️ ↔️ ↩️ ↪️ ⤴️ ⤵️ 🔀 🔁 🔂 🔄 🔃 🎵 🎶 ➕ ➖ ➗ ✖️ ♾️ 💲 💱 ™️ ©️ ®️ 〰️ ➰ ➿ 🔚 🔙 🔛 🔝 🔜 ✔️ ☑️ 🔘 🔴 🟠 🟡 🟢 🔵 🟣 ⚫ ⚪ 🟤 🔺 🔻 🔸 🔹 🔶 🔷 🔳 🔲 ▪️ ▫️ ◾ ◽ ◼️ ◻️ 🟥 🟧 🟨 🟩 🟦 🟪 ⬛ ⬜ 🟫 🔈 🔇 🔉 🔊 🔔 🔕 📣 📢 ♠️ ♣️ ♥️ ♦️ 🃏 🎴 🀄 🕐 🕑 🕒 🕓 🕔 🕕 🕖 🕗 🕘 🕙 🕚 🕛".split(" ") },
+  { key: "flags", tab: "🏁", title: "الأعلام", list: "🇾🇪 🇸🇦 🇦🇪 🇰🇼 🇶🇦 🇧🇭 🇴🇲 🇯🇴 🇱🇧 🇸🇾 🇮🇶 🇵🇸 🇪🇬 🇱🇾 🇹🇳 🇩🇿 🇲🇦 🇸🇩 🇸🇴 🇩🇯 🇲🇷 🇰🇲 🇺🇸 🇬🇧 🇫🇷 🇩🇪 🇮🇹 🇪🇸 🇵🇹 🇳🇱 🇧🇪 🇨🇭 🇦🇹 🇸🇪 🇳🇴 🇩🇰 🇫🇮 🇵🇱 🇺🇦 🇬🇷 🇮🇪 🇷🇺 🇹🇷 🇨🇳 🇯🇵 🇰🇷 🇮🇳 🇵🇰 🇧🇩 🇮🇩 🇲🇾 🇸🇬 🇹🇭 🇻🇳 🇵🇭 🇦🇺 🇳🇿 🇨🇦 🇧🇷 🇦🇷 🇲🇽 🇨🇱 🇿🇦 🇳🇬 🇰🇪 🇪🇹 🇬🇭 🇸🇳 🇨🇮 🇨🇲 🇺🇬 🇹🇿 🇲🇿 🇦🇫 🇮🇷 🇦🇿 🇰🇿 🇺🇿 🇬🇪 🇦🇲 🏳️ 🏴 🏁 🚩 🎌 🏳️‍🌈".split(" ") },
+];
 
-  if (!btn || !panel) return;
+// كلمات البحث بالعربي (وبعضها إنجليزي) للأكثر استخداماً
+const EMOJI_KEYWORDS = {
+  "😀": "وجه مبتسم ضحك فرح سعادة smile",
+  "😃": "وجه مبتسم ضحك smile",
+  "😄": "وجه مبتسم ضحك smile",
+  "😁": "وجه مبتسم ضحك أسنان grin",
+  "😆": "ضحك قهقهة laugh",
+  "😅": "ضحك عرق ارتباك",
+  "😂": "ضحك دموع فرح joy",
+  "🤣": "ضحك قوي تدحرج rofl",
+  "🥲": "دمعة فرح ابتسامة",
+  "🥹": "تأثر دموع إعجاب",
+  "☺️": "ابتسامة هادئة خجل",
+  "😊": "ابتسامة فرح خجل smile",
+  "😇": "ملاك بريء طيب",
+  "🙂": "ابتسامة بسيطة",
+  "🙃": "مقلوب مازح",
+  "😉": "غمزة wink",
+  "😌": "راحة سكينة ارتياح",
+  "😍": "حب عشق عيون قلب love",
+  "🥰": "حب عشق سعادة love",
+  "😘": "قبلة حب kiss",
+  "😗": "قبلة بوسة",
+  "😙": "قبلة بوسة",
+  "😚": "قبلة بوسة خجل",
+  "😋": "لذيذ طعام شهية",
+  "😛": "لسان مازح",
+  "😝": "لسان مازح",
+  "😜": "لسان غمزة مرح",
+  "🤪": "مجنون مرح",
+  "🤨": "شك استغراب حاجب",
+  "🧐": "تفكير عدسة تحقق",
+  "🤓": "نظارة ذكي مهووس",
+  "😎": "نظارة شمس كول رائع cool",
+  "🥸": "تنكر شارِب",
+  "🤩": "نجوم إعجاب wow",
+  "🥳": "احتفال حفلة عيد party",
+  "😏": "مكر خبث ابتسامة",
+  "😒": "ضجر عدم إعجاب",
+  "😞": "حزن خيبة",
+  "😔": "حزن أسف",
+  "😟": "قلق حزن",
+  "😕": "ارتباك عدم فهم",
+  "🙁": "حزن عبوس",
+  "☹️": "حزن عبوس",
+  "😣": "ضيق معاناة",
+  "😖": "ضيق ألم",
+  "😫": "تعب إرهاق",
+  "😩": "تعب إرهاق ضيق",
+  "🥺": "رجاء توسل براءة",
+  "😢": "بكاء حزن دمعة cry",
+  "😭": "بكاء حزن شديد cry",
+  "😮‍💨": "تنفس راحة زفير",
+  "😤": "غضب فخر",
+  "😠": "غضب زعل angry",
+  "😡": "غضب شديد angry",
+  "🤬": "غضب سب شتيمة",
+  "🤯": "صدمة انفجار عقل",
+  "😳": "خجل صدمة احمرار",
+  "🥵": "حر حرارة تعب",
+  "🥶": "برد تجمد",
+  "😱": "صراخ خوف رعب",
+  "😨": "خوف رعب",
+  "😰": "خوف قلق عرق",
+  "😥": "حزن خوف دمعة",
+  "😓": "تعب عرق إرهاق",
+  "🫣": "خوف نظر خلسة",
+  "🤗": "حضن عناق",
+  "🫡": "تحية احترام",
+  "🤔": "تفكير تساؤل think",
+  "🤫": "صمت سر هدوء",
+  "🫠": "ذوبان حر خجل",
+  "🤥": "كذب أنف بينوكيو",
+  "😶": "صمت بلا كلام",
+  "😐": "محايد بلا تعبير",
+  "😑": "محايد بلا تعبير",
+  "😬": "توتر حرج",
+  "🫨": "اهتزاز صدمة",
+  "😯": "دهشة مفاجأة",
+  "😲": "دهشة صدمة",
+  "🥱": "تثاؤب نعاس ملل",
+  "😴": "نوم نعاس sleep",
+  "🤤": "لعاب نوم شهية",
+  "😪": "نعاس تعب",
+  "😵": "دوخة إغماء",
+  "🤐": "صمت سكوت",
+  "🥴": "دوار سكران",
+  "🤢": "غثيان اشمئزاز",
+  "🤮": "قيء تقيؤ",
+  "🤧": "عطاس زكام",
+  "😷": "كمامة مرض كورونا",
+  "🤒": "مرض حرارة",
+  "🤕": "إصابة ربط جرح",
+  "🤑": "مال غني طمع",
+  "🤠": "قبعة راعي غرب",
+  "😈": "شيطان مكر شر",
+  "👿": "شيطان غضب",
+  "👹": "غول وحش",
+  "👺": "غوبلين وحش",
+  "🤡": "مهرج سيرك",
+  "👻": "شبح هالوين",
+  "💀": "جمجمة موت",
+  "☠️": "جمجمة عظام خطر",
+  "👽": "فضائي كائن",
+  "👾": "فضائي لعبة",
+  "🤖": "روبوت آلية bot",
+  "🎃": "قرع هالوين",
+  "💋": "قبلة شفاه kiss",
+  "💌": "رسالة حب",
+  "💘": "قلب سهم حب",
+  "💝": "قلب هدية حب",
+  "💖": "قلب لامع حب",
+  "💗": "قلب حب",
+  "💓": "قلب نبض حب",
+  "💞": "قلوب حب",
+  "💕": "قلوب حب",
+  "💟": "قلب زخرفة",
+  "❣️": "قلب تعجب",
+  "💔": "قلب مكسور حزن",
+  "❤️": "قلب حب أحمر love heart",
+  "🧡": "قلب برتقالي",
+  "💛": "قلب أصفر",
+  "💚": "قلب أخضر",
+  "💙": "قلب أزرق",
+  "💜": "قلب بنفسجي",
+  "🤎": "قلب بني",
+  "🖤": "قلب أسود",
+  "🤍": "قلب أبيض",
+  "💯": "مئة درجة كامل",
+  "💥": "انفجار صدمة",
+  "💫": "نجوم دوار",
+  "💦": "ماء عرق رش",
+  "💨": "ريح سرعة",
+  "💬": "رسالة تعليق",
+  "💭": "تفكير فكرة",
+  "💤": "نوم snooze",
+  "👋": "تحية السلام wave مرحبا",
+  "🤚": "كف يد",
+  "🖐️": "كف يد أصابع",
+  "✋": "كف توقف",
+  "🖖": "سبوك فولكان",
+  "👌": "تمام موافق ok",
+  "🤌": "يد إيطالي",
+  "🤏": "قليل صغير",
+  "✌️": "نصر سلام peace",
+  "🤞": "حظ أمل",
+  "🤟": "حب علامة",
+  "🤘": "روك قرون",
+  "🤙": "اتصل بي",
+  "👈": "إشارة يسار",
+  "👉": "إشارة يمين",
+  "👆": "إشارة أعلى",
+  "🖕": "إصبع وسط",
+  "👇": "إشارة أسفل",
+  "☝️": "إصبع لأعلى واحد",
+  "👍": "موافق تمام لايك thumbs up",
+  "👎": "غير موافق ديسلايك",
+  "✊": "قبضة قوة",
+  "👊": "قبضة لكمة",
+  "👏": "تصفيق شكر clap",
+  "🙌": "رفع اليدين تهليل",
+  "👐": "يدين مفتوحتين",
+  "🤲": "دعاء كفين",
+  "🤝": "مصافحة اتفاق",
+  "🙏": "دعاء شكر رجاء prayer",
+  "✍️": "كتابة يد",
+  "💅": "أظافر مانيكير",
+  "🤳": "سيلفي صورة",
+  "💪": "عضلات قوة",
+  "🦾": "ذراع آلية",
+  "👂": "أذن سمع",
+  "👃": "أنف شم",
+  "🧠": "دماغ عقل ذكاء",
+  "🦷": "سن أسنان",
+  "👀": "عيون نظر",
+  "👁️": "عين",
+  "👅": "لسان",
+  "👄": "شفاه فم",
+  "👶": "طفل رضيع",
+  "🧒": "طفل",
+  "👦": "ولد",
+  "👧": "بنت",
+  "🧑": "شخص",
+  "👨": "رجل",
+  "👩": "امرأة سيدة",
+  "🧓": "كبير سن",
+  "👴": "جد عجوز",
+  "👵": "جدة عجوز",
+  "🙋": "رفع اليد سؤال",
+  "🙇": "انحناء اعتذار",
+  "🤦": "وجه بالكف إحباط",
+  "🤷": "لا أعرف",
+  "👮": "شرطي",
+  "👷": "عامل بناء",
+  "🤴": "أمير",
+  "👸": "أميرة",
+  "🧕": "حجاب",
+  "👰": "عروس",
+  "🤰": "حامل",
+  "🎅": "بابا نويل",
+  "🦸": "بطل خارق",
+  "🧙": "ساحر",
+  "💃": "رقص امرأة",
+  "🕺": "رقص رجل",
+  "🤺": "مبارزة",
+  "🏇": "فروسية",
+  "🏄": "تزلج ماء",
+  "🏊": "سباحة",
+  "🏋️": "رفع أثقال رياضة",
+  "🚴": "دراجة",
+  "🤸": "شقلبة جمباز",
+  "🧘": "تأمل يوغا",
+  "💆": "مساج راحة",
+  "✈️": "طائرة سفر travel",
+  "🚀": "صاروخ فضاء",
+  "🚗": "سيارة",
+  "🚕": "تاكسي",
+  "🚌": "باص حافلة",
+  "🚓": "سيارة شرطة",
+  "🚑": "إسعاف",
+  "🚒": "إطفاء حريق",
+  "🚲": "دراجة هوائية",
+  "🛵": "سكوتر",
+  "🚂": "قطار",
+  "🚢": "سفينة",
+  "⛵": "قارب",
+  "🏠": "بيت منزل",
+  "🏢": "عمارة مبنى",
+  "🏥": "مستشفى",
+  "🏦": "بنك",
+  "🏫": "مدرسة",
+  "🕌": "مسجد",
+  "🕋": "الكعبة مكة",
+  "🗿": "تمثال",
+  "🎡": "عجلة ملاهي",
+  "🏖️": "شاطئ بحر",
+  "⛰️": "جبل",
+  "🌋": "بركان",
+  "📱": "جوال هاتف موبايل",
+  "💻": "لابتوب كمبيوتر",
+  "⌨️": "كيبورد لوحة مفاتيح",
+  "📷": "كاميرا تصوير",
+  "📸": "كاميرا فلاش صورة",
+  "🎥": "فيديو كاميرا",
+  "☎️": "هاتف",
+  "📺": "تلفزيون",
+  "📻": "راديو",
+  "⏰": "منبه ساعة",
+  "⌛": "ساعة رملية وقت",
+  "💡": "فكرة مصباح",
+  "🔋": "بطارية",
+  "💰": "مال كيس فلوس",
+  "💵": "دولار مال",
+  "💳": "بطاقة بنكية",
+  "💎": "ألماس جوهرة",
+  "🔑": "مفتاح",
+  "🔒": "قفل مقفل",
+  "🔓": "قفل مفتوح",
+  "📌": "دبوس تثبيت",
+  "✂️": "مقص قص",
+  "📝": "ملاحظة كتابة",
+  "✏️": "قلم رصاص",
+  "📚": "كتب",
+  "📖": "كتاب قراءة",
+  "📊": "رسم بياني",
+  "📅": "تقويم تاريخ",
+  "📦": "صندوق شحنة",
+  "🎁": "هدية",
+  "🎈": "بالون",
+  "🎉": "احتفال مبروك",
+  "🎊": "احتفال كرات",
+  "🎂": "كيك عيد ميلاد",
+  "🍰": "كيك قطعة",
+  "☕": "قهوة",
+  "🍵": "شاي",
+  "🥤": "مشروب كوب",
+  "🍕": "بيتزا",
+  "🍔": "برغر",
+  "🍟": "بطاطس",
+  "🍗": "دجاج",
+  "🥩": "لحم",
+  "🍚": "أرز",
+  "🍞": "خبز",
+  "🍎": "تفاح",
+  "🍌": "موز",
+  "🍇": "عنب",
+  "🍉": "بطيخ",
+  "🍓": "فراولة",
+  "🥑": "أفوكادو",
+  "🌹": "وردة حب",
+  "🌷": "زهرة توليب",
+  "🌸": "زهرة كرز",
+  "🌻": "عباد الشمس",
+  "🌴": "نخلة",
+  "🌵": "صبار",
+  "🌳": "شجرة",
+  "🍀": "حظ برسيم",
+  "🔥": "نار حار fire",
+  "⭐": "نجمة",
+  "🌟": "نجمة لامعة",
+  "✨": "لمعان بريق",
+  "⚡": "برق كهرباء",
+  "🌈": "قوس قزح",
+  "☀️": "شمس",
+  "🌙": "هلال قمر",
+  "🌊": "موجة بحر",
+  "❄️": "ثلج برد",
+  "💧": "قطرة ماء",
+  "🐶": "كلب جرو",
+  "🐱": "قط قطة",
+  "🦁": "أسد",
+  "🐯": "نمر",
+  "🐘": "فيل",
+  "🐴": "حصان",
+  "🐫": "جمل",
+  "🐑": "خروف",
+  "🐄": "بقرة",
+  "🐔": "دجاجة",
+  "🐦": "عصفور طائر",
+  "🦅": "نسر",
+  "🦋": "فراشة",
+  "🐝": "نحلة",
+  "🐟": "سمكة",
+  "🐬": "دولفين",
+  "🐋": "حوت",
+  "🦈": "قرش",
+  "🐢": "سلحفاة",
+  "🐍": "ثعبان",
+  "🐒": "قرد",
+  "⚽": "كرة قدم رياضة",
+  "🏀": "كرة سلة",
+  "🎾": "تنس",
+  "🏆": "كأس فوز",
+  "🥇": "ميدالية ذهبية",
+  "🎮": "ألعاب بلايستيشن",
+  "🎯": "هدف سهم",
+  "🎵": "نغمة موسيقى",
+  "🎧": "سماعات",
+  "🎤": "ميكروفون غناء",
+  "🎬": "فيلم سينما",
+  "🎨": "رسم ألوان",
+  "✅": "صح صحيح تمام ok",
+  "❌": "خطأ غلط رفض",
+  "⚠️": "تحذير انتباه",
+  "❓": "سؤال علامة",
+  "❗": "تعجب علامة",
+  "🔔": "جرس إشعار تنبيه",
+  "🔕": "صامت إشعار",
+  "🕐": "ساعة وقت",
+  "🏁": "علم نهاية",
+  "🚩": "علم أحمر",
+  "🇾🇪": "علم اليمن",
+  "🇸🇦": "علم السعودية",
+  "🇦🇪": "علم الإمارات",
+  "🇰🇼": "علم الكويت",
+  "🇶🇦": "علم قطر",
+  "🇧🇭": "علم البحرين",
+  "🇴🇲": "علم عمان",
+  "🇯🇴": "علم الأردن",
+  "🇪🇬": "علم مصر",
+  "🇮🇶": "علم العراق",
+  "🇸🇾": "علم سوريا",
+  "🇵🇸": "علم فلسطين",
+  "🇱🇧": "علم لبنان",
+  "🇲🇦": "علم المغرب",
+  "🇩🇿": "علم الجزائر",
+  "🇹🇳": "علم تونس",
+  "🇱🇾": "علم ليبيا",
+  "🇸🇩": "علم السودان",
+  "🇺🇸": "علم أمريكا",
+  "🇬🇧": "علم بريطانيا",
+  "🇹🇷": "علم تركيا",
+  "🇩🇪": "علم ألمانيا",
+  "🇫🇷": "علم فرنسا",
+};
 
-  if (panel.dataset.wired === "1") {
+let emojiActiveCategory = "recent";
+
+function readRecentEmojis() {
+  try {
+    const list = JSON.parse(localStorage.getItem(EMOJI_RECENT_KEY) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveRecentEmojis(list) {
+  try {
+    localStorage.setItem(EMOJI_RECENT_KEY, JSON.stringify((list || []).slice(0, EMOJI_RECENT_MAX)));
+  } catch (_) {}
+}
+
+function pushRecentEmoji(ch) {
+  if (!ch) return;
+
+  const list = readRecentEmojis().filter((item) => item !== ch);
+  list.unshift(ch);
+  saveRecentEmojis(list);
+}
+
+function emojiOptionHtml(ch) {
+  const first = String(EMOJI_KEYWORDS[ch] || "").split(" ")[0] || "";
+  return `<span class="emoji-opt" data-emoji="${escapeHtml(ch)}" title="${escapeHtml(first)}">${ch}</span>`;
+}
+
+function emojiMatches(ch, query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return false;
+  if (ch.includes(q)) return true;
+
+  const keywords = String(EMOJI_KEYWORDS[ch] || "").toLowerCase();
+  if (!keywords) return false;
+
+  return keywords
+    .split(/[\s،,]+/)
+    .some((word) => word && (word.startsWith(q) || word.includes(q)));
+}
+
+function renderEmojiTabs() {
+  const tabs = $("#emoji-tabs");
+  if (!tabs) return;
+
+  tabs.innerHTML = EMOJI_CATEGORIES.map(
+    (cat) => `
+      <button type="button" class="emoji-tab${cat.key === emojiActiveCategory ? " active" : ""}"
+              data-cat="${cat.key}" title="${escapeHtml(cat.title)}" aria-label="${escapeHtml(cat.title)}">
+        ${cat.tab}
+      </button>`
+  ).join("");
+}
+
+function renderEmojiBody(query = "") {
+  const body = $("#emoji-body");
+  if (!body) return;
+
+  const q = String(query || "").trim();
+
+  if (q) {
+    const results = [];
+
+    EMOJI_CATEGORIES.forEach((cat) => {
+      if (cat.key === "recent") return;
+
+      cat.list.forEach((ch) => {
+        if (!results.includes(ch) && emojiMatches(ch, q)) results.push(ch);
+      });
+    });
+
+    body.innerHTML = results.length
+      ? `<div class="emoji-title">نتائج البحث (${results.length})</div>` +
+        results.map(emojiOptionHtml).join("")
+      : `<div class="emoji-empty">لا توجد نتائج مطابقة</div>`;
+
+    body.scrollTop = 0;
     return;
   }
 
+  const cat = EMOJI_CATEGORIES.find((c) => c.key === emojiActiveCategory) || EMOJI_CATEGORIES[1];
+
+  if (cat.key === "recent") {
+    const recent = readRecentEmojis();
+
+    body.innerHTML = recent.length
+      ? recent.map(emojiOptionHtml).join("")
+      : `<div class="emoji-title">الإيموجي الأكثر استخداماً (جرّب أي إيموجي وسيظهر هنا)</div>` +
+        ["😂", "❤️", "👍", "🙏", "😍", "😊", "🔥", "🎉", "😭", "🤔", "👏", "💯", "😅", "✨", "🥰", "😎"].map(emojiOptionHtml).join("");
+
+    body.scrollTop = 0;
+    return;
+  }
+
+  body.innerHTML = cat.list.map(emojiOptionHtml).join("");
+  body.scrollTop = 0;
+}
+
+function closeEmojiPanel() {
+  const panel = $("#emoji-panel");
+  const btn = $("#emoji-toggle");
+
+  panel?.classList.add("hidden");
+  btn?.classList.remove("is-active");
+  btn?.setAttribute("aria-expanded", "false");
+}
+
+function setEmojiPanelOpen(open) {
+  const panel = $("#emoji-panel");
+  const btn = $("#emoji-toggle");
+
+  if (!panel || !btn) return;
+
+  panel.classList.toggle("hidden", !open);
+  btn.classList.toggle("is-active", open);
+  btn.setAttribute("aria-expanded", String(Boolean(open)));
+
+  if (!open) return;
+
+  // على الجوال: نُخفي الكيبورد لتظهر اللوحة كاملة (مثل واتساب)
+  if (isTouchUi()) $("#composer-input")?.blur();
+  else $("#emoji-search")?.focus();
+
+  renderEmojiTabs();
+  renderEmojiBody($("#emoji-search")?.value || "");
+}
+
+/** يُدرج الإيموجي في مكان المؤشر داخل خانة الكتابة */
+function insertEmojiAtCursor(ch) {
+  const box = $("#composer-input");
+  if (!box || !ch) return;
+
+  const start = typeof box.selectionStart === "number" ? box.selectionStart : box.value.length;
+  const end = typeof box.selectionEnd === "number" ? box.selectionEnd : start;
+
+  box.value = box.value.slice(0, start) + ch + box.value.slice(end);
+
+  const caret = start + ch.length;
+  try {
+    box.setSelectionRange(caret, caret);
+  } catch (_) {}
+
+  autoGrowComposer();
+  updateComposerButtons();
+  pushRecentEmoji(ch);
+}
+
+/** حذف الحرف الأخير من خانة الكتابة (زر ⌫ في لوحة الإيموجي) */
+function deleteComposerChar() {
+  const box = $("#composer-input");
+  if (!box) return;
+
+  const start = typeof box.selectionStart === "number" ? box.selectionStart : box.value.length;
+  const end = typeof box.selectionEnd === "number" ? box.selectionEnd : start;
+
+  if (start !== end) {
+    box.value = box.value.slice(0, start) + box.value.slice(end);
+
+    try {
+      box.setSelectionRange(start, start);
+    } catch (_) {}
+  } else if (start > 0) {
+    const chars = [...box.value.slice(0, start)];
+    chars.pop();
+
+    const from = chars.join("").length;
+
+    box.value = box.value.slice(0, from) + box.value.slice(start);
+
+    try {
+      box.setSelectionRange(from, from);
+    } catch (_) {}
+  }
+
+  autoGrowComposer();
+  updateComposerButtons();
+}
+
+function wireEmojiPicker() {
+  const btn = $("#emoji-toggle");
+  const panel = $("#emoji-panel");
+
+  if (!btn || !panel || panel.dataset.wired === "1") return;
+
   panel.dataset.wired = "1";
 
-  const emojis = [
-    "😀","😃","😄","😁","😆","😅","😂","🤣","🥲","🥹",
-    "☺️","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘",
-    "😗","😙","😚","😋","😛","😝","😜","🤪","🤨","🧐",
-    "🤓","😎","🥸","🤩","🥳","😏","😒","😞","😔","😟",
-    "😕","🙁","☹️","😣","😖","😫","😩","🥺","😢","😭",
-    "😮‍💨","😤","😠","😡","🤬","🤯","😳","🥵","🥶","😱",
-    "😨","😰","😥","😓","🫣","🤗","🫡","🤔","🤫","🫠",
-    "🤥","😶","😶‍🌫️","😐","😑","😬","🫨","😯","😦","😧",
-    "😮","😲","🥱","😴","🤤","😪","😵","😵‍💫","🤐","🥴",
-    "🤢","🤮","🤧","😷","🤒",
-    "👍","👎","👏","🙌","🫶","👐","🤲","🤝","🙏","✍️",
-    "💅","🤳","💪","🦾","🖐️","✋","🤚","👋","🤙","🤌",
-    "🤏","👌","🫰","✌️","🤞","🤟","🤘","👈","👉","👆",
-    "🖕","👇","☝️","🫵","🤜","🤛",
-    "❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔",
-    "❤️‍🔥","❤️‍🩹","❣️","💕","💞","💓","💗","💖","💘","💝",
-    "🫀","✨","💥","🔥",
-    "🎉","🎊","🎈","🎂","🎁","⭐","🌟","💫","💯","✅",
-    "❌","⚠️","☕","🍕","🍔","🍟","⚽","🏀","🚀","📱",
-    "💻","📸","🎵","🎧",
-  ];
+  panel.innerHTML = `
+    <div class="emoji-head">
+      <div class="emoji-search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <input id="emoji-search" type="search" autocomplete="off" placeholder="ابحث عن إيموجي…" />
+      </div>
+      <button type="button" class="emoji-back" id="emoji-backspace" title="حذف حرف" aria-label="حذف حرف">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H7.07L2.4 12l4.66-7H22v14zm-11.59-2L14 13.41 17.59 17 19 15.59 15.41 12 19 8.41 17.59 7 14 10.59 10.41 7 9 8.41 12.59 12 9 15.59z"/></svg>
+      </button>
+    </div>
 
-  panel.innerHTML =
-    emojis
-      .map(
-        (e) =>
-          `<span class="emoji-opt">${e}</span>`
-      )
-      .join("");
+    <div class="emoji-tabs" id="emoji-tabs" role="tablist"></div>
+    <div class="emoji-body" id="emoji-body"></div>
+  `;
 
-  btn.addEventListener(
-    "click",
-    (e) => {
-      e.stopPropagation();
+  btn.setAttribute("aria-expanded", "false");
 
-      panel.classList.toggle(
-        "hidden"
-      );
-    }
+  // عدد الإيموجيات المتوفرة (للتوثيق والفحص)
+  panel.dataset.total = String(
+    EMOJI_CATEGORIES.reduce((n, cat) => n + cat.list.length, 0)
   );
+  panel.dataset.categories = String(EMOJI_CATEGORIES.length);
 
-  panel.addEventListener(
-    "click",
-    (e) => {
-      e.stopPropagation();
+  btn.addEventListener("click", (event) => {
+    event.stopPropagation();
 
-      if (
-        e.target.classList.contains(
-          "emoji-opt"
-        )
-      ) {
-        $("#composer-input").value +=
-          e.target.textContent;
+    const willOpen = panel.classList.contains("hidden");
+    setEmojiPanelOpen(willOpen);
 
-        autoGrowComposer();
-        updateComposerButtons();
-
-        panel.classList.add(
-          "hidden"
-        );
-
-        $("#composer-input")?.focus();
-      }
+    // أول مرة: إن كان هناك إيموجي مستخدم سابقاً نبدأ بقسمه
+    if (willOpen && !readRecentEmojis().length && emojiActiveCategory === "recent") {
+      renderEmojiBody("");
     }
-  );
+  });
 
+  panel.addEventListener("click", (event) => {
+    event.stopPropagation();
+
+    const opt = event.target.closest(".emoji-opt");
+    if (opt) {
+      insertEmojiAtCursor(opt.dataset.emoji);
+      return;
+    }
+
+    const tab = event.target.closest(".emoji-tab");
+    if (tab) {
+      emojiActiveCategory = tab.dataset.cat;
+
+      const search = $("#emoji-search");
+      if (search) search.value = "";
+
+      renderEmojiTabs();
+      renderEmojiBody("");
+
+      const tabs = $("#emoji-tabs");
+      tab.scrollIntoView({ block: "nearest", inline: "center" });
+
+      if (tabs && emojiActiveCategory === "recent") renderEmojiTabs();
+    }
+  });
+
+  panel.addEventListener("input", (event) => {
+    if (event.target?.id === "emoji-search") renderEmojiBody(event.target.value);
+  });
+
+  $("#emoji-backspace")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    deleteComposerChar();
+  });
+
+  $("#emoji-search")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+
+    event.preventDefault();
+    event.stopPropagation();
+  });
+
+  // فتح خانة الكتابة يُغلق اللوحة (مثل واتساب)
+  $("#composer-input")?.addEventListener("focus", () => closeEmojiPanel());
+
+  // بدء التسجيل الصوتي يُغلق اللوحة
+  $("#mic-btn")?.addEventListener("pointerdown", () => closeEmojiPanel(), true);
+
+  // النقر خارج اللوحة يُغلقها
+  document.addEventListener("click", (event) => {
+    if (panel.classList.contains("hidden")) return;
+    if (panel.contains(event.target) || btn.contains(event.target)) return;
+
+    closeEmojiPanel();
+  });
+
+  // زر الرجوع/الهروب يُغلق اللوحة أولاً
   document.addEventListener(
-    "click",
-    (e) => {
-      if (
-        !panel.classList.contains(
-          "hidden"
-        ) &&
-        !panel.contains(e.target) &&
-        e.target !== btn
-      ) {
-        panel.classList.add(
-          "hidden"
-        );
-      }
-    }
+    "keydown",
+    (event) => {
+      if (event.key !== "Escape" || panel.classList.contains("hidden")) return;
+
+      event.stopPropagation();
+      closeEmojiPanel();
+    },
+    true
   );
 }
 

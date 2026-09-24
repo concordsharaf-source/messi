@@ -8218,3 +8218,256 @@ body[data-theme="light"] .app-confirm-input-wrap input { background: #f0f2f5; }
 
 /* v41: قيم عربية داخل صفوف تفاصيل البطاقة (لا نجبرها على LTR) */
 .admin-detail-row b.ar { direction: rtl; }
+
+
+/* =================================================================
+   v42 — 1) خانة الكتابة مثل واتساب:
+   الإيموجي + المرفقات + الصورة داخل الخانة، والمايك/الإرسال خارجها
+   ================================================================= */
+#composer-form.composer {
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.composer-field {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px 4px;
+  border-radius: 24px;
+  background: #2a3942;
+}
+
+body[data-theme="light"] .composer-field { background: #ffffff; }
+
+/* حقل النص: بلا خلفية ولا إطار — الخلفية للخانة نفسها */
+#composer-form .composer-field textarea {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 9px 4px;
+  min-height: 32px;
+}
+
+.composer .field-btn {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: none;
+  background: none;
+  border-radius: 50%;
+  color: #8696a0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.composer .field-btn:hover { color: #d1d7db; background: rgba(255, 255, 255, 0.06); }
+.composer .field-btn:active { background: rgba(255, 255, 255, 0.1); }
+
+body[data-theme="light"] .composer .field-btn { color: #54656f; }
+body[data-theme="light"] .composer .field-btn:hover { background: rgba(0, 0, 0, 0.05); }
+
+.composer .field-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  display: block;
+  pointer-events: none;
+}
+
+.composer .field-btn.emoji-btn.is-active { color: var(--wa-green); }
+
+.composer .mic-btn svg,
+.composer .send-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  display: block;
+  pointer-events: none;
+}
+
+.composer .send-btn { padding: 0; display: grid; place-items: center; }
+
+/* ترتيب واتساب: الإيموجي في بداية الخانة، والمرفقات والصورة في نهايتها */
+#emoji-toggle { order: 1; }
+#composer-input { order: 2; }
+.composer-field .attach-btn { order: 3; }
+.composer-field .photo-btn { order: 4; }
+
+.attach-btn,
+.photo-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+/* =================================================================
+   v42 — 2) لوحة الإيموجي (مثل واتساب): بحث + تصنيفات + شبكة كبيرة
+   ================================================================= */
+#emoji-panel.emoji-panel {
+  position: absolute;
+  bottom: calc(100% - 4px);
+  inset-inline: 6px;
+  width: auto;
+  max-height: min(54vh, 430px);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  grid-template-columns: none;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #233138;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45);
+  z-index: 60;
+}
+
+body[data-theme="light"] #emoji-panel.emoji-panel { background: #ffffff; }
+
+.emoji-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 6px;
+}
+
+.emoji-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 18px;
+  background: rgba(134, 150, 160, 0.16);
+}
+
+.emoji-search svg { width: 17px; height: 17px; fill: #8696a0; flex: 0 0 auto; }
+
+.emoji-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  background: none;
+  outline: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.emoji-search input::placeholder { color: #8696a0; }
+
+.emoji-back {
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(134, 150, 160, 0.14);
+  color: #8696a0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.emoji-back svg { width: 19px; height: 19px; fill: currentColor; }
+.emoji-back:hover { color: #d1d7db; }
+
+.emoji-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid rgba(134, 150, 160, 0.18);
+  scrollbar-width: none;
+}
+
+.emoji-tabs::-webkit-scrollbar { display: none; }
+
+.emoji-tab {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: none;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.12s ease, background 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.emoji-tab:hover { opacity: 0.9; }
+.emoji-tab.active { opacity: 1; background: rgba(0, 168, 132, 0.16); box-shadow: inset 0 -2px 0 var(--wa-green); }
+
+.emoji-body {
+  flex: 1 1 auto;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 2px;
+  align-content: start;
+}
+
+.emoji-body .emoji-opt {
+  font-size: 25px;
+  line-height: 1.25;
+  text-align: center;
+  padding: 4px 0;
+  border-radius: 9px;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.emoji-body .emoji-opt:hover,
+.emoji-body .emoji-opt:active { background: rgba(134, 150, 160, 0.2); }
+
+.emoji-body .emoji-title {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  font-weight: 700;
+  color: #8696a0;
+  padding: 8px 4px 2px;
+}
+
+.emoji-body .emoji-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #8696a0;
+  font-size: 13px;
+  padding: 22px 0;
+}
+
+@media (max-width: 480px) {
+  #emoji-panel.emoji-panel { inset-inline: 3px; max-height: 46vh; border-radius: 12px; }
+  .emoji-body { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  .emoji-body .emoji-opt { font-size: 23px; }
+  .composer-field { padding: 2px 3px; }
+  .composer .field-btn { flex: 0 0 32px; width: 32px; height: 32px; min-height: 32px; }
+  .composer .field-btn svg { width: 21px; height: 21px; }
+  #composer-form .composer-field textarea { padding: 8px 3px; }
+}
+
+
+/* v42: الحفاظ على نفس ارتفاع خانة الكتابة السابقة (الحقل 62px مثل ما كان) */
+#composer-form.composer { padding: 4px 10px; }
+#composer-form .composer-field { padding: 0 4px; }
+
+@media (max-width: 480px) {
+  #composer-form.composer { padding: 4px 6px; }
+}
