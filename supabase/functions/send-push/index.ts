@@ -99,7 +99,30 @@ serve(async (req) => {
           },
         }),
       });
-      return { status: response.status, body: await response.json() };
+
+      const payload = await response.json().catch(() => null);
+
+      // v10: تنقية تلقائية — إن رفض FCM التوكن (جهاز حُذف/متصفح أُعيد تثبيته)
+      // نحذفه من الجدول حتى لا يُكرَّر الإرسال إليه في كل رسالة.
+      const errorStatus = String(payload?.error?.status || "");
+      const details = Array.isArray(payload?.error?.details) ? payload.error.details : [];
+      const tokenFieldInvalid = details.some((d) =>
+        Array.isArray(d?.fieldViolations) &&
+        d.fieldViolations.some((v) => String(v?.field || "").includes("token"))
+      );
+      const shouldDelete =
+        response.status === 404 ||
+        errorStatus === "UNREGISTERED" ||
+        errorStatus === "NOT_FOUND" ||
+        tokenFieldInvalid;
+
+      let cleaned = false;
+      if (shouldDelete) {
+        const { error: delError } = await admin.from("fcm_tokens").delete().eq("token", token);
+        cleaned = !delError;
+      }
+
+      return { status: response.status, body: payload, cleaned };
     }));
     // receiverIsAdmin للتشخيص: يوضّح هل الإشعار يحمل أزرار الرد السريع (للمشرف فقط)
     return json({ sent: results.length, results, receiverIsAdmin });
