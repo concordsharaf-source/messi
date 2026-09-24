@@ -1780,7 +1780,8 @@ body[data-theme="dark"] .msg-audio {
 .bubble-actions {
   position: absolute;
 
-  top: -14px;
+  /* v48: كانت متراكبة على نص الرسالة — رفعناها فوقها مثل واتساب */
+  top: -38px;
 
   inset-inline-end: 6px;
 
@@ -6030,12 +6031,12 @@ body[data-theme="light"] .block-value { background: rgba(0, 0, 0, .07); }
   z-index: 9999;
   display: flex;
   align-items: center;
-  gap: 2px;
-  max-width: calc(100vw - 16px);
-  padding: 5px 7px;
-  border-radius: 999px;
-  background: var(--wa-panel-dark, #233138);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .06);
+  gap: 0;
+  max-width: calc(100vw - 12px);
+  padding: 4px 6px;
+  border-radius: 26px;
+  background: #233138;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .55), 0 0 0 1px rgba(255, 255, 255, .07);
   animation: reactPop .16s cubic-bezier(.2, 1.3, .5, 1);
   touch-action: manipulation;
 }
@@ -6054,26 +6055,41 @@ body[data-theme="light"] #quick-react-panel-global { background: #ffffff; }
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 44px;
   padding: 0;
   border: none;
   background: transparent;
-  font-size: calc(24px * var(--wa-font-scale));
+  font-size: calc(27px * var(--wa-font-scale));
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
   line-height: 1;
-  border-radius: 50%;
+  border-radius: 999px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-  transition: transform .12s ease, background .12s ease;
+  transition: transform .14s ease, background .14s ease;
 }
 
 .quick-react-opt:hover,
 .quick-react-opt:active {
-  transform: scale(1.28);
-  background: rgba(134, 150, 160, .18);
+  transform: scale(1.35) translateY(-2px);
+  background: rgba(255, 255, 255, .14);
 }
+
+body[data-theme="light"] .quick-react-opt:hover,
+body[data-theme="light"] .quick-react-opt:active {
+  background: rgba(11, 20, 26, .08);
+}
+
+/* زر «المزيد» (+) في نهاية اللوحة مثل واتساب */
+.quick-react-opt.quick-react-more svg {
+  width: 22px;
+  height: 22px;
+  fill: #8696a0;
+}
+
+body[data-theme="light"] .quick-react-opt.quick-react-more svg { fill: #54656f; }
 
 /* منع قائمة المتصفح الأصلية والنسخ عند الضغط المطول على الفقاعة */
 .bubble {
@@ -6102,21 +6118,38 @@ body[data-theme="light"] #quick-react-panel-global { background: #ffffff; }
 .reaction-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 8px;
+  gap: 4px;
+  padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(134, 150, 160, .22);
-  font-size: calc(13px * var(--wa-font-scale));
-  line-height: 1.5;
+  background: #233138;
+  border: 1px solid rgba(255, 255, 255, .12);
+  color: #e9edef;
+  font-size: calc(14px * var(--wa-font-scale));
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  line-height: 1.6;
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
   animation: chipIn .16s ease-out;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+}
+
+body[data-theme="light"] .reaction-chip {
+  background: #ffffff;
+  border-color: rgba(11, 20, 26, .12);
+  color: #111b21;
 }
 
 .reaction-chip.mine {
-  background: rgba(0, 168, 132, .35);
-  box-shadow: inset 0 0 0 1px var(--wa-green);
+  background: #005c4b;
+  border-color: rgba(0, 168, 132, .55);
+  color: #e9edef;
+}
+
+body[data-theme="light"] .reaction-chip.mine {
+  background: #d9fdd3;
+  border-color: rgba(0, 168, 132, .5);
+  color: #111b21;
 }
 
 @keyframes chipIn {
@@ -8476,7 +8509,21 @@ body[data-theme="light"] #emoji-panel.emoji-panel { background: #ffffff; }
 /* v43: اتصال صوتي وتحديد متعدد مثل واتساب */
 #chat-call-btn { border: 0; background: transparent; color: inherit; width: 38px; height: 38px; border-radius: 50%; font-size: 20px; cursor: pointer; }
 #chat-call-btn:hover { background: rgba(37, 211, 102, .16); }
-.bubble-row.message-selected .bubble { outline: 2px solid #25d366; outline-offset: 2px; background: color-mix(in srgb, #25d366 13%, var(--wa-bubble-bg, transparent)); }
+/* v48: تحديد مثل واتساب — تظليل أخضر خفيف وإطار رقيق */
+.bubble-row.message-selected .bubble {
+  outline: 1.5px solid rgba(37, 211, 102, .85);
+  outline-offset: 1px;
+  background: color-mix(in srgb, #25d366 9%, var(--wa-bubble-bg, transparent));
+}
+
+.bubble-row.message-selected .bubble::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: rgba(37, 211, 102, .06);
+  pointer-events: none;
+}
 .admin-users-toolbar { display: flex; align-items: center; gap: 8px; }
 #admin-users-sort { margin-inline-start: auto; max-width: 160px; background: var(--wa-panel-bg, transparent); color: inherit; border: 1px solid rgba(128,128,128,.35); border-radius: 8px; padding: 5px 7px; }
 

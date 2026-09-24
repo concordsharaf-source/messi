@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "47";
+const BUILD = "48";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -91,6 +91,7 @@ const state = {
   reactions: {},
   selectedMessageId: null,   // التوافق مع الكود القديم
   selectedMessageIds: [],     // تحديد عدة رسائل مثل واتساب
+  reactionPickerFor: null,    // v48: رسالة مفتوح لها منتقي الإيموجي الكامل
   forwardingMessage: null,   // v40: رسالة قيد إعادة التوجيه
   replyingTo: null,
 
@@ -6551,7 +6552,12 @@ function buildMessageBubble(m) {
   wireMessageLongPress(div, m, canDeleteMessage);
   div.addEventListener("click", (event) => {
     if (!isMessageSelected() || event.target.closest("button, a, audio, video")) return;
+
     event.preventDefault();
+    event.stopPropagation();
+
+    // v48: نُغلق الأيقونات ونُضيف الرسالة للتحديد (زي واتساب تماماً)
+    hideQuickReactPanel();
     openMessageSelection(m);
   }, true);
 
@@ -6715,21 +6721,41 @@ function getQuickReactPanel() {
     panel.id = "quick-react-panel-global";
     panel.className = "quick-react-panel hidden";
     panel.setAttribute("role", "menu");
-    panel.innerHTML = QUICK_REACT_EMOJIS.map(
-      (emoji) =>
-        `<button type="button" class="quick-react-opt" role="menuitem" data-emoji="${emoji}">${emoji}</button>`
-    ).join("");
+    panel.innerHTML =
+      QUICK_REACT_EMOJIS.map(
+        (emoji) =>
+          `<button type="button" class="quick-react-opt" role="menuitem" data-emoji="${emoji}">${emoji}</button>`
+      ).join("") +
+      `<button type="button" class="quick-react-opt quick-react-more" role="menuitem" data-more="1" title="المزيد من الإيموجي" aria-label="المزيد">
+         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6V5z"/></svg>
+       </button>`;
 
     panel.addEventListener("pointerdown", (event) => event.stopPropagation());
     panel.addEventListener("pointerup", (event) => event.stopPropagation());
     panel.addEventListener("click", (event) => {
-      const emoji = event.target.closest(".quick-react-opt")?.dataset.emoji;
-      if (!emoji) return;
+      const opt = event.target.closest(".quick-react-opt");
+
+      if (!opt) return;
 
       event.stopPropagation();
 
       const messageId = quickReactTarget?.id;
-      closeQuickReact(true);
+
+      // v48: زر «+» ⇒ منتقي الإيموجي الكامل (زي واتساب)
+      if (opt.dataset.more) {
+        if (!messageId) return;           // لا رسالة ⇒ لا شيء
+        hideQuickReactPanel();
+        closeMessageSelection();          // تُصفّر reactionPickerFor
+        state.reactionPickerFor = messageId || null;   // نُثبّتها بعد التصفير
+        setEmojiPanelOpen(true);
+        return;
+      }
+
+      const emoji = opt.dataset.emoji;
+      if (!emoji) return;
+
+      hideQuickReactPanel();
+      closeMessageSelection();
       if (messageId) toggleReaction(messageId, emoji);
     });
 
@@ -6806,6 +6832,18 @@ function positionQuickReactPanel() {
   }
 }
 
+/** v48: يُخفي لوحة الأيقونات وحدها (يبقى التحديد المتعدد فعّالاً) */
+function hideQuickReactPanel() {
+  document
+    .querySelectorAll(".bubble-row.react-open")
+    .forEach((row) => row.classList.remove("react-open"));
+
+  $("#quick-react-panel-global")?.classList.add("hidden");
+  $("#react-backdrop")?.classList.add("hidden");
+  quickReactTarget = null;
+  quickReactOpenedAt = 0;
+}
+
 function closeQuickReact(force = false) {
   // ---------------------------------------------------------------
   // مهلة سماح: التمرير/تغيّر المقاس/النقرة الشبحية بعد رفع الإصبع كانت
@@ -6833,28 +6871,71 @@ function isMessageSelected() {
 }
 
 /** يُظهر شريط خيارات الرسالة في رأس المحادثة (مثل واتساب) */
-function openMessageSelection(m) {
+function openMessageSelection(m, options = {}) {
   if (!m) return;
 
-  state.selectedMessageId = String(m.id);
+  const id = String(m.id);
+
+  // v48: تحديد متعدد مثل واتساب — الضغط المطول على رسالة يبدأ التحديد،
+  // والنقر/الضغط على رسالة أخرى يضيفها، والنقر على رسالة محددة يُزيلها.
+  const active = isMessageSelected();
+  const current = state.selectedMessageIds?.length
+    ? [...state.selectedMessageIds]
+    : state.selectedMessageId
+    ? [String(state.selectedMessageId)]
+    : [];
+
+  let ids;
+
+  if (options.replace || !active) {
+    ids = [id];
+  } else {
+    ids = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+  }
+
+  state.selectedMessageIds = ids;
+  state.selectedMessageId = ids[ids.length - 1] || null;
 
   const bar = $("#msg-actions");
   const header = document.querySelector("#chat-active .chat-header");
 
+  if (!ids.length) {
+    // أُزيل آخر تحديد ⇒ نُغلق النمط
+    if (bar) bar.classList.add("hidden");
+    header?.classList.remove("actions-mode");
+    document.body.classList.remove("msg-selected");
+    document.querySelectorAll(".bubble-row.message-selected").forEach((el) =>
+      el.classList.remove("message-selected")
+    );
+    return;
+  }
+
   if (bar) bar.classList.remove("hidden");
   header?.classList.add("actions-mode");
 
-  // لا نُظهر زر «نسخ» لرسالة بلا نص (صورة/ملف)
+  // لا نُظهر زر «نسخ» إن لم يكن في المحدَّد أي رسالة نصية
+  const chosen = selectedMessages();
   const copyBtn = $("#msg-act-copy");
-  if (copyBtn) {
-    const hasText = Boolean((m.content || "").trim());
-    copyBtn.classList.toggle("hidden", !hasText);
-  }
+  if (copyBtn) copyBtn.classList.toggle("hidden", !chosen.some((x) => (x.content || "").trim()));
 
   const title = $("#msg-act-title");
   if (title) {
-    title.textContent = `${state.selectedMessageIds.length} رسالة محددة`;
+    title.textContent =
+      ids.length === 1 ? "رسالة محددة" : `${ids.length} رسائل محددة`;
   }
+
+  // تمييز الصفوف المحددة (إطار أخضر مثل واتساب)
+  document.querySelectorAll(".bubble-row.message-selected").forEach((el) => {
+    if (!ids.includes(String(el.dataset.messageId))) el.classList.remove("message-selected");
+  });
+
+  ids.forEach((mid) => {
+    document.querySelector(`.bubble-row[data-message-id="${mid}"]`)?.classList.add("message-selected");
+  });
+
+  // نُبقي الرسالة المحددة في مجال الرؤية
+  const row = document.querySelector(`.bubble-row[data-message-id="${id}"]`);
+  row?.scrollIntoView({ block: "nearest" });
 
   document.body.classList.add("msg-selected");
 }
@@ -6863,6 +6944,7 @@ function openMessageSelection(m) {
 function closeMessageSelection() {
   state.selectedMessageId = null;
   state.selectedMessageIds = [];
+  state.reactionPickerFor = null;
   state.forwardMessage = null;
   document.querySelectorAll(".message-selected").forEach((el) => el.classList.remove("message-selected"));
 
@@ -6898,6 +6980,7 @@ function openQuickReact(row, m) {
   row.classList.add("react-open");
   quickReactTarget = m;
   quickReactOpenedAt = performance.now();
+  state.reactionPickerFor = null;
 
   panel.classList.remove("hidden");
   panel.style.visibility = "hidden";
@@ -6910,7 +6993,8 @@ function openQuickReact(row, m) {
   getReactBackdrop().classList.remove("hidden");
 
   // v40: يظهر شريط الخيارات في الرأس مع ظهور أيقونات التفاعل
-  openMessageSelection(m);
+  // v48: ويبدأ التحديد المتعدد — والضغط على رسالة أخرى يضيفها (مثل واتساب)
+  openMessageSelection(m, { replace: !isMessageSelected() });
 
   if (navigator.vibrate) {
     try {
@@ -6938,9 +7022,18 @@ function wireMessageLongPress(row, m, canDelete) {
   };
 
   const openFor = () => {
+    // v48: أثناء وجود تحديد نشط، الضغط على رسالة أخرى يضيفها للتحديد
+    // ولا يفتح لوحة الأيقونات (زي واتساب تماماً).
+    if (isMessageSelected() && !row.classList.contains("react-open")) {
+      hideQuickReactPanel();
+      openMessageSelection(m);
+      return;
+    }
+
     if (canDelete) row.classList.add("long-pressed");
-    // الضغط المطول يدخل نمط واتساب لتحديد الرسائل؛ النقر على رسائل أخرى يضيفها.
-    openMessageSelection(m);
+    // v48: نُعيد أيقونات التفاعل كما كانت (كانت مُستبدَلة بنمط التحديد وحده)
+    // ونُبقي التحديد المتعدد الذي يطلبه المستخدم مثل واتساب.
+    openQuickReact(row, m);
   };
 
   row.addEventListener("pointerdown", (event) => {
@@ -6987,7 +7080,7 @@ function wireMessageLongPress(row, m, canDelete) {
     if (!wasActive) return;
 
     if (!row.classList.contains("react-open") && held >= MIN_HOLD_TO_REACT) {
-      openFor();
+      if (!isMessageSelected()) openFor();
     }
 
     if (row.classList.contains("react-open")) {
@@ -11729,6 +11822,8 @@ function closeEmojiPanel() {
   const panel = $("#emoji-panel");
   const btn = $("#emoji-toggle");
 
+  state.reactionPickerFor = null;
+
   panel?.classList.add("hidden");
   btn?.classList.remove("is-active");
   btn?.setAttribute("aria-expanded", "false");
@@ -11840,6 +11935,10 @@ function wireEmojiPicker() {
     event.stopPropagation();
 
     const willOpen = panel.classList.contains("hidden");
+
+    // v48: الفتح من الكبسولة = إدراج إيموجي في النص (نُلغي أي نمط تفاعل)
+    if (willOpen) state.reactionPickerFor = null;
+
     setEmojiPanelOpen(willOpen);
 
     // أول مرة: إن كان هناك إيموجي مستخدم سابقاً نبدأ بقسمه
@@ -11853,6 +11952,15 @@ function wireEmojiPicker() {
 
     const opt = event.target.closest(".emoji-opt");
     if (opt) {
+      // v48: إن فُتح المنتقي من زر «+» في لوحة التفاعل ⇒ تفاعل على الرسالة
+      const reactFor = state.reactionPickerFor;
+      if (reactFor) {
+        state.reactionPickerFor = null;
+        closeEmojiPanel();
+        toggleReaction(reactFor, opt.dataset.emoji);
+        return;
+      }
+
       insertEmojiAtCursor(opt.dataset.emoji);
       return;
     }
