@@ -31,7 +31,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "38";
+  window.WA_BUILD = "39";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -90,8 +90,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=38" />
-  <script src="./vendor/supabase-js.js?v=38"></script>
+  <link rel="stylesheet" href="./css/style.css?v=39" />
+  <script src="./vendor/supabase-js.js?v=39"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -156,6 +156,17 @@
 <div id="auth-screen" class="auth-screen hidden">
   <div class="auth-card">
     <h1 class="auth-logo">💬 <span data-i18n="app_name">محادثات</span></h1>
+
+    <!-- تثبيت التطبيق: أيقونة دائرية مثل أيقونة واتساب — أعلى الصفحة قبل خانات الدخول -->
+    <div class="auth-install" id="auth-install-wrap">
+      <button id="install-app-btn" class="auth-install-btn hidden" type="button" aria-label="تثبيت التطبيق" title="تثبيت التطبيق">
+        <img src="./icons/icon-192.png" alt="" />
+        <span class="auth-install-ring" aria-hidden="true"></span>
+      </button>
+      <button type="button" id="install-app-hint" class="auth-install-label hidden">
+        📲 <span data-i18n="install_now">تثبيت التطبيق على جهازك</span>
+      </button>
+    </div>
 
     <div class="auth-tabs">
       <button id="tab-login" class="active" data-i18n="login">تسجيل الدخول</button>
@@ -459,11 +470,36 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v38</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v39</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
         <div class="admin-hint" id="update-status"></div>
+      </details>
+
+      <!-- ============ تبديل المستخدم (للمشرف العام فقط) ============ -->
+      <details class="admin-block hidden" id="switch-user-block">
+        <summary>🔁 تبديل المستخدم<span class="block-value" id="value-switch"></span></summary>
+
+        <div class="settings-hint">
+          دخول سريع إلى أي حساب من حسابات المشرفين بضغطة واحدة — بلا كتابة بريد أو كلمة مرور.
+          وحسابك الحالي يبقى محفوظاً للرجوع إليه في أي لحظة.
+        </div>
+
+        <div id="switch-back-row" class="switch-back-row hidden">
+          <div class="switch-back-info">
+            <small>حسابك الأصلي</small>
+            <b id="switch-back-name">—</b>
+          </div>
+          <button id="btn-switch-back" type="button" class="admin-btn-primary">↩ رجوع إلى حسابي</button>
+        </div>
+
+        <label>الحسابات المتاحة</label>
+        <div id="switch-user-list" class="switch-user-list">
+          <div class="settings-hint">جارٍ التحميل…</div>
+        </div>
+
+        <div id="switch-user-status" class="settings-hint"></div>
       </details>
 
       <button id="btn-logout" class="logout-btn" data-i18n="logout">تسجيل الخروج</button>
@@ -504,7 +540,44 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 <div id="global-toast" class="global-toast hidden"></div>
 
-<script type="module" src="./js/app.js?v=38"></script>
+<!-- شريط «افتح في كروم» — يظهر تلقائياً في متصفحات التطبيقات على أندرويد -->
+<div id="chrome-banner" class="chrome-banner hidden">
+  <img src="./icons/icon-192.png" alt="" class="chrome-banner-logo" />
+  <div class="chrome-banner-text">
+    <b>افتح التطبيق في كروم</b>
+    <small>لتجربة أفضل وإشعارات تعمل</small>
+  </div>
+  <button id="btn-open-chrome" type="button" class="chrome-banner-btn">فتح في كروم</button>
+  <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
+</div>
+
+<script type="module" src="./js/app.js?v=39"></script>
+
+  <!-- بيانات جهة الاتصال (تظهر بالضغط على رأس المحادثة) -->
+  <div id="contact-info-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="بيانات جهة الاتصال">
+    <div class="contact-info-card">
+      <div class="contact-info-head">
+        <b>بيانات المستخدم</b>
+        <button id="contact-info-close" class="admin-btn-mini" type="button" aria-label="إغلاق">✕</button>
+      </div>
+
+      <div class="contact-info-avatar">
+        <img id="contact-info-img" alt="" class="hidden" />
+        <span id="contact-info-initial">؟</span>
+      </div>
+
+      <div class="contact-info-name" id="contact-info-name" dir="auto"></div>
+      <div class="contact-info-role" id="contact-info-role"></div>
+
+      <div class="contact-info-rows">
+        <div class="identity-row"><span>الاسم</span><b id="contact-info-name-row" dir="auto">—</b></div>
+        <div class="identity-row"><span>رقم الهاتف</span><b id="contact-info-phone" dir="ltr">—</b></div>
+        <div class="identity-row"><span>البريد الإلكتروني</span><b id="contact-info-email" dir="ltr">—</b></div>
+      </div>
+
+      <div class="settings-hint" id="contact-info-note"></div>
+    </div>
+  </div>
 
   <!-- نافذة تأكيد حذف التسجيل الصوتي (مثل واتساب) -->
   <div id="voice-delete-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="حذف التسجيل">

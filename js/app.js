@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "38";
+const BUILD = "39";
 
 const state = {
   me: null,
@@ -3354,6 +3354,21 @@ function wireChrome() {
   // أزرار قسم التثبيت واللغة في الإعدادات
   $("#btn-install-settings")?.addEventListener("click", () => installPWA());
 
+  // v39: تبديل المستخدم (للمشرف العام)
+  $("#btn-switch-back")?.addEventListener("click", () => switchBackToMyAccount());
+  $("#switch-user-block")?.addEventListener("toggle", () => {
+    if ($("#switch-user-block")?.open) renderSwitchUserBlock();
+  });
+
+  // v39: نافذة بيانات المستخدم
+  $("#contact-info-close")?.addEventListener("click", closeContactInfoPanel);
+  $("#contact-info-panel")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeContactInfoPanel();
+  });
+
+  // v39: فتح في كروم
+  setupChromeBanner();
+
   $("#btn-save-password")?.addEventListener("click", () => saveMyPassword());
 
 
@@ -3410,20 +3425,11 @@ function syncSettingsValues() {
 
   put("#value-profile", state.me?.display_name || state.me?.email || "");
 
-  // بصمة المستخدم (رقم + اسم + جهاز)
-  const idBox = document.getElementById("identity-box");
+  // بيانات المستخدم (الاسم + الرقم + البريد)
+  renderMyIdentity();
 
-  if (idBox) {
-    const phone = state.me?.phone || "—";
-    const mail = state.me?.email || getSavedPhone()?.email || "غير مُدخل";
-
-    idBox.innerHTML = `
-      <div class="identity-row"><span>الاسم</span><b dir="${nameDirection(
-        state.me?.display_name
-      )}">${escapeHtml(state.me?.display_name || "بدون اسم")}</b></div>
-      <div class="identity-row"><span>رقم الهاتف</span><b dir="ltr">${escapeHtml(phone)}</b></div>
-      <div class="identity-row"><span>البريد (اختياري)</span><b dir="ltr">${escapeHtml(mail)}</b></div>`;
-  }
+  // قسم تبديل المستخدم (للمشرف العام، ولمن دخل بالتبديل للرجوع)
+  renderSwitchUserBlock();
 
   const modeEl = $("#theme-mode");
   const mode = (modeEl && modeEl.value) || localStorage.getItem("wa_theme_mode") || "manual";
@@ -3656,6 +3662,17 @@ function updateComposerButtons() {
 
 function wireConversationOptions() {
   wireVoiceNotes();
+
+  // الضغط على رأس المحادثة يعرض بيانات المستخدم (مثل واتساب)
+  const openInfo = () => {
+    if (state.activeConversation?.otherProfile) {
+      openContactInfoPanel(state.activeConversation.otherProfile);
+    }
+  };
+
+  $("#chat-header-avatar")?.addEventListener("click", openInfo);
+  $("#chat-header-name")?.addEventListener("click", openInfo);
+  $("#chat-header-info")?.addEventListener("click", openInfo);
 
   $("#chat-options-toggle")?.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -9786,72 +9803,22 @@ function setupPWAInstallPrompt() {
 }
 
 function getOrCreatePWAInstallButton() {
-  let button =
-    document.querySelector(
-      "#install-app-btn"
-    );
+  // الزر موجود في الصفحة نفسها: أيقونة دائرية أعلى شاشة الدخول
+  // (بلا أي إنشاء تلقائي أو بطاقة سفلية).
+  const button = $("#install-app-btn");
 
-  if (!button) {
-    button =
-      document.querySelector(
-        "#pwa-install-btn"
-      );
+  if (button && !button.dataset.wired) {
+    button.dataset.wired = "1";
+    button.addEventListener("click", installPWA);
   }
 
-  if (!button) {
-    const authScreen =
-      $("#auth-screen");
-
-    if (!authScreen) return null;
-
-    const wrapper =
-      document.createElement(
-        "div"
-      );
-
-    wrapper.className =
-      "pwa-install-wrapper";
-
-    wrapper.innerHTML = `
-      <button
-        type="button"
-        id="install-app-btn"
-        class="pwa-install-btn hidden"
-      >
-        <span class="pwa-install-icon">📲</span>
-        <span class="pwa-install-text">
-          <b>ثبّت واتساب الوليد</b>
-          <small>افتحه كتطبيق مستقل على جهازك</small>
-        </span>
-        <span class="pwa-install-arrow">⤓</span>
-      </button>
-    `;
-
-    authScreen.appendChild(
-      wrapper
-    );
-
-    button =
-      wrapper.querySelector(
-        "#install-app-btn"
-      );
+  const hint = $("#install-app-hint");
+  if (hint && !hint.dataset.wired) {
+    hint.dataset.wired = "1";
+    hint.addEventListener("click", installPWA);
   }
 
-  if (
-    button &&
-    !button.dataset.wired
-  ) {
-    button.dataset.wired =
-      "1";
-
-    button.addEventListener(
-      "click",
-      installPWA
-    );
-  }
-
-  state.installButton =
-    button;
+  state.installButton = button;
 
   return button;
 }
@@ -9874,28 +9841,24 @@ function refreshPWAInstallButton() {
       "hidden"
     );
 
+  const hint = $("#install-app-hint");
+  const wrap = $("#auth-install-wrap");
+
   if (
     canInstall &&
     !installed &&
     authVisible
   ) {
-    button.classList.remove(
-      "hidden"
-    );
-
+    button.classList.remove("hidden");
     button.disabled = false;
+    button.setAttribute("aria-label", "تثبيت التطبيق");
 
-    const subtitle = button.querySelector("small");
-    if (subtitle) subtitle.textContent = "افتحه كتطبيق مستقل على جهازك";
-
-    button.setAttribute(
-      "aria-label",
-      "تثبيت التطبيق"
-    );
+    // النص التوضيحي تحت الأيقونة (مثل: تثبيت التطبيق على جهازك)
+    hint?.classList.remove("hidden");
+    wrap?.classList.remove("hidden");
   } else {
-    button.classList.add(
-      "hidden"
-    );
+    button.classList.add("hidden");
+    hint?.classList.add("hidden");
   }
 }
 
@@ -9931,6 +9894,455 @@ function isPWAInstalled() {
 }
 
 // =================================================================
+
+// ===============================================================
+// فتح الرابط في كروم (أندرويد)
+// -----------------------------------------------------------------
+//  المتصفحات المدمجة داخل التطبيقات (واتساب/فيسبوك/إنستغرام…) تفتح
+//  الروابط في نافذة داخلية محدودة: لا إشعارات ولا تثبيت كامل.
+//  لا يمكن لصفحة الويب أن تُجبر الهاتف على فتح كروم تلقائياً (قيد
+//  أمني في أندرويد)، لكن رابط intent:// يطلب من النظام فتح الرابط
+//  في كروم مباشرة — فنعرضه بزر واضح، ونُرشد المستخدم للتثبيت.
+// ===============================================================
+
+const CHROME_BANNER_HIDE_KEY = "wa_chrome_banner_hidden";
+const CHROME_AUTO_KEY = "wa_chrome_auto_try";
+
+function isAndroidDevice() {
+  return /Android/i.test(navigator.userAgent);
+}
+
+function isInAppBrowser() {
+  const ua = navigator.userAgent || "";
+
+  // بصمات متصفحات التطبيقات المدمجة (واتساب/فيسبوك/إنستغرام/تيك توك/تويتر…)
+  if (/(FBAN|FBAV|FB_IAB|FBIOS|Instagram|Line\/|Twitter|SnapChat|TikTok|Bytedance|MicroMessenger|GSA\/|; wv\))/i.test(ua)) {
+    return true;
+  }
+
+  // WebView عام على أندرويد (يظهر فيه Version/4.0 بلا اسم متصفح حقيقي)
+  if (/Android/i.test(ua) && /Version\/4\.0/i.test(ua) && !/(Chrome\/\d)/i.test(ua)) {
+    return true;
+  }
+
+  return false;
+}
+
+// هل نحن داخل كروم الحقيقي (لا WebView)؟
+function isRealChrome() {
+  const ua = navigator.userAgent || "";
+  return /Chrome\/\d/i.test(ua) && !/; wv\)/i.test(ua) && !isInAppBrowser();
+}
+
+function chromeIntentUrl() {
+  const target = `${location.host}${location.pathname}${location.search}${location.hash}`;
+  const fallback = encodeURIComponent(location.href);
+
+  return (
+    `intent://${target}` +
+    "#Intent;scheme=https;package=com.android.chrome;" +
+    `S.browser_fallback_url=${fallback};end`
+  );
+}
+
+function openInChrome() {
+  if (!isAndroidDevice()) {
+    showAuthError("هذه الميزة لأجهزة أندرويد — على الآيفون استخدم سفاري ثم «إضافة إلى الشاشة الرئيسية».");
+    return;
+  }
+
+  try {
+    location.href = chromeIntentUrl();
+  } catch (_) {
+    window.open(location.href, "_blank");
+  }
+}
+
+function maybeAutoOpenChrome() {
+  if (!isAndroidDevice() || !isInAppBrowser() || isPWAInstalled()) return;
+
+  let tried = false;
+  try {
+    tried = sessionStorage.getItem(CHROME_AUTO_KEY) === "1";
+    sessionStorage.setItem(CHROME_AUTO_KEY, "1");
+  } catch (_) {}
+
+  if (tried) return;
+
+  // محاولة واحدة فقط: يُطلب من النظام فتح الرابط في كروم مباشرة
+  setTimeout(() => {
+    try {
+      location.href = chromeIntentUrl();
+    } catch (_) {}
+  }, 1200);
+}
+
+// منفذ تشخيصي (للاختبار والدعم الفني)
+window.waChromeUtils = {
+  isAndroidDevice,
+  isInAppBrowser,
+  isRealChrome,
+  chromeIntentUrl,
+  openInChrome,
+};
+
+function setupChromeBanner() {
+  const banner = $("#chrome-banner");
+  if (!banner) return;
+
+  let hidden = false;
+  try {
+    hidden = localStorage.getItem(CHROME_BANNER_HIDE_KEY) === "1";
+  } catch (_) {}
+
+  const shouldShow = isAndroidDevice() && !isRealChrome() && !isPWAInstalled() && !hidden;
+
+  banner.classList.toggle("hidden", !shouldShow);
+
+  $("#btn-open-chrome")?.addEventListener("click", openInChrome);
+
+  $("#btn-open-chrome-close")?.addEventListener("click", () => {
+    banner.classList.add("hidden");
+    try {
+      localStorage.setItem(CHROME_BANNER_HIDE_KEY, "1");
+    } catch (_) {}
+  });
+
+  maybeAutoOpenChrome();
+}
+
+// ===============================================================
+// بيانات المستخدم (الاسم + الرقم + البريد) في المحادثة والإعدادات
+// ===============================================================
+
+// هل الطرف الآخر مشرف؟ (نُظهر بياناته الإدارية فقط بلا بريد الدخول)
+function contactIsStaff(profile) {
+  return Boolean(profile?.is_admin || profile?.is_super_admin);
+}
+
+function openContactInfoPanel(profile) {
+  const panel = $("#contact-info-panel");
+  if (!panel) return;
+
+  const person = profile || {};
+  const name = person.display_name || "";
+
+  const nameEl = $("#contact-info-name");
+  if (nameEl) {
+    nameEl.textContent = name || "بدون اسم";
+    nameEl.setAttribute("dir", nameDirection(name));
+  }
+
+  const {
+    phone,
+    email,
+    hint,
+  } = contactDisplayData(person);
+
+  const avatar = $("#contact-info-img");
+  const initial = $("#contact-info-initial");
+
+  if (person.avatar_url) {
+    if (avatar) {
+      avatar.src = person.avatar_url;
+      avatar.classList.remove("hidden");
+    }
+    initial?.classList.add("hidden");
+  } else {
+    avatar?.classList.add("hidden");
+    if (initial) {
+      initial.textContent = (name || "؟").trim().charAt(0) || "؟";
+      initial.classList.remove("hidden");
+    }
+  }
+
+  const roleEl = $("#contact-info-role");
+  if (roleEl) {
+    roleEl.textContent = contactIsStaff(person) ? "مشرف" : "مستخدم";
+    roleEl.dataset.staff = contactIsStaff(person) ? "1" : "0";
+  }
+
+  const nameRow = $("#contact-info-name-row");
+  if (nameRow) {
+    nameRow.textContent = name || "بدون اسم";
+    nameRow.setAttribute("dir", nameDirection(name));
+  }
+
+  const phoneEl = $("#contact-info-phone");
+  if (phoneEl) phoneEl.textContent = phone || "غير مُدخل";
+
+  const emailEl = $("#contact-info-email");
+  if (emailEl) emailEl.textContent = email || "غير مُدخل";
+
+  const noteEl = $("#contact-info-note");
+  if (noteEl) noteEl.textContent = hint;
+
+  panel.classList.remove("hidden");
+}
+
+function closeContactInfoPanel() {
+  $("#contact-info-panel")?.classList.add("hidden");
+}
+
+// بيانات العرض: الرقم والبريد كما أدخلهما صاحب الحساب (لا بريد الدخول الإداري)
+function contactDisplayData(profile) {
+  const person = profile || {};
+  const staff = contactIsStaff(person);
+
+  const phone = prettyPhone(person.phone) || person.phone || "";
+  const email = (person.email || "").trim();
+
+  let hint = "";
+
+  if (staff) {
+    hint = "هذا الحساب مشرف — بياناته الإدارية محفوظة في قاعدة البيانات، ولا تُعرض بيانات الدخول هنا.";
+  } else if (!phone && !email) {
+    hint = "لم يُدخل هذا المستخدم رقم هاتفه أو بريده.";
+  } else if (!email) {
+    hint = "لم يُدخل هذا المستخدم بريداً إلكترونياً (اختياري).";
+  } else {
+    hint = "هذه البيانات أدخلها المستخدم عند التسجيل.";
+  }
+
+  return { phone, email, hint };
+}
+
+// بيانات المستخدم كما تظهر له في الإعدادات
+function renderMyIdentity() {
+  const idBox = document.getElementById("identity-box");
+  if (!idBox || !state.me) return;
+
+  const name = state.me.display_name || "";
+  const phone = prettyPhone(state.me.phone) || state.me.phone || "";
+  const email = (state.me.email || "").trim();
+  const staff = contactIsStaff(state.me);
+
+  idBox.innerHTML = `
+    <div class="identity-row"><span>الاسم</span><b dir="${nameDirection(name)}">${escapeHtml(name || "بدون اسم")}</b></div>
+    <div class="identity-row"><span>رقم الهاتف</span><b dir="ltr">${escapeHtml(phone || "غير مُدخل")}</b></div>
+    <div class="identity-row"><span>البريد الإلكتروني</span><b dir="ltr">${escapeHtml(email || "غير مُدخل")}</b></div>
+    <div class="identity-row"><span>نوع الحساب</span><b>${staff ? "مشرف" : "مستخدم"}</b></div>
+    ${
+      !staff && !email
+        ? `<div class="identity-hint">يمكنك إضافة بريد إلكتروني (اختياري) من «الأمان».</div>`
+        : ""
+    }
+  `;
+}
+
+// ===============================================================
+// تبديل المستخدم (للمشرف العام)
+// ===============================================================
+
+const SWITCH_BACK_KEY = "wa_switch_back_session";
+
+function readSwitchBack() {
+  try {
+    const raw = localStorage.getItem(SWITCH_BACK_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed?.access_token ? parsed : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveSwitchBack(session, profile) {
+  try {
+    localStorage.setItem(
+      SWITCH_BACK_KEY,
+      JSON.stringify({
+        access_token: session.access_token,
+        refresh_token: session.refresh_token,
+        display_name: profile?.display_name || "حسابي",
+        email: profile?.email || "",
+        saved_at: Date.now(),
+      })
+    );
+  } catch (_) {}
+}
+
+function clearSwitchBack() {
+  try {
+    localStorage.removeItem(SWITCH_BACK_KEY);
+  } catch (_) {}
+}
+
+async function renderSwitchUserBlock() {
+  const block = $("#switch-user-block");
+  if (!block) return;
+
+  const back = readSwitchBack();
+
+  // يظهر للمشرف العام، وكذلك لأي حساب آخر دخلناه بالتبديل (للعودة بضغطة)
+  if (!state.me?.is_super_admin && !back) {
+    block.classList.add("hidden");
+    return;
+  }
+
+  block.classList.remove("hidden");
+
+  const backRow = $("#switch-back-row");
+
+  if (back) {
+    $("#switch-back-name").textContent = back.display_name || "حسابي";
+    backRow?.classList.remove("hidden");
+  } else {
+    backRow?.classList.add("hidden");
+  }
+
+  const list = $("#switch-user-list");
+  const listLabel = block.querySelector('label[for="switch-user-list"], label');
+
+  // الحساب الذي دخلناه بالتبديل: لا قائمة حسابات، فقط زر الرجوع
+  if (!state.me?.is_super_admin) {
+    $("#value-switch").textContent = "داخل حساب آخر";
+    if (list) {
+      list.innerHTML = `<div class="settings-hint">أنت داخل هذا الحساب بالتبديل — يمكنك الرجوع إلى حسابك الأصلي بزر «رجوع إلى حسابي» أعلاه.</div>`;
+      list.dataset.loaded = "1";
+    }
+    if (listLabel) listLabel.classList.add("hidden");
+    return;
+  }
+
+  if (listLabel) listLabel.classList.remove("hidden");
+  $("#value-switch").textContent = back ? "داخل حساب آخر" : "المشرف العام";
+
+  if (!list) return;
+
+  if (list.dataset.loaded === "1") return;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, display_name, email, is_admin, is_super_admin, avatar_url, phone")
+    .or("is_admin.eq.true,is_super_admin.eq.true")
+    .order("is_super_admin", { ascending: false })
+    .order("display_name", { ascending: true });
+
+  if (error) {
+    list.innerHTML = `<div class="settings-hint">تعذّر تحميل الحسابات: ${escapeHtml(error.message)}</div>`;
+    return;
+  }
+
+  const others = (data || []).filter((p) => String(p.id) !== String(state.me.id));
+
+  if (!others.length) {
+    list.innerHTML = `<div class="settings-hint">لا توجد حسابات مشرفين أخرى.</div>`;
+    list.dataset.loaded = "1";
+    return;
+  }
+
+  list.innerHTML = "";
+
+  others.forEach((person) => {
+    const row = document.createElement("div");
+    row.className = "switch-user-row";
+
+    const avatar = person.avatar_url
+      ? `<img src="${escapeHtml(person.avatar_url)}" alt="" />`
+      : `<span class="switch-user-initial">${escapeHtml((person.display_name || "؟").trim().charAt(0))}</span>`;
+
+    row.innerHTML = `
+      <div class="switch-user-avatar">${avatar}</div>
+      <div class="switch-user-text">
+        <b dir="${nameDirection(person.display_name)}">${escapeHtml(person.display_name || "بدون اسم")}</b>
+        <small>${person.is_super_admin ? "🛡️ مشرف عام" : "مشرف"}</small>
+      </div>
+      <button type="button" class="admin-btn-mini switch-user-go">دخول</button>
+    `;
+
+    row.querySelector(".switch-user-go")?.addEventListener("click", () => switchToUser(person, row));
+    list.appendChild(row);
+  });
+
+  list.dataset.loaded = "1";
+}
+
+async function switchToUser(person, row) {
+  const status = $("#switch-user-status");
+  const btn = row?.querySelector(".switch-user-go");
+
+  const setStatus = (msg) => {
+    if (status) status.textContent = msg || "";
+  };
+
+  if (!state.me?.is_super_admin) {
+    setStatus("تبديل المستخدم متاح للمشرف العام فقط.");
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "…";
+  }
+
+  setStatus("جارٍ الدخول إلى الحساب…");
+
+  try {
+    // 1) نحفظ جلسة المشرف العام للرجوع إليها بضغطة
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData?.session;
+
+    if (!session) throw new Error("لا توجد جلسة حالية.");
+
+    saveSwitchBack(session, state.me);
+
+    // 2) نطلب رمز دخول للحساب الهدف من الدالّة (بتحقق صلاحية المشرف العام)
+    const { data: fnData, error: fnError } = await supabase.functions.invoke("admin-switch-user", {
+      body: { userId: person.id },
+    });
+
+    if (fnError) throw new Error(fnError.message || "تعذّر تبديل الحساب");
+
+    if (!fnData?.token_hash) {
+      throw new Error(fnData?.error || "تعذّر توليد رمز الدخول");
+    }
+
+    // 3) نُبادل الرمز بجلسة للحساب الهدف
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+      type: "magiclink",
+      token_hash: fnData.token_hash,
+    });
+
+    if (verifyError) throw verifyError;
+
+    setStatus(`تم الدخول إلى «${person.display_name || fnData.email}» — جارٍ إعادة التحميل…`);
+    setTimeout(() => location.reload(), 700);
+  } catch (err) {
+    console.error("switch user failed:", err);
+    setStatus("تعذّر تبديل الحساب: " + (err?.message || "خطأ غير معروف"));
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "دخول";
+    }
+  }
+}
+
+async function switchBackToMyAccount() {
+  const status = $("#switch-user-status");
+  const back = readSwitchBack();
+
+  if (!back) {
+    if (status) status.textContent = "لا يوجد حساب أصلي محفوظ.";
+    return;
+  }
+
+  if (status) status.textContent = "جارٍ الرجوع إلى حسابك…";
+
+  const { error } = await supabase.auth.setSession({
+    access_token: back.access_token,
+    refresh_token: back.refresh_token,
+  });
+
+  if (error) {
+    if (status) status.textContent = "انتهت صلاحية الجلسة المحفوظة — سجّل الدخول من جديد. " + error.message;
+    clearSwitchBack();
+    return;
+  }
+
+  clearSwitchBack();
+  setTimeout(() => location.reload(), 500);
+}
+
 // إرشادات إضافة التطبيق إلى الشاشة الرئيسية
 // -----------------------------------------------------------------
 //  الآيفون لا يدعم نافذة التثبيت التلقائية إطلاقاً، ولا يُثبَّت التطبيق
@@ -10171,11 +10583,8 @@ async function installPWA() {
 
   if (button) {
     button.disabled = true;
-
-    const subtitle = button.querySelector("small");
-
-    if (subtitle) subtitle.textContent = "جارٍ فتح نافذة التثبيت…";
-    else button.textContent = "جارٍ فتح نافذة التثبيت…";
+    // v39: الزر أيقونة دائرية — لا نستبدل محتواه بالنص، نكتفي بحالة انتظار
+    button.classList.add("is-busy");
   }
 
   try {

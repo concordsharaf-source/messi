@@ -7414,3 +7414,302 @@ body.pointer-fine .rec-lock-hint { display: none !important; }
   .composer #send-btn.send-btn { width: 40px !important; height: 40px !important; flex: 0 0 40px; }
   .voice-note { min-width: 180px; }
 }
+
+
+/* =========================================================
+   v39 — أيقونة التثبيت / فتح في كروم / بيانات المستخدم / تبديل المستخدم
+   ========================================================= */
+
+/* ---------- 1) أيقونة تثبيت التطبيق: دائرية بنفس شكل أيقونة واتساب ---------- */
+.auth-install {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 14px;
+}
+
+.auth-install-btn {
+  position: relative;
+  width: 74px;
+  height: 74px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+  overflow: visible;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3), 0 0 0 3px rgba(37, 211, 102, 0.25);
+  transition: transform 0.15s ease, box-shadow 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-install-btn:hover { transform: translateY(-2px); }
+.auth-install-btn:active { transform: scale(0.95); }
+
+.auth-install-btn img {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+}
+
+/* حلقة نابضة تُشبه نبض أيقونة واتساب */
+.auth-install-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(37, 211, 102, 0.55);
+  animation: authInstallPulse 2.1s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes authInstallPulse {
+  0%   { transform: scale(0.92); opacity: 0.85; }
+  70%  { transform: scale(1.16); opacity: 0; }
+  100% { transform: scale(1.16); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-install-ring { animation: none; opacity: 0.5; }
+}
+
+.auth-install-label {
+  background: transparent;
+  border: none;
+  color: var(--wa-green);
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.auth-install-label:hover { background: rgba(0, 168, 132, 0.12); }
+
+/* إلغاء أنماط البطاقة السفلية القديمة (لم تعد مستخدمة) */
+.pwa-install-wrapper { display: none !important; }
+
+/* ---------- 2) شريط «افتح في كروم» (أندرويد) ---------- */
+.chrome-banner {
+  position: fixed;
+  z-index: 95;
+  top: var(--app-top, 0px);
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: linear-gradient(180deg, #1f2c33, #111b21);
+  color: #e9edef;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+}
+
+.chrome-banner-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex: 0 0 32px;
+}
+
+.chrome-banner-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+  flex: 1;
+}
+
+.chrome-banner-text b { font-size: 13.5px; }
+.chrome-banner-text small { color: #8696a0; font-size: 11.5px; }
+
+.chrome-banner-btn {
+  background: var(--wa-green);
+  color: #04231c;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chrome-banner-close {
+  background: transparent;
+  border: none;
+  color: #8696a0;
+  font-size: 15px;
+  cursor: pointer;
+  padding: 4px 6px;
+  line-height: 1;
+}
+
+/* ---------- 3) نافذة بيانات المستخدم ---------- */
+.contact-info-card {
+  width: min(420px, 100%);
+  max-height: 88%;
+  overflow-y: auto;
+  background: var(--wa-panel-dark);
+  color: var(--wa-text-primary);
+  border-radius: 16px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+body[data-theme="light"] .contact-info-card {
+  background: var(--wa-panel-light);
+  color: #111b21;
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.contact-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15.5px;
+}
+
+.contact-info-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 168, 132, 0.18);
+  color: var(--wa-green);
+  font-size: 34px;
+  font-weight: 800;
+  overflow: hidden;
+}
+
+.contact-info-avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+
+.contact-info-name {
+  text-align: center;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.contact-info-role {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--wa-text-secondary);
+  margin-top: -8px;
+}
+
+.contact-info-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.contact-info-rows .identity-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.contact-info-rows .identity-row b { font-weight: 600; overflow-wrap: anywhere; text-align: end; }
+
+/* ---------- 4) قسم «تبديل المستخدم» (المشرف العام) ---------- */
+.switch-back-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(0, 168, 132, 0.1);
+  border: 1px solid rgba(0, 168, 132, 0.35);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.switch-back-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  flex: 1;
+  min-width: 0;
+}
+
+.switch-back-info small { color: var(--wa-text-secondary); font-size: 11.5px; }
+.switch-back-info b { font-size: 14px; overflow-wrap: anywhere; }
+
+.switch-user-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.switch-user-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+body[data-theme="light"] .switch-user-row {
+  background: #f7f8fa;
+  border-color: rgba(0, 0, 0, 0.07);
+}
+
+.switch-user-avatar {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 168, 132, 0.2);
+  color: var(--wa-green);
+  font-weight: 800;
+}
+
+.switch-user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+.switch-user-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  flex: 1;
+  min-width: 0;
+}
+
+.switch-user-text b { font-size: 14px; overflow-wrap: anywhere; }
+.switch-user-text small { color: var(--wa-text-secondary); font-size: 11.5px; }
+
+.switch-user-go { white-space: nowrap; }
+
+.identity-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--wa-text-secondary);
+}
+
+@media (max-width: 480px) {
+  .auth-install-btn { width: 66px; height: 66px; }
+  .chrome-banner { font-size: 12.5px; padding: 8px 10px; }
+  .chrome-banner-btn { padding: 7px 12px; font-size: 12.5px; }
+}
+
+.auth-install-btn.is-busy { opacity: 0.75; }
+.auth-install-btn.is-busy .auth-install-ring { animation-duration: 0.9s; }
