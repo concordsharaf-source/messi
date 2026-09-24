@@ -5673,15 +5673,29 @@ async function openConversation(otherProfile) {
       }
     }
 
-    const memberRole = await getChatMemberRole(conversationId, state.me.id);
+    // v49: دوري في المحادثة كان نداءً شبكياً يحجب ظهور الرسائل. نُظهر المحادثة
+    // فوراً (بالدور المتوقع) ونُصحّح الدور في الخلفية عند وصول الرد.
+    const expectedRole = state.me.is_admin
+      ? "admin"
+      : state.me.is_super_admin
+      ? "admin"
+      : null;
 
     state.activeConversation = {
       id: conversationId,
       userId,
       adminId,
       otherProfile,
-      memberRole,
+      memberRole: expectedRole,
     };
+
+    getChatMemberRole(conversationId, state.me.id)
+      .then((role) => {
+        if (!state.activeConversation || state.activeConversation.id !== conversationId) return;
+        state.activeConversation.memberRole = role || expectedRole;
+        updateConversationOptions();
+      })
+      .catch(() => {});
 
     updateConversationOptions();
 
