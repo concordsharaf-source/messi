@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "40";
+const BUILD = "41";
 
 const state = {
   me: null,
@@ -317,6 +317,9 @@ function openConversationUIState(conversationId) {
 function closeChatView() {
   // v40: لا نترك لوحة التفاعل أو شريط خيارات الرسالة مفتوحاً بعد الخروج
   closeQuickReact(true);
+
+  // v41: نُفرّغ قائمة الرسائل حتى لا تظهر محادثة سابقة عند إعادة الفتح
+  clearChatViewMessages();
 
   document.body.classList.remove("viewing-chat");
   closeMediaViewer();
@@ -1318,131 +1321,218 @@ async function loadAdminStats() {
 }
 
 async function loadAdminUsers() {
-  const list = $("#admin-users-list");
+  const adminsHost = $("#admin-users-list");
+  const usersHost = $("#admin-users-list-users");
   const block = $("#admin-manage-block");
-  if (!list || !state.me?.is_super_admin) return;
+
+  if (!adminsHost || !state.me?.is_super_admin) return;
 
   block?.classList.remove("hidden");
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, email, display_name, is_admin, is_super_admin, avatar_url")
+    .select("id, email, display_name, is_admin, is_super_admin, avatar_url, phone, created_at")
     .order("is_super_admin", { ascending: false })
     .order("is_admin", { ascending: false })
     .order("email", { ascending: true });
 
   if (error) {
-    list.innerHTML =
+    adminsHost.innerHTML =
       `<div class="admin-hint err">تعذّر تحميل القائمة: ${escapeHtml(error.message)}</div>`;
+    if (usersHost) usersHost.innerHTML = "";
     return;
   }
 
-  list.innerHTML = "";
+  const all = data || [];
+  const admins = all.filter((p) => p.is_admin || p.is_super_admin);
+  const users = all.filter((p) => !p.is_admin && !p.is_super_admin);
 
-  (data || []).forEach((p) => {
-    const isSelf = p.id === state.me.id;
-    const row = document.createElement("div");
-    row.className = "admin-user";
+  const adminsCount = $("#admin-group-admins-count");
+  const usersCount = $("#admin-group-users-count");
 
-    const initial = (p.display_name || p.email || "?").trim().charAt(0);
+  if (adminsCount) adminsCount.textContent = String(admins.length);
+  if (usersCount) usersCount.textContent = String(users.length);
 
-    row.innerHTML = `
-      <div class="admin-user-head">
-        <div class="admin-user-avatar" id="avatar-thumb-${p.id}">
+  renderAdminUsersGroup(adminsHost, admins, "لا يوجد مشرفون حتى الآن.");
+  renderAdminUsersGroup(usersHost, users, "لا يوجد مستخدمون حتى الآن.");
+}
+
+/** معرّفات البطاقات المفتوحة (تُحفظ حتى لا تُطوى عند تحديث القائمة) */
+let openAdminUserCards = new Set();
+
+function formatAdminJoinDate(iso) {
+  if (!iso) return "—";
+
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+
+  return date.toLocaleDateString(state.lang === "ar" ? "ar-SA" : "en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  });
+}
+
+/** بطاقة مطويّة: الصورة والاسم فقط — والضغط يكشف بقية المعلومات والخيارات */
+function buildAdminUserCard(p) {
+  const isSelf = p.id === state.me.id;
+  const row = document.createElement("div");
+  row.className = "admin-user";
+
+  const initial = (p.display_name || p.email || "?").trim().charAt(0);
+  const role = p.is_super_admin ? "مشرف عام" : p.is_admin ? "مشرف" : "مستخدم";
+  const isOpen = openAdminUserCards.has(String(p.id));
+
+  if (isOpen) row.classList.add("open");
+
+  row.innerHTML = `
+      <button class="admin-user-head" type="button" aria-expanded="${isOpen ? "true" : "false"}">
+        <span class="admin-user-avatar" id="avatar-thumb-${p.id}">
           ${p.avatar_url ? `<img src="${escapeHtml(p.avatar_url)}" alt="">` : escapeHtml(initial)}
-        </div>
+        </span>
 
-        <div class="admin-user-info">
+        <span class="admin-user-name">
           <b dir="${nameDirection(p.display_name)}">${escapeHtml(p.display_name || "بدون اسم")}</b>
-          <span>${escapeHtml(p.email || "بدون بريد")}</span>
-        </div>
+          <small>${escapeHtml(role)}</small>
+        </span>
 
         ${p.is_super_admin ? '<span class="admin-crown" title="مشرف عام">👑</span>' : ""}
+
+        <span class="admin-user-chevron" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M12 15.5 5.5 9l1.4-1.4 5.1 5.1 5.1-5.1L18.5 9z"/></svg>
+        </span>
+      </button>
+
+      <div class="admin-user-details">
+        <div class="admin-user-rows">
+          <div class="admin-detail-row"><span>البريد الإلكتروني</span><b dir="ltr">${escapeHtml(p.email || "—")}</b></div>
+          <div class="admin-detail-row"><span>رقم الهاتف</span><b dir="ltr">${escapeHtml(p.phone || "—")}</b></div>
+          <div class="admin-detail-row"><span>الصلاحية</span><b class="ar">${escapeHtml(role)}</b></div>
+          <div class="admin-detail-row"><span>تاريخ التسجيل</span><b class="ar">${escapeHtml(formatAdminJoinDate(p.created_at))}</b></div>
+        </div>
+
+        <div class="admin-rename hidden">
+          <input class="admin-rename-input" type="text" maxlength="40"
+                 value="${escapeHtml(p.display_name || "")}" placeholder="الاسم الجديد" />
+          <button class="admin-key ok" data-act="rename-save" type="button">✔ حفظ</button>
+          <button class="admin-key" data-act="rename-cancel" type="button">✕</button>
+        </div>
+
+        <div class="admin-user-actions">
+          <button class="admin-flag ${p.is_admin ? "on" : ""}" data-act="admin" type="button"
+                  title="تبديل صفة المشرف">${p.is_admin ? "✔ مشرف" : "مشرف"}</button>
+          <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
+                  title="تبديل صفة المشرف العام">${p.is_super_admin ? "✔ مشرف عام" : "مشرف عام"}</button>
+
+          <button class="admin-key" data-act="rename" type="button"
+                  title="إعادة تسمية المستخدم">✏️ الاسم</button>
+
+          <button class="admin-key actor-avatar" data-act="avatar" type="button"
+                  title="تغيير الصورة الشخصية">📷 تغيير الصورة</button>
+
+          ${p.avatar_url
+            ? `<button class="admin-key danger" data-act="avatar-del" type="button"
+                      title="حذف الصورة الشخصية">🚫 حذف الصورة</button>`
+            : ""}
+
+          ${isSelf ? '<span class="admin-self-hint">هذا حسابك</span>' : `
+            <button class="admin-key" data-act="pass" type="button" title="تعيين كلمة مرور جديدة">🔑 كلمة المرور</button>
+            <button class="admin-key" data-act="reset-link" type="button" title="إرسال رابط استعادة بالبريد">✉️ رابط استعادة</button>
+          `}
+        </div>
       </div>
+  `;
 
-      <div class="admin-rename hidden">
-        <input class="admin-rename-input" type="text" maxlength="40"
-               value="${escapeHtml(p.display_name || "")}" placeholder="الاسم الجديد" />
-        <button class="admin-key ok" data-act="rename-save" type="button">✔ حفظ</button>
-        <button class="admin-key" data-act="rename-cancel" type="button">✕</button>
-      </div>
+  // فتح/طي البطاقة — بطاقة واحدة مفتوحة في القسم نفسه
+  const head = row.querySelector(".admin-user-head");
 
-      <div class="admin-user-actions">
-        <button class="admin-flag ${p.is_admin ? "on" : ""}" data-act="admin" type="button"
-                title="تبديل صفة المشرف">${p.is_admin ? "✔ مشرف" : "مشرف"}</button>
-        <button class="admin-flag ${p.is_super_admin ? "on" : ""}" data-act="super" type="button"
-                title="تبديل صفة المشرف العام">${p.is_super_admin ? "✔ مشرف عام" : "مشرف عام"}</button>
+  head?.addEventListener("click", () => {
+    const willOpen = !row.classList.contains("open");
 
-        <button class="admin-key" data-act="rename" type="button"
-                title="إعادة تسمية المستخدم">✏️ الاسم</button>
+    row.parentElement?.querySelectorAll(".admin-user.open").forEach((other) => {
+      if (other === row) return;
 
-        <button class="admin-key actor-avatar" data-act="avatar" type="button"
-                title="تغيير الصورة الشخصية">📷 تغيير الصورة</button>
-
-        ${p.avatar_url
-          ? `<button class="admin-key danger" data-act="avatar-del" type="button"
-                    title="حذف الصورة الشخصية">🚫 حذف الصورة</button>`
-          : ""}
-
-        ${isSelf ? '<span class="admin-self-hint">هذا حسابك</span>' : `
-          <button class="admin-key" data-act="pass" type="button" title="تعيين كلمة مرور جديدة">🔑 كلمة المرور</button>
-          <button class="admin-key" data-act="reset-link" type="button" title="إرسال رابط استعادة بالبريد">✉️ رابط استعادة</button>
-        `}
-      </div>
-    `;
-
-    const renameBox = row.querySelector(".admin-rename");
-    const renameInput = row.querySelector(".admin-rename-input");
-    const saveRename = () => renameUser(p, renameInput?.value, renameBox);
-
-    row.querySelector('[data-act="rename"]')?.addEventListener("click", () => {
-      renameBox?.classList.toggle("hidden");
-
-      if (renameBox && !renameBox.classList.contains("hidden")) {
-        renameInput.focus();
-        renameInput.select();
-      }
+      other.classList.remove("open");
+      other.querySelector(".admin-user-head")?.setAttribute("aria-expanded", "false");
+      openAdminUserCards.delete(String(other.dataset.userId));
     });
 
-    row.querySelector('[data-act="rename-cancel"]')?.addEventListener("click", () => {
-      renameBox?.classList.add("hidden");
-      if (renameInput) renameInput.value = p.display_name || "";
-    });
+    row.classList.toggle("open", willOpen);
+    head.setAttribute("aria-expanded", String(willOpen));
 
-    row.querySelector('[data-act="rename-save"]')?.addEventListener("click", saveRename);
-
-    renameInput?.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        saveRename();
-      }
-
-      if (event.key === "Escape") renameBox?.classList.add("hidden");
-    });
-
-    row.querySelector('[data-act="pass"]')?.addEventListener("click", () => setUserPassword(p));
-    row.querySelector('[data-act="reset-link"]')?.addEventListener("click", () => sendUserResetLink(p));
-    row.querySelector('[data-act="avatar"]')?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      pickUserAvatar(p);
-    });
-    row.querySelector('[data-act="avatar-del"]')?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      removeUserAvatar(p);
-    });
-
-    row.querySelectorAll(".admin-flag").forEach((b) => {
-      if (isSelf) {
-        b.disabled = true;
-        b.title = "لا يمكنك تغيير صلاحيات حسابك";
-      } else {
-        b.addEventListener("click", () => toggleAdminFlag(p, b.dataset.act, row));
-      }
-    });
-
-    list.appendChild(row);
+    if (willOpen) openAdminUserCards.add(String(p.id));
+    else openAdminUserCards.delete(String(p.id));
   });
+
+  row.dataset.userId = String(p.id);
+
+  const renameBox = row.querySelector(".admin-rename");
+  const renameInput = row.querySelector(".admin-rename-input");
+  const saveRename = () => renameUser(p, renameInput?.value, renameBox);
+
+  row.querySelector('[data-act="rename"]')?.addEventListener("click", () => {
+    renameBox?.classList.toggle("hidden");
+
+    if (renameBox && !renameBox.classList.contains("hidden")) {
+      renameInput.focus();
+      renameInput.select();
+    }
+  });
+
+  row.querySelector('[data-act="rename-cancel"]')?.addEventListener("click", () => {
+    renameBox?.classList.add("hidden");
+    if (renameInput) renameInput.value = p.display_name || "";
+  });
+
+  row.querySelector('[data-act="rename-save"]')?.addEventListener("click", saveRename);
+
+  renameInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      saveRename();
+    }
+
+    if (event.key === "Escape") renameBox?.classList.add("hidden");
+  });
+
+  row.querySelector('[data-act="pass"]')?.addEventListener("click", () => setUserPassword(p));
+  row.querySelector('[data-act="reset-link"]')?.addEventListener("click", () => sendUserResetLink(p));
+  row.querySelector('[data-act="avatar"]')?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    pickUserAvatar(p);
+  });
+  row.querySelector('[data-act="avatar-del"]')?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    removeUserAvatar(p);
+  });
+
+  row.querySelectorAll(".admin-flag").forEach((b) => {
+    if (isSelf) {
+      b.disabled = true;
+      b.title = "لا يمكنك تغيير صلاحيات حسابك";
+    } else {
+      b.addEventListener("click", () => toggleAdminFlag(p, b.dataset.act, row));
+    }
+  });
+
+  return row;
+}
+
+function renderAdminUsersGroup(host, profiles, emptyText) {
+  if (!host) return;
+
+  host.innerHTML = "";
+
+  if (!profiles.length) {
+    const empty = document.createElement("div");
+    empty.className = "admin-users-empty";
+    empty.textContent = emptyText;
+    host.appendChild(empty);
+    return;
+  }
+
+  profiles.forEach((p) => host.appendChild(buildAdminUserCard(p)));
 }
 
 async function renameUser(profile, rawName, box) {
@@ -1501,7 +1591,14 @@ async function toggleAdminFlag(profile, act, row) {
       ? (nextSuper ? "تعيين مشرفاً عاماً" : "إزالة صفة المشرف العام")
       : (nextAdmin ? "ترقية إلى مشرف" : "إزالة الإشراف");
 
-  if (!window.confirm(`${what}: ${profile.display_name || profile.email}؟`)) return;
+  const confirmed = await showAppConfirm({
+    title: `${what}؟`,
+    text: profile.display_name || profile.email || "",
+    icon: "⚙️",
+    danger: act === "admin" && !nextAdmin,
+  });
+
+  if (!confirmed) return;
 
   flagButtons.forEach((b) => (b.disabled = true));
   setAdminStatusText(status, "جارٍ التنفيذ…");
@@ -1838,7 +1935,14 @@ async function removeUserAvatar(profile) {
   const status = $("#admin-manage-status");
   const who = profile.display_name || profile.email || "المستخدم";
 
-  if (!window.confirm(`حذف الصورة الشخصية لـ «${who}»؟`)) return;
+  const confirmed = await showAppConfirm({
+    title: "حذف الصورة الشخصية؟",
+    text: `سيتم حذف صورة «${who}» نهائياً.`,
+    icon: "🖼️",
+    danger: true,
+  });
+
+  if (!confirmed) return;
 
   setAdminStatusText(status, "جارٍ الحذف…");
 
@@ -1863,9 +1967,14 @@ async function setUserPassword(profile) {
   const status = $("#admin-manage-status");
   const who = profile.display_name || profile.email || "المستخدم";
 
-  const password = window.prompt(
-    `كلمة مرور جديدة لـ «${who}»\n(6 أحرف على الأقل، اتركها فارغة للإلغاء)`
-  );
+  const password = await showAppPrompt({
+    title: "كلمة مرور جديدة",
+    text: `الحساب: «${who}» — 6 أحرف على الأقل.`,
+    icon: "🔑",
+    placeholder: "اكتب كلمة المرور",
+    yes: "تعيين",
+    no: "إلغاء",
+  });
 
   if (!password) return;
 
@@ -3304,6 +3413,7 @@ function closeSettings(viaBack = false) {
 
 function wireChrome() {
   wireAppHeight();
+  wireAppModal();
 
   $("#btn-settings")?.addEventListener("click", () => {
     if (isSettingsOpen()) closeSettings();
@@ -4686,6 +4796,32 @@ async function openConversation(otherProfile) {
       "hidden"
     );
 
+    // v41: عند الانتقال لمحادثة أخرى نُنظّف عرض المحادثة السابقة فوراً
+    // (بلا انتظار الشبكة) ثم نُظهر هيكلاً باهتاً حتى تصل رسائل الجديدة.
+    const nextConversationId = otherProfile._conversationId
+      ? String(otherProfile._conversationId)
+      : "";
+
+    const switchingConversation =
+      !state.activeConversation ||
+      !nextConversationId ||
+      String(state.activeConversation.id) !== nextConversationId;
+
+    if (switchingConversation) beginConversationView();
+
+    // رأس المحادثة يتحدّث في نفس اللحظة (لا اسم/صورة/حالة للمحادثة السابقة)
+    const headerNameEl = $("#chat-header-name");
+    if (headerNameEl) {
+      headerNameEl.textContent = otherProfile.display_name || "";
+      headerNameEl.setAttribute("dir", nameDirection(otherProfile.display_name));
+    }
+
+    const headerAvatarEl = $("#chat-header-avatar");
+    if (headerAvatarEl) headerAvatarEl.src = otherProfile.avatar_url || "";
+
+    const headerStatusEl = $("#chat-header-status");
+    if (headerStatusEl) headerStatusEl.textContent = "";
+
     clearReply();
 
     const isStaffOpeningUserChat = Boolean(
@@ -4825,6 +4961,49 @@ async function openConversation(otherProfile) {
 }
 
 // ===============================================================
+// v41: فتح محادثة جديدة — تنظيف فوري لعرض المحادثة السابقة
+// (كانت تظهر «ومضة» من رسائل المحادثة السابقة قبل وصول رسائل الجديدة)
+// ===============================================================
+function beginConversationView() {
+  closeQuickReact(true);
+  closeMessageSelection();
+
+  state.messages = [];
+  state.reactions = {};
+  state.animateId = null;
+
+  const box = $("#chat-messages");
+  if (!box) return;
+
+  box.dataset.mode = "loading";
+  box.scrollTop = 0;
+  box.innerHTML = `
+    <div class="chat-loading" aria-hidden="true">
+      <div class="chat-loading-row mine"><span></span></div>
+      <div class="chat-loading-row theirs"><span></span></div>
+      <div class="chat-loading-row mine"><span></span></div>
+      <div class="chat-loading-row theirs"><span></span></div>
+      <div class="chat-loading-row mine"><span></span></div>
+      <div class="chat-loading-row theirs"><span></span></div>
+    </div>
+  `;
+}
+
+/** انتهت مرحلة التحميل: نسمح للرسم الفعلي (حتى لو كانت المحادثة بلا رسائل) */
+function endConversationLoading() {
+  const box = $("#chat-messages");
+  if (box && box.dataset.mode === "loading") box.dataset.mode = "idle";
+}
+
+function clearChatViewMessages() {
+  const box = $("#chat-messages");
+  if (!box) return;
+
+  box.dataset.mode = "idle";
+  box.innerHTML = "";
+}
+
+// ===============================================================
 // LOAD MESSAGES
 // ===============================================================
 
@@ -4850,6 +5029,149 @@ async function getPendingOutboxMessages(conversationId) {
   } catch (err) {
     return [];
   }
+}
+
+// ---------------------------------------------------------------
+// v41: نوافذ التأكيد داخل التطبيق (أنيقة، في منتصف الشاشة، نعم / لا)
+// بديل كامل لنوافذ المتصفح window.confirm / window.prompt
+// ---------------------------------------------------------------
+let appModalSettle = null;
+
+function appModalIsOpen() {
+  return !$("#app-confirm-modal")?.classList.contains("hidden");
+}
+
+function closeAppModal(value) {
+  const modal = $("#app-confirm-modal");
+  const resolve = appModalSettle;
+
+  appModalSettle = null;
+
+  modal?.classList.add("hidden");
+  $("#app-confirm-input-wrap")?.classList.add("hidden");
+
+  const input = $("#app-confirm-input");
+  if (input) input.value = "";
+
+  if (resolve) resolve(value);
+}
+
+function wireAppModal() {
+  const modal = $("#app-confirm-modal");
+  if (!modal || modal.dataset.wired === "1") return;
+
+  modal.dataset.wired = "1";
+
+  $("#app-confirm-yes")?.addEventListener("click", () => {
+    // نافذة إدخال؟ نُعيد النص المكتوب (أو null إن كان فارغاً)
+    if (!$("#app-confirm-input-wrap")?.classList.contains("hidden")) {
+      const value = String($("#app-confirm-input")?.value || "").trim();
+      closeAppModal(value || null);
+      return;
+    }
+
+    closeAppModal(true);
+  });
+
+  $("#app-confirm-no")?.addEventListener("click", () => closeAppModal(null));
+
+  modal.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeAppModal(null);
+  });
+
+  $("#app-confirm-input")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const value = String(event.target.value || "").trim();
+    closeAppModal(value || null);
+  });
+
+  // v41: أي نقرة داخل أي نافذة منبثقة لا تتسرّب للصفحة
+  // (كانت نقرة زر «لا» تُغلق نافذة الإعدادات لأن مستمعاً عاماً يرى النقرة «خارج» الإعدادات)
+  document.querySelectorAll(".modal-overlay").forEach((overlay) => {
+    if (overlay.dataset.stopBubble === "1") return;
+
+    overlay.dataset.stopBubble = "1";
+    overlay.addEventListener("click", (event) => event.stopPropagation());
+  });
+
+  // Escape يُغلق نافذة التأكيد أولاً (قبل أي شيء آخر في الصفحة)
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Escape" || !appModalIsOpen()) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      closeAppModal(null);
+    },
+    true
+  );
+}
+
+function openAppModal(options = {}) {
+  const modal = $("#app-confirm-modal");
+  const yesBtn = $("#app-confirm-yes");
+
+  if (!modal || !yesBtn) {
+    // احتياط نظري فقط: لو لم توجد النافذة نرجع لنافذة المتصفح
+    if (options.mode === "prompt") {
+      return Promise.resolve(window.prompt(options.text || options.title, options.value || ""));
+    }
+
+    return Promise.resolve(window.confirm(options.text || options.title));
+  }
+
+  const inputWrap = $("#app-confirm-input-wrap");
+  const input = $("#app-confirm-input");
+
+  $("#app-confirm-icon").textContent = options.icon || "❓";
+  $("#app-confirm-title").textContent = options.title || "هل أنت متأكد؟";
+
+  const textEl = $("#app-confirm-text");
+  textEl.textContent = options.text || "";
+  textEl.classList.toggle("hidden", !options.text);
+
+  yesBtn.textContent = options.yes || "نعم";
+  yesBtn.classList.toggle("admin-btn-danger", Boolean(options.danger));
+  yesBtn.classList.toggle("admin-btn-primary", !options.danger);
+
+  $("#app-confirm-no").textContent = options.no || "لا";
+
+  if (options.mode === "prompt" && inputWrap && input) {
+    inputWrap.classList.remove("hidden");
+    input.value = options.value || "";
+    input.placeholder = options.placeholder || "";
+  } else {
+    inputWrap?.classList.add("hidden");
+    if (input) input.value = "";
+  }
+
+  modal.classList.remove("hidden");
+
+  setTimeout(() => {
+    if (options.mode === "prompt") input?.focus();
+    else yesBtn.focus();
+  }, 40);
+
+  return new Promise((resolve) => {
+    appModalSettle = resolve;
+  });
+}
+
+/** «هل تريد…؟» → نعم / لا — يعيد true أو false */
+function showAppConfirm(options = {}) {
+  return openAppModal({ ...options, mode: "confirm" }).then((value) => value === true);
+}
+
+/** نافذة إدخال نص داخل التطبيق — تعيد النص أو null */
+function showAppPrompt(options = {}) {
+  return openAppModal({ ...options, mode: "prompt" }).then((value) =>
+    typeof value === "string" ? value : null
+  );
 }
 
 // ---------------------------------------------------------------
@@ -4932,7 +5254,14 @@ async function deleteMessageForMe() {
 
   if (!m || !conv) return;
 
-  if (!window.confirm("حذف هذه الرسالة من عندك أنت فقط؟\nلن تُحذف عند الطرف الآخر.")) return;
+  const confirmed = await showAppConfirm({
+    title: "حذف الرسالة؟",
+    text: "هل تريد حذف هذه الرسالة؟",
+    icon: "🗑️",
+    danger: true,
+  });
+
+  if (!confirmed) return;
 
   hideMessageLocally(conv.id, m.id);
 
@@ -4947,7 +5276,7 @@ async function deleteMessageForMe() {
     (state.messages || []).filter((x) => !x._pending)
   );
 
-  showChatToast("تم حذف الرسالة من عندك");
+  showChatToast("تم حذف الرسالة");
 }
 
 // ---------------------------------------------------------------
@@ -5096,6 +5425,9 @@ async function loadMessages(conversationId) {
 
   const pendingOutbox = await getPendingOutboxMessages(conversationId);
 
+  // v41: انتهى الانتظار — نسمح بعرض «لا توجد رسائل» إن كانت المحادثة فارغة
+  endConversationLoading();
+
   if (cached.length || pendingOutbox.length) {
     state.messages = filterHiddenMessages(conversationId, [...cached, ...pendingOutbox]);
     renderMessages();
@@ -5216,6 +5548,12 @@ function renderMessages() {
   // ---------------------------------------------------------------
 
   if (!state.messages.length) {
+    // v41: ما زلنا في مرحلة التحميل ⇒ نُبقي الهيكل الباهت كما هو
+    if (box.dataset.mode === "loading") return;
+
+    // v41: نُزيل هيكل التحميل قبل عرض أي شيء حقيقي
+    box.querySelector(".chat-loading")?.remove();
+
     if (box.dataset.mode !== "empty") {
       box.innerHTML =
         `<div class="empty-chat">${state.t.no_messages}</div>`;
@@ -5226,9 +5564,13 @@ function renderMessages() {
     return;
   }
 
-  if (box.dataset.mode === "empty") {
+  if (box.dataset.mode === "empty" || box.dataset.mode === "loading") {
     box.innerHTML = "";
   }
+
+  // v41: الهيكل الباهت يُزال دائماً بمجرد وصول أول رسم حقيقي
+  // (كان يبقى أسفل الرسائل فيظهر كمستطيلات فارغة)
+  box.querySelector(".chat-loading")?.remove();
 
   box.dataset.mode = "list";
 
@@ -5594,7 +5936,7 @@ function buildMessageBubble(m) {
           title="${state.t.reply}"
           type="button"
         >
-          ↩
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 9V5l-7 7 7 7v-4.1c5 0 8.5 1.6 11 5.1-1-5-4-10-11-11z"/></svg>
         </button>
 
         <button
@@ -5604,7 +5946,7 @@ function buildMessageBubble(m) {
         >
           😊
         </button>
-        ${canDeleteMessage ? `<button class="bubble-action-delete" title="حذف الرسالة للجميع (مشرف)" type="button">🗑️</button>` : ""}
+        ${canDeleteMessage ? `<button class="bubble-action-delete" title="حذف الرسالة للجميع (مشرف)" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>` : ""}
       </div>
 
       ${quotedHtml}
@@ -5900,12 +6242,20 @@ function positionQuickReactPanel() {
   const rectBottom = rect.bottom - viewTop;
   const rectLeft = rect.left - viewLeft;
 
+  // v41: اللوحة لا تُغطّي رأس المحادثة (أيقونات الرد/النسخ/إعادة التوجيه/الحذف).
+  // إن كانت الرسالة في أعلى الشاشة فمكان اللوحة أسفلها لا فوقها.
+  const headerEl = document.querySelector("#chat-active .chat-header");
+  const headerBottom = headerEl
+    ? headerEl.getBoundingClientRect().bottom - viewTop
+    : margin;
+  const minTop = Math.max(margin, headerBottom + gap);
+
   let top = rectTop - ph - gap;
-  if (top < margin) top = Math.min(rectBottom + gap, viewH - ph - margin);
+  if (top < minTop) top = rectBottom + gap;
 
   let left = rectLeft + rect.width / 2 - pw / 2;
   left = Math.max(margin, Math.min(left, viewW - pw - margin));
-  top = Math.max(margin, Math.min(top, viewH - ph - margin));
+  top = Math.max(minTop, Math.min(top, viewH - ph - margin));
 
   panel.style.top = `${Math.round(top + viewTop)}px`;
   panel.style.left = `${Math.round(left + viewLeft)}px`;
@@ -5921,7 +6271,7 @@ function positionQuickReactPanel() {
     pr.height === 0;
 
   if (outside) {
-    const centeredTop = Math.round(viewTop + Math.max(margin, (viewH - ph) / 2));
+    const centeredTop = Math.round(viewTop + Math.max(minTop, (viewH - ph) / 2));
     const centeredLeft = Math.round(viewLeft + Math.max(margin, (viewW - pw) / 2));
 
     panel.style.top = `${centeredTop}px`;
@@ -6195,7 +6545,14 @@ window.addEventListener("orientationchange", () => setTimeout(scheduleQuickReact
 
 async function deleteMessage(message) {
   if (!isActiveChatModerator() || !message?.id || message._pending) return;
-  if (!window.confirm("هل تريد حذف هذه الرسالة؟")) return;
+  const confirmed = await showAppConfirm({
+    title: "حذف الرسالة للجميع؟",
+    text: "هل تريد حذف هذه الرسالة عند الجميع؟",
+    icon: "🗑️",
+    danger: true,
+  });
+
+  if (!confirmed) return;
 
   const { error } = await supabase.rpc("delete_message_as_moderator", {
     p_message_id: message.id,
@@ -6214,7 +6571,14 @@ async function deleteMessage(message) {
 
 async function deleteUser(profile) {
   if (!state.me?.is_admin || !profile?.id) return;
-  if (!window.confirm(`حذف المستخدم ${profile.display_name || ""}؟ سيتم حذف محادثاته ورسائله.`)) return;
+  const confirmed = await showAppConfirm({
+    title: "حذف المستخدم؟",
+    text: `سيتم حذف «${profile.display_name || profile.email || "المستخدم"}» مع محادثاته ورسائله.`,
+    icon: "🗑️",
+    danger: true,
+  });
+
+  if (!confirmed) return;
   const { error } = await supabase.functions.invoke("admin-delete-user", { body: { userId: profile.id } });
   if (error) { showAuthError("تعذّر حذف المستخدم: " + error.message); return; }
   if (state.activeConversation?.userId === profile.id) closeChatView();
@@ -7076,7 +7440,14 @@ async function removeAvatar() {
     return;
   }
 
-  if (!window.confirm("حذف الصورة الشخصية؟")) return;
+  const confirmed = await showAppConfirm({
+    title: "حذف الصورة الشخصية؟",
+    text: "هل تريد حذف صورتك الشخصية؟",
+    icon: "🖼️",
+    danger: true,
+  });
+
+  if (!confirmed) return;
 
   const previousUrl = state.me.avatar_url;
 

@@ -31,7 +31,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "40";
+  window.WA_BUILD = "41";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -90,8 +90,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=40" />
-  <script src="./vendor/supabase-js.js?v=40"></script>
+  <link rel="stylesheet" href="./css/style.css?v=41" />
+  <script src="./vendor/supabase-js.js?v=41"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -461,16 +461,32 @@
         </details>
 
         <details class="admin-block hidden" id="admin-manage-block">
-          <summary>👥 إدارة المشرفين</summary>
-          <div class="admin-hint">كل مستخدم في بطاقة مستقلة: بدّل الصلاحية، و«📷 تغيير الصورة» لتغيير صورته الشخصية، و«🚫 حذف الصورة» لإزالتها، و«🔑 كلمة المرور» لتعيين واحدة جديدة.</div>
-          <div id="admin-users-list" class="admin-users"></div>
+          <summary>👥 إدارة المشرفين والمستخدمين</summary>
+          <div class="admin-hint">اضغط على أي اسم لعرض بقية المعلومات والخيارات (تعديل الاسم، الصورة، الصلاحيات، كلمة المرور).</div>
+
+          <div class="admin-group">
+            <div class="admin-group-head">
+              <span>👑 المشرفون</span>
+              <span class="admin-group-count" id="admin-group-admins-count">0</span>
+            </div>
+            <div id="admin-users-list" class="admin-users"></div>
+          </div>
+
+          <div class="admin-group">
+            <div class="admin-group-head">
+              <span>👤 المستخدمون</span>
+              <span class="admin-group-count" id="admin-group-users-count">0</span>
+            </div>
+            <div id="admin-users-list-users" class="admin-users"></div>
+          </div>
+
           <div id="admin-manage-status" class="admin-hint"></div>
         </details>
       </section>
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v40</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v41</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -551,7 +567,7 @@
   <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
 </div>
 
-<script type="module" src="./js/app.js?v=40"></script>
+<script type="module" src="./js/app.js?v=41"></script>
 
   <!-- إعادة توجيه رسالة: اختر المحادثة -->
   <div id="forward-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="إعادة توجيه الرسالة">
@@ -592,6 +608,24 @@
       </div>
 
       <div class="settings-hint" id="contact-info-note"></div>
+    </div>
+  </div>
+
+  <!-- v41: نافذة تأكيد أنيقة داخل التطبيق (هل تريد…؟ نعم / لا) -->
+  <div id="app-confirm-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="app-confirm-title">
+    <div class="app-confirm-card">
+      <div class="app-confirm-icon" id="app-confirm-icon">❓</div>
+      <h3 id="app-confirm-title">هل أنت متأكد؟</h3>
+      <p class="app-confirm-text" id="app-confirm-text"></p>
+
+      <div class="app-confirm-input-wrap hidden" id="app-confirm-input-wrap">
+        <input id="app-confirm-input" type="text" autocomplete="off" dir="auto" />
+      </div>
+
+      <div class="app-confirm-actions">
+        <button id="app-confirm-no" class="admin-btn-mini" type="button">لا</button>
+        <button id="app-confirm-yes" class="admin-btn-primary" type="button">نعم</button>
+      </div>
     </div>
   </div>
 

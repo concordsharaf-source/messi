@@ -7932,3 +7932,289 @@ body[data-theme="light"] .forward-row {
   position: relative;
   z-index: 45;
 }
+
+
+/* =================================================================
+   v41 — 1) أيقونات واتساب (SVG) في شريط خيارات الرسالة وفي الفقاعة
+   ================================================================= */
+.msg-act-btn svg {
+  width: 22px;
+  height: 22px;
+  fill: currentColor;
+  display: block;
+  pointer-events: none;
+}
+
+.bubble-actions button svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+  display: block;
+  pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  .msg-act-btn svg { width: 20px; height: 20px; }
+}
+
+/* =================================================================
+   v41 — 2) نافذة التأكيد داخل التطبيق (منتصف الشاشة، نعم/لا)
+   ================================================================= */
+.app-confirm-card {
+  width: min(340px, 100%);
+  padding: 22px 20px 16px;
+  border-radius: 16px;
+  text-align: center;
+  background: var(--wa-panel-dark);
+  color: var(--wa-text-primary);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  animation: app-confirm-in 0.16s ease-out;
+}
+
+body[data-theme="light"] .app-confirm-card {
+  background: var(--wa-panel-light);
+  color: #111b21;
+  border-color: rgba(0, 0, 0, 0.06);
+}
+
+@keyframes app-confirm-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.app-confirm-icon {
+  width: 46px;
+  height: 46px;
+  margin: 0 auto 10px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  background: rgba(0, 168, 132, 0.14);
+}
+
+.app-confirm-card h3 {
+  margin: 0 0 6px;
+  font-size: calc(16.5px * var(--wa-font-scale, 1));
+  font-weight: 700;
+}
+
+.app-confirm-text {
+  margin: 0;
+  font-size: calc(13.5px * var(--wa-font-scale, 1));
+  line-height: 1.75;
+  color: var(--wa-text-secondary);
+}
+
+body[data-theme="light"] .app-confirm-text { color: #667781; }
+
+.app-confirm-input-wrap { margin-top: 12px; }
+
+.app-confirm-input-wrap input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(134, 150, 160, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+body[data-theme="light"] .app-confirm-input-wrap input { background: #f0f2f5; }
+
+.app-confirm-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.app-confirm-actions button {
+  width: auto !important;
+  min-width: 86px;
+  min-height: 40px;
+  padding: 0 20px !important;
+  border-radius: 20px !important;
+  font-size: 14px !important;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* =================================================================
+   v41 — 3) سكيلتون فتح المحادثة (لا ومضة للمحادثة السابقة)
+   ================================================================= */
+.chat-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 14px;
+}
+
+.chat-loading-row { display: flex; }
+.chat-loading-row.mine { justify-content: flex-start; }
+.chat-loading-row.theirs { justify-content: flex-end; }
+
+.chat-loading-row span {
+  height: 46px;
+  width: 62%;
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    rgba(134, 150, 160, 0.12) 25%,
+    rgba(134, 150, 160, 0.22) 37%,
+    rgba(134, 150, 160, 0.12) 63%
+  );
+  background-size: 400% 100%;
+  animation: wa-shimmer 1.3s ease-in-out infinite;
+}
+
+.chat-loading-row:nth-child(2) span { width: 44%; }
+.chat-loading-row:nth-child(3) span { width: 70%; }
+.chat-loading-row:nth-child(4) span { width: 38%; }
+.chat-loading-row:nth-child(5) span { width: 56%; }
+.chat-loading-row:nth-child(6) span { width: 48%; }
+
+@keyframes wa-shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0 0; }
+}
+
+/* =================================================================
+   v41 — 4) إدارة المشرفين/المستخدمين: بطاقة مطويّة (صورة + اسم)
+   ================================================================= */
+.admin-group { margin-bottom: 14px; }
+
+.admin-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 2px 8px;
+  font-size: calc(13.5px * var(--wa-font-scale, 1));
+  font-weight: 700;
+  color: var(--wa-text-primary);
+}
+
+.admin-group-count {
+  min-width: 24px;
+  text-align: center;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--wa-accent, #00a884);
+  background: rgba(0, 168, 132, 0.14);
+}
+
+.admin-users-empty {
+  font-size: 12.5px;
+  color: var(--wa-text-secondary);
+  padding: 6px 2px;
+}
+
+/* رأس البطاقة: صورة + اسم فقط — والضغط يفتح البقية */
+.admin-user-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.admin-user-head:focus-visible { outline: 2px solid var(--wa-accent, #00a884); border-radius: 10px; }
+
+.admin-user-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.admin-user-name b {
+  display: block;
+  font-size: calc(14px * var(--wa-font-scale, 1));
+  font-weight: 700;
+  color: var(--wa-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-user-name small,
+.admin-user-info .admin-user-role {
+  display: block;
+  font-size: calc(11.5px * var(--wa-font-scale, 1));
+  font-weight: 500;
+  color: var(--wa-text-secondary);
+  direction: rtl;
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-user-chevron {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--wa-text-secondary);
+  transition: transform 0.18s ease;
+}
+
+.admin-user-chevron svg { width: 18px; height: 18px; fill: currentColor; display: block; }
+.admin-user.open .admin-user-chevron { transform: rotate(180deg); }
+
+/* التفاصيل مخفية افتراضياً — تظهر بالضغط على الاسم */
+.admin-user-details { display: none; }
+
+.admin-user.open .admin-user-details {
+  display: block;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(134, 150, 160, 0.22);
+}
+
+.admin-user.open { border-color: rgba(0, 168, 132, 0.35) !important; }
+
+.admin-user-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.admin-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: calc(12px * var(--wa-font-scale, 1));
+  color: var(--wa-text-secondary);
+}
+
+.admin-detail-row b {
+  font-weight: 600;
+  color: var(--wa-text-primary);
+  direction: ltr;
+  unicode-bidi: plaintext;
+  text-align: end;
+  max-width: 64%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* v41: قيم عربية داخل صفوف تفاصيل البطاقة (لا نجبرها على LTR) */
+.admin-detail-row b.ar { direction: rtl; }
