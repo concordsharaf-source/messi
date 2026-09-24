@@ -638,19 +638,9 @@ function wireAuthForms() {
     switchAuthTab("signup");
   });
 
-  $("#login-form")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-
-    const email = $("#login-email").value.trim();
-    const password = $("#login-password").value;
-
-    try {
-      await signIn({ email, password });
-      await enterApp();
-    } catch (err) {
-      showAuthError(err.message);
-    }
-  });
+  // v42.1: كان هنا مستمع submit مكرّر لنفس النموذج (#login-form) — أدى إلى
+  // تنفيذ signIn + enterApp مرتين، فظهر خطأ Presence إنجليزي في واجهة المستخدم.
+  // المستمع الكامل أدناه (مع البريد والهاتف) يقوم بالمهمة.
 
   // ===== إنشاء حساب: الرقم + كلمة المرور مطلوبان، الاسم والبريد اختياريان =====
   $("#signup-form")?.addEventListener("submit", async (e) => {
@@ -9893,6 +9883,11 @@ async function setTyping(isTyping) {
 function subscribeGlobalPresence() {
   if (!state.me) return;
 
+  // v42.1: عميل Supabase يُعيد نفس القناة إذا كان الموضوع موجوداً، وإضافة on()
+  // بعد subscribe() ترمي خطأ — لذلك نُزيل القناة السابقة قبل إنشاء قناة جديدة.
+  removeRealtimeChannel(state.presenceChannel);
+  state.presenceChannel = null;
+
   state.presenceChannel =
     supabase.channel(
       "presence:global",
@@ -10119,6 +10114,11 @@ async function refreshPresenceLabel(
 function subscribeInboxUpdates() {
   if (!state.me) return;
 
+  // v42.1: عميل Supabase يُعيد نفس القناة إذا كان الموضوع موجوداً، وإضافة on()
+  // بعد subscribe() ترمي خطأ — لذلك نُزيل القناة السابقة قبل إنشاء قناة جديدة.
+  removeRealtimeChannel(state.inboxChannel);
+  state.inboxChannel = null;
+
   state.inboxChannel =
     supabase
       .channel("inbox-updates")
@@ -10171,6 +10171,11 @@ function subscribeGlobalMessageWatch() {
   if (!state.me) {
     return;
   }
+
+  // v42.1: عميل Supabase يُعيد نفس القناة إذا كان الموضوع موجوداً، وإضافة on()
+  // بعد subscribe() ترمي خطأ — لذلك نُزيل القناة السابقة قبل إنشاء قناة جديدة.
+  removeRealtimeChannel(state.globalMsgChannel);
+  state.globalMsgChannel = null;
 
   state.globalMsgChannel =
     supabase
