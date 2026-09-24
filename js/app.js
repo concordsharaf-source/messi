@@ -5604,7 +5604,7 @@ function buildMessageBubble(m) {
         >
           😊
         </button>
-        ${canDeleteMessage ? `<button class="bubble-action-delete" title="حذف الرسالة" type="button">🗑️</button>` : ""}
+        ${canDeleteMessage ? `<button class="bubble-action-delete" title="حذف الرسالة للجميع (مشرف)" type="button">🗑️</button>` : ""}
       </div>
 
       ${quotedHtml}
