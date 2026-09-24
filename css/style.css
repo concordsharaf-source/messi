@@ -7713,3 +7713,30 @@ body[data-theme="light"] .switch-user-row {
 
 .auth-install-btn.is-busy { opacity: 0.75; }
 .auth-install-btn.is-busy .auth-install-ring { animation-duration: 0.9s; }
+
+/* ---------- تصحيح: قاعدة .settings-panel button { width:100% } كانت تُمدّد أزرار قسم التبديل ---------- */
+.settings-panel .switch-user-list .switch-user-go,
+.settings-panel .switch-back-row #btn-switch-back {
+  width: auto;
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.switch-user-list .switch-user-text,
+.switch-back-row .switch-back-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: start;
+}
+
+.switch-user-list .switch-user-text b,
+.switch-user-list .switch-user-text small,
+.switch-back-row .switch-back-info b,
+.switch-back-row .switch-back-info small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
