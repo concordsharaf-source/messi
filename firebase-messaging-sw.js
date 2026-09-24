@@ -42,10 +42,14 @@ function wasRecentlyHandled(messageId) {
 messaging.onBackgroundMessage((payload) => {
   console.log("[firebase-messaging-sw.js] Background message:", payload);
 
-  // The sender uses data-only FCM messages. The notification fallback is kept
-  // only for older queued messages during rollout.
   const data = payload?.data || {};
   const notification = payload?.notification || {};
+
+  // v44: صارت الرسائل تحمل حقل notification (من webpush.notification)، وFirebase
+  // يعرض الإشعار تلقائياً في هذه الحالة — فلا نُظهر إشعاراً ثانياً للرسالة نفسها.
+  if (notification.title || notification.body) {
+    return;
+  }
   const messageId = data.messageId || data.message_id || payload?.messageId || "";
   if (wasRecentlyHandled(messageId)) return;
 
@@ -158,7 +162,10 @@ async function sendQuickReply(conversationId, text) {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const data = event.notification?.data || {};
+  // v44: عند العرض التلقائي من Firebase تُخزَّن الحمولة كاملةً داخل مفتاح FCM_MSG،
+  // أما إذا عرضها هذا المُشغِّل بنفسه فالحقول في data مباشرة. ندعم الحالتين.
+  const rawPayload = event.notification?.data?.FCM_MSG || null;
+  const data = rawPayload?.data || event.notification?.data || {};
   const conversationId = data.conversationId || data.conversation_id || "";
   const action = event.action || "";
   // الرد السريع متاح للمشرف فقط — أي إشعار آخر يُفتح في التطبيق بلا إرسال.

@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "43";
+const BUILD = "44";
 
 const state = {
   me: null,
@@ -3534,6 +3534,75 @@ function wireChrome() {
       );
     }
   );
+
+  // v44: اختبار الإشعارات على هذا الجهاز — يكشف سبب عدم وصول الإشعارات
+  // (لا توكن؟/ الإذن محجوب؟/ FCM يرفض؟) وهو الوحيد الذي يختبر حالة «التطبيق مغلق».
+  $("#btn-test-push")?.addEventListener("click", async () => {
+    const setTestStatus = (msg) => {
+      const el = $("#push-test-status");
+      if (el) el.textContent = msg;
+    };
+
+    if (!state.me) return;
+
+    if (!("Notification" in window)) {
+      setTestStatus("هذا المتصفح لا يدعم الإشعارات.");
+      return;
+    }
+
+    if (Notification.permission !== "granted") {
+      setTestStatus("الإشعارات محجوبة — اسمح بها من إعدادات المتصفح لهذا الموقع ثم أعد المحاولة.");
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      setTestStatus("الإشعارات تحتاج اتصالاً آمناً (HTTPS).");
+      return;
+    }
+
+    setTestStatus("جارٍ تجهيز الاختبار…");
+
+    let token = null;
+    try {
+      token = await registerFcmToken(state.me.id);
+    } catch (error) {
+      console.warn("[push-test] تعذّر تسجيل التوكن:", error);
+    }
+
+    if (!token) {
+      setTestStatus("تعذّر تسجيل توكن هذا الجهاز — تأكد من إذن الإشعارات ثم اضغط «تفعيل إشعارات الجهاز».");
+      return;
+    }
+
+    setTestStatus("⏳ سيصل الإشعار خلال ١٢ ثانية — أغلق التطبيق الآن (اتركه في الخلفية) وانتظر…");
+
+    try {
+      const { data, error } = await supabase.functions.invoke("send-push", {
+        body: { test: true, delaySeconds: 12 },
+      });
+
+      if (error) {
+        setTestStatus("تعذّر بدء الاختبار: " + error.message);
+        return;
+      }
+
+      const sent = Number(data?.sent || 0);
+      const delivered = Number(data?.okCount || 0);
+
+      if (!sent) {
+        setTestStatus("لا يوجد توكن مسجّل لهذا الحساب — اضغط «تفعيل إشعارات الجهاز» أولاً.");
+        return;
+      }
+
+      setTestStatus(
+        delivered > 0
+          ? `✅ أُرسل الاختبار إلى ${sent} جهاز (قبِله FCM: ${delivered}) — أغلق التطبيق الآن ويجب أن يصل الإشعار خلال ثوانٍ.`
+          : `أُرسل الاختبار إلى ${sent} جهاز لكن FCM رفضها — أعد «تفعيل إشعارات الجهاز» على هذا الجهاز.`
+      );
+    } catch (error) {
+      setTestStatus("تعذّر بدء الاختبار: " + (error?.message || error));
+    }
+  });
 
   // أزرار قسم التثبيت واللغة في الإعدادات
   $("#btn-install-settings")?.addEventListener("click", () => installPWA());
