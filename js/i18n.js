@@ -18,6 +18,7 @@ export const STR = {
     online: "متصل الآن",
     last_seen: "آخر ظهور",
     typing: "يكتب الآن…",
+    typing_recording: "جارٍ التسجيل…",
     type_message: "اكتب رسالة",
     settings: "الإعدادات",
     logout: "تسجيل الخروج",

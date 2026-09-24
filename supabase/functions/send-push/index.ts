@@ -214,6 +214,28 @@ serve(async (req) => {
 
     const okCount = results.filter((r) => r.status === 200).length;
 
+    // v12: تسريع علامات الصح — قبول FCM للرسالة يعني أنها في طريقها لجهاز
+    // المستلم، فنحدّث حالتها إلى «وصلت» من الخادم مباشرةً بدل انتظار فتح
+    // التطبيق عند المستلم (كانت العلامة الثانية تتأخر أو تحتاج إعادة فتح).
+    let delivered = false;
+    if (!isSelfTest && messageId && okCount > 0) {
+      const { error: markError } = await admin
+        .from("messages")
+        .update({ status: "delivered" })
+        .eq("id", messageId)
+        .eq("status", "sent");
+      delivered = !markError;
+
+      if (conversationId) {
+        await admin
+          .from("conversations")
+          .update({ last_message_status: "delivered" })
+          .eq("id", conversationId)
+          .eq("last_sender_id", senderId)
+          .eq("last_message_status", "sent");
+      }
+    }
+
     await writeLog(admin, {
       kind,
       conversation_id: conversationId,
@@ -225,6 +247,7 @@ serve(async (req) => {
       results: results.map((r) => ({ status: r.status, error: r.error, cleaned: r.cleaned, token: r.tokenTail })),
       error: null,
       body: String(body).slice(0, 120),
+      delivered,
     });
 
     return json({ sent: tokens.length, okCount, receiverIsAdmin, results });

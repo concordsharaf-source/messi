@@ -8486,3 +8486,25 @@ body[data-theme="light"] #emoji-panel.emoji-panel { background: #ffffff; }
 .conversation-selection-bar button { border:0; background:transparent; color:inherit; width:34px; height:34px; border-radius:50%; cursor:pointer; font-size:17px; }
 .conversation-selection-bar button:hover { background:rgba(255,255,255,.12); }
 .contact-row.conversation-selected { background:rgba(37,211,102,.18); }
+
+/* ============================================================
+   v46: الرسالة الصوتية بعد أن يستمع إليها المستلم (مثل واتساب)
+   يتحوّل زر التشغيل والموجة والوقت إلى الأزرق
+   ============================================================ */
+.voice-note.voice-played .voice-play,
+.voice-note.voice-played .voice-speed {
+  color: #53bdeb;
+}
+
+.voice-note.voice-played .voice-play:hover {
+  background: rgba(83, 189, 235, .14);
+}
+
+.voice-note.voice-played .voice-time {
+  color: #53bdeb;
+}
+
+/* مؤشّر «جارٍ التسجيل…» في رأس المحادثة */
+#typing-indicator.recording {
+  color: #53bdeb;
+}

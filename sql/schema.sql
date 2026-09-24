@@ -540,3 +540,19 @@ begin
 exception when others then
   raise notice 'profiles realtime publication could not be updated: %', sqlerrm;
 end $$;
+
+
+-- ============================================================================
+-- v46: حالات الرسائل والإشعارات (كما في sql/v46_updates.sql + sql/auto_reply.sql)
+-- ----------------------------------------------------------------------------
+--  • messages.played_at : هل استمع المستلم للرسالة الصوتية؟ (لتلوين المقطع)
+--  • typing_status.is_recording : مؤشّر «جارٍ التسجيل…» للرسائل الصوتية
+--  • replica identity full : بلاها لا تصل أحداث UPDATE عبر Realtime للجداول
+--    المحميّة بـ RLS ⇒ تظهر علامات الصح (✓✓) متأخرة أو تحتاج إعادة فتح المحادثة
+-- ============================================================================
+alter table public.messages      add column if not exists played_at timestamptz;
+alter table public.typing_status add column if not exists is_recording boolean not null default false;
+
+alter table public.messages      replica identity full;
+alter table public.conversations replica identity full;
+alter table public.typing_status replica identity full;

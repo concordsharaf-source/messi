@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "45";
+const BUILD = "46";
 
 const state = {
   me: null,
@@ -207,6 +207,12 @@ async function boot() {
     } else {
       await touchLastSeen(true);
       resubscribeRealtime();
+
+      // v46: عاد التطبيق للمقدمة ⇒ علّم المقروء وزامن علامات الصح فوراً
+      if (state.activeConversation?.id) {
+        await markConversationRead(state.activeConversation.id);
+        reconcileMessageStatuses(state.activeConversation.id);
+      }
       // v44.1: أندرويد يُبطل توكن الإشعارات عند تحديث التطبيق المثبَّت أو تغيّر
       // اشتراك Push؛ نجددّه صامتاً عند العودة للتطبيق (مرة كل 6 ساعات كحد أقصى).
       refreshFcmTokenSilently();
@@ -338,6 +344,7 @@ function openConversationUIState(conversationId) {
 
 function closeChatView() {
   stopVoiceCall();
+  stopStatusReconcile();
   // v40: لا نترك لوحة التفاعل أو شريط خيارات الرسالة مفتوحاً بعد الخروج
   closeQuickReact(true);
 
@@ -5144,6 +5151,12 @@ async function openConversation(otherProfile) {
       conversationId
     );
 
+    // v46: هل الطرف الآخر يكتب/يسجّل الآن؟
+    refreshPeerActivityState();
+
+    // v46: إصلاح علامات الصح — مزامنة دورية لحالة رسائلي في هذه المحادثة
+    startStatusReconcile(conversationId);
+
     // ===========================================================
     // LIVE: تصفير العداد فور فتح المحادثة
     // ===========================================================
@@ -5875,6 +5888,8 @@ function messageSignature(m) {
 
   return [
     m.status || "",
+    // v46: بدونه لا يُعاد رسم الفقاعة عند تغيّر حالة السماع (تلوين المقطع الصوتي)
+    m.played_at || "",
     m._pending ? "1" : "0",
     state.clickedWelcomeButtons.has(m.id) ? "1" : "0",
     Object.keys(grouped).sort().join(","),
@@ -5939,6 +5954,17 @@ function refreshMessageBubble(el, m) {
     el.querySelector(".bubble");
 
   if (!bubble) return;
+
+  // v46: تحديث المقطع الصوتي — تلوينه بالأزرق إذا استمع المستلم إليه (مثل واتساب)
+  const voiceNote = el.querySelector(".voice-note");
+  if (voiceNote) {
+    const heard = Boolean(m.played_at);
+    voiceNote.classList.toggle("voice-played", heard);
+    voiceNote.dataset.voicePlayed = heard ? "1" : "0";
+
+    const { audio } = voiceNoteElements(voiceNote);
+    refreshVoiceNote(voiceNote, audio, Number(audio?.dataset?.duration || 0) || 0);
+  }
 
   const meta =
     bubble.querySelector(".bubble-meta");
@@ -8692,6 +8718,9 @@ async function startVoiceRecording({ viaHold = false } = {}) {
 
   showVoiceRecordingUI();
 
+  // v46: أخبر الطرف الآخر أنك تسجّل الآن (مثل واتساب)
+  setRecordingPresence(true);
+
   const rec = state.recording;
   rec.tick = setInterval(onVoiceTick, 200);
   rec.rafId = requestAnimationFrame(paintVoiceWaveLoop);
@@ -8741,6 +8770,9 @@ function resetVoiceUI() {
   clearVoiceTimers(rec);
   state.recording = null;
   voiceHold = null;
+
+  // v46: انتهى التسجيل (إرسال/حذف/خروج) ⇒ أخفِ المؤشّر عند الطرف الآخر
+  setRecordingPresence(false);
 
   $("#recording-bar")?.classList.add("hidden");
   $("#recording-bar")?.classList.remove("cancel-armed", "lock-armed", "locked");
@@ -9301,10 +9333,12 @@ function buildVoiceNoteHtml(m) {
   const bars = voiceBarsCountFor(0);
   const speedLabel = voicePlaybackSpeed === 1 ? "1x" : `${voicePlaybackSpeed}x`;
   const pending = m._pending ? " pending" : "";
+  // v46: الرسائل الصوتية التي استمع إليها المستلم يصبح مقطعها بلون أزرق (مثل واتساب)
+  const heard = m.played_at ? " voice-played" : "";
   const url = escapeHtml(m.attachment_url || "");
 
   return `
-    <div class="voice-note${pending}" data-voice-id="${escapeHtml(m.id)}" data-voice-bars="${bars}">
+    <div class="voice-note${pending}${heard}" data-voice-id="${escapeHtml(m.id)}" data-voice-bars="${bars}" data-voice-played="${m.played_at ? "1" : "0"}">
       <button class="voice-play" type="button" aria-label="${voiceT("voice_play", "تشغيل الرسالة الصوتية")}">
         <svg class="vp-play" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
         <svg class="vp-pause hidden" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>
@@ -9348,11 +9382,16 @@ function paintVoiceNoteCanvas(canvas, id, progress, duration) {
   const p = Math.max(0, Math.min(1, Number(progress) || 0));
   const playedUntil = p * count;
 
+  // v46: بعد سماع المستلم للرسالة يتغيّر لون الموجة إلى أزرق واتساب
+  const heardAll = Boolean(canvas.closest(".voice-note")?.classList.contains("voice-played"));
+  const activeColor = heardAll ? "#53bdeb" : "#00a884";
+  const restColor = heardAll ? "rgba(83, 189, 235, .5)" : "rgba(134, 150, 160, .55)";
+
   for (let i = 0; i < count; i += 1) {
     const h = Math.max(3, (bars[i % bars.length] || 0.3) * (cssH - 8));
     const x = i * STEP + 1;
     const played = i < playedUntil;
-    ctx.fillStyle = played ? "#00a884" : "rgba(134, 150, 160, .55)";
+    ctx.fillStyle = played ? activeColor : restColor;
     ctx.beginPath();
     if (typeof ctx.roundRect === "function") ctx.roundRect(x, mid - h / 2, BAR_W, h, BAR_W / 2);
     else ctx.rect(x, mid - h / 2, BAR_W, h);
@@ -9364,7 +9403,7 @@ function paintVoiceNoteCanvas(canvas, id, progress, duration) {
     const x = Math.min(cssW - 2, playedUntil * STEP);
     ctx.beginPath();
     ctx.arc(x, mid, 3.4, 0, Math.PI * 2);
-    ctx.fillStyle = "#00a884";
+    ctx.fillStyle = activeColor;
     ctx.fill();
   }
 }
@@ -9530,6 +9569,31 @@ function paintEveryVoiceNote() {
   });
 }
 
+// v46: تسجيل «استمع للرسالة الصوتية» (للمرسل: يتلوّن المقطع + تصبح الرسالة مقروءة)
+async function markVoiceMessagePlayed(note) {
+  if (!note || !state.me) return;
+
+  const id = note.dataset.voiceId;
+  const message = (state.messages || []).find((m) => String(m.id) === String(id));
+
+  if (!message) return;
+  if (String(message.sender_id) === String(state.me.id)) return;   // رسالتي أنا
+  if (message.played_at) return;                                   // سبق أن سُجّلت
+
+  const nowIso = new Date().toISOString();
+  message.played_at = nowIso;
+
+  try {
+    await supabase
+      .from("messages")
+      .update({ played_at: nowIso, status: "read" })
+      .eq("id", message.id)
+      .neq("sender_id", state.me.id);
+  } catch (err) {
+    console.warn("markVoiceMessagePlayed failed:", err?.message || err);
+  }
+}
+
 function wireVoiceNotes() {
   const host = $("#chat-messages");
   if (!host || host.dataset.voiceWired === "1") return;
@@ -9591,6 +9655,9 @@ function wireVoiceNotes() {
 
           activeVoiceAudio = audio;
           setVoiceNotePlaying(note, true);
+
+          // v46: أول استماع للرسالة الواردة ⇒ سجّلها ليظهر المقطع بلون مختلف عند المرسل
+          markVoiceMessagePlayed(note);
           refreshVoiceNote(note, audio, Number(audio.dataset.duration || 0) || 0);
         } catch (err) {
           console.error("تعذّر تشغيل الرسالة الصوتية:", err);
@@ -9736,6 +9803,10 @@ function resubscribeRealtime() {
     loadMessages(
       state.activeConversation.id
     );
+
+    // v46: بعد انقطاع الاتصال قد نفقد أحداث الحالة ⇒ نزامنها فوراً
+    reconcileMessageStatuses(state.activeConversation.id);
+    markConversationRead(state.activeConversation.id);
   }
 }
 
@@ -9898,15 +9969,9 @@ function subscribeToConversation(
           const row =
             payload.new;
 
-          if (
-            row &&
-            row.user_id !==
-              state.me.id
-          ) {
-            $("#typing-indicator")?.classList.toggle(
-              "hidden",
-              !row.is_typing
-            );
+          // v46: يكفي أن يكون الصف للطرف الآخر (الحذف/Typing=false يخفي المؤشّر)
+          if (row && row.user_id !== state.me.id) {
+            applyPeerActivity(row);
           }
         }
       )
@@ -9950,6 +10015,65 @@ function subscribeToConversation(
       .subscribe((status) => {
         scheduleRealtimeReconnect(status);
       });
+}
+
+// ===============================================================
+// v46: مزامنة حالات الرسائل — علامات الصح تظهر فوراً وبلا انتظار
+// ===============================================================
+//  كانت الحالة تعتمد على حدث Realtime وحده، وإن تأخّر/انقطع الاتصال في الخلفية
+//  لا تظهر ✓✓ حتى الخروج من المحادثة والعودة. هذه المزامنة الدورية (١٥ ثانية)
+//  + عند عودة التطبيق للمقدمة + عند إعادة الاشتراك تضمن الظهور خلال ثوانٍ.
+
+let statusReconcileTimer = null;
+let statusReconcileConvId = null;
+
+function startStatusReconcile(conversationId) {
+  statusReconcileConvId = conversationId;
+
+  clearInterval(statusReconcileTimer);
+  statusReconcileTimer = setInterval(() => {
+    if (!statusReconcileConvId) return;
+    if (document.visibilityState !== "visible") return;
+    reconcileMessageStatuses(statusReconcileConvId);
+  }, 15000);
+}
+
+function stopStatusReconcile() {
+  statusReconcileConvId = null;
+  clearInterval(statusReconcileTimer);
+  statusReconcileTimer = null;
+}
+
+async function reconcileMessageStatuses(conversationId = statusReconcileConvId) {
+  if (!state.me || !conversationId || !state.isOnline) return;
+
+  try {
+    const { data, error } = await supabase
+      .from("messages")
+      .select("id, status, played_at")
+      .eq("conversation_id", conversationId)
+      .eq("sender_id", state.me.id)
+      .order("created_at", { ascending: false })
+      .limit(40);
+
+    if (error || !Array.isArray(data)) return;
+
+    let changed = false;
+
+    for (const row of data) {
+      const message = state.messages.find((m) => String(m.id) === String(row.id));
+      if (!message) continue;
+      if (message.status !== row.status || message.played_at !== row.played_at) {
+        message.status = row.status;
+        message.played_at = row.played_at;
+        changed = true;
+      }
+    }
+
+    if (changed) renderMessages();
+  } catch (err) {
+    // غير حرج: المزامنة تعمل في الخلفية
+  }
 }
 
 // ===============================================================
@@ -10067,31 +10191,28 @@ function handleTypingInput() {
     );
 }
 
-async function setTyping(isTyping) {
+async function setTypingState({ isTyping = null, isRecording = null } = {}) {
   const conv =
     state.activeConversation;
 
   if (!conv?.id || !state.me || !state.isOnline) return;
 
+  const patch = {
+    conversation_id: conv.id,
+    user_id: state.me.id,
+    updated_at: new Date().toISOString(),
+  };
+
+  if (isTyping !== null) patch.is_typing = isTyping;
+  if (isRecording !== null) patch.is_recording = isRecording;
+
   try {
     const { error } = await supabase
       .from("typing_status")
-      .upsert(
-        {
-          conversation_id:
-            conv.id,
-          user_id:
-            state.me.id,
-          is_typing:
-            isTyping,
-          updated_at:
-            new Date().toISOString(),
-        },
-        {
-          onConflict:
-            "conversation_id,user_id",
-        }
-      );
+      .upsert(patch, {
+        onConflict:
+          "conversation_id,user_id",
+      });
 
     if (error) {
       console.warn(
@@ -10105,6 +10226,72 @@ async function setTyping(isTyping) {
       err?.message || err
     );
   }
+}
+
+function setTyping(isTyping) {
+  return setTypingState({ isTyping });
+}
+
+// v46: «جارٍ التسجيل…» — يُشعر الطرف الآخر بأنك تسجّل رسالة صوتية الآن
+let recordingPresenceOn = false;
+
+async function setRecordingPresence(isRecording) {
+  if (isRecording === recordingPresenceOn) return;
+
+  recordingPresenceOn = isRecording;
+  await setTypingState({ isRecording });
+}
+
+// v46: قراءة نشاط الطرف الآخر عند فتح المحادثة (يكتب/يسجّل الآن حتى قبل أي حدث)
+async function refreshPeerActivityState() {
+  const conv = state.activeConversation;
+  if (!conv?.id || !state.me) return;
+
+  try {
+    const { data } = await supabase
+      .from("typing_status")
+      .select("is_typing, is_recording, updated_at")
+      .eq("conversation_id", conv.id)
+      .neq("user_id", state.me.id)
+      .maybeSingle();
+
+    if (data) applyPeerActivity(data);
+  } catch (_) {
+    // غير حرج
+  }
+}
+
+let peerActivityTimer = null;
+
+/** يُظهر «يكتب الآن…» أو «جارٍ التسجيل…» حسب نشاط الطرف الآخر */
+function applyPeerActivity(row) {
+  const el = $("#typing-indicator");
+  if (!el || !row) return;
+
+  const age = Date.now() - new Date(row.updated_at || Date.now()).getTime();
+
+  const recording = Boolean(row.is_recording) && age < 5 * 60 * 1000;
+  const typing = Boolean(row.is_typing) && age < 45 * 1000;
+
+  clearTimeout(peerActivityTimer);
+  peerActivityTimer = null;
+
+  if (recording) {
+    el.textContent = state.t?.typing_recording || "جارٍ التسجيل…";
+    el.classList.remove("hidden");
+    // أمان: إن مات الإشعار (أُغلق التطبيق أثناء التسجيل) نخفيه تلقائياً
+    peerActivityTimer = setTimeout(() => el.classList.add("hidden"), 3 * 60 * 1000);
+    return;
+  }
+
+  if (typing) {
+    el.textContent = state.t?.typing || "يكتب الآن…";
+    el.classList.remove("hidden");
+    peerActivityTimer = setTimeout(() => el.classList.add("hidden"), 10 * 1000);
+    return;
+  }
+
+  el.classList.add("hidden");
 }
 
 // ===============================================================
