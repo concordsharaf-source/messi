@@ -207,6 +207,9 @@ async function boot() {
     } else {
       await touchLastSeen(true);
       resubscribeRealtime();
+      // v44.1: أندرويد يُبطل توكن الإشعارات عند تحديث التطبيق المثبَّت أو تغيّر
+      // اشتراك Push؛ نجددّه صامتاً عند العودة للتطبيق (مرة كل 6 ساعات كحد أقصى).
+      refreshFcmTokenSilently();
     }
   });
 
@@ -12051,6 +12054,33 @@ function renderPushStatus(message) {
 
 let pushAutoAsked = false;
 
+// v44.1: تجديد صامت لتوكن FCM — بلا طلب إذن وبلا إزعاج (مرة كل 6 ساعات كأقصى حد).
+const FCM_SILENT_REFRESH_MS = 6 * 60 * 60 * 1000;
+let lastFcmRefreshAt = 0;
+
+async function refreshFcmTokenSilently() {
+  const uid = state.me?.id;
+
+  if (!uid) return false;
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return false;
+  if (!window.isSecureContext) return false;
+  if (Notification.permission !== "granted") return false;
+
+  const now = Date.now();
+  if (now - lastFcmRefreshAt < FCM_SILENT_REFRESH_MS) return false;
+
+  lastFcmRefreshAt = now;
+
+  try {
+    const ok = await registerFcmToken(uid);
+    if (ok) renderPushStatus("الإشعارات مُشغَّلة ✔");
+    return ok;
+  } catch (error) {
+    console.warn("[FCM] silent token refresh failed:", error);
+    return false;
+  }
+}
+
 async function autoEnableNotifications(userId = null) {
   const uid = userId || state.me?.id;
 
@@ -12059,6 +12089,7 @@ async function autoEnableNotifications(userId = null) {
 
   if (Notification.permission === "granted") {
     const ok = await registerFcmToken(uid);
+    if (ok) lastFcmRefreshAt = Date.now();
     renderPushStatus();
     return ok;
   }
