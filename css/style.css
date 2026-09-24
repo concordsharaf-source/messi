@@ -8479,3 +8479,10 @@ body[data-theme="light"] #emoji-panel.emoji-panel { background: #ffffff; }
 .bubble-row.message-selected .bubble { outline: 2px solid #25d366; outline-offset: 2px; background: color-mix(in srgb, #25d366 13%, var(--wa-bubble-bg, transparent)); }
 .admin-users-toolbar { display: flex; align-items: center; gap: 8px; }
 #admin-users-sort { margin-inline-start: auto; max-width: 160px; background: var(--wa-panel-bg, transparent); color: inherit; border: 1px solid rgba(128,128,128,.35); border-radius: 8px; padding: 5px 7px; }
+
+.conversation-selection-bar { display:flex; align-items:center; gap:5px; min-height:50px; padding:6px 10px; background:var(--wa-panel-bg, #202c33); color:var(--wa-text-primary, #e9edef); border-bottom:1px solid rgba(128,128,128,.25); }
+.conversation-selection-bar.hidden { display:none; }
+.conversation-selection-bar span { flex:1; font-weight:700; font-size:14px; }
+.conversation-selection-bar button { border:0; background:transparent; color:inherit; width:34px; height:34px; border-radius:50%; cursor:pointer; font-size:17px; }
+.conversation-selection-bar button:hover { background:rgba(255,255,255,.12); }
+.contact-row.conversation-selected { background:rgba(37,211,102,.18); }

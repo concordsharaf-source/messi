@@ -3189,7 +3189,57 @@ function updateAdminConversationOptions() {
 // الربط الشامل
 // ---------------------------------------------------------------
 
+let selectedConversationActionId = null;
+let conversationPressTimer = null;
+function closeConversationSelection() {
+  selectedConversationActionId = null;
+  $("#conversation-selection-bar")?.classList.add("hidden");
+  document.querySelectorAll(".contact-row.conversation-selected").forEach((el) => el.classList.remove("conversation-selected"));
+}
+function selectedConversationMeta() { return selectedConversationActionId ? metaFor(selectedConversationActionId) : null; }
+async function runConversationAction(action) {
+  const id = selectedConversationActionId;
+  if (!id) return;
+  const meta = selectedConversationMeta() || {};
+  if (action === "archive") await toggleConversationArchive(id);
+  if (action === "mute") await toggleConversationMute(id);
+  if (action === "pin") {
+    const pins = JSON.parse(localStorage.getItem("wa_pinned_conversations") || "[]");
+    const next = pins.includes(String(id)) ? pins.filter((x) => x !== String(id)) : [String(id), ...pins];
+    localStorage.setItem("wa_pinned_conversations", JSON.stringify(next));
+    showAuthError(next.includes(String(id)) ? "📌 تم تثبيت المحادثة." : "تم إلغاء تثبيت المحادثة.");
+    await loadContacts();
+  }
+  if (action === "delete") {
+    const ok = await showAppConfirm({ title: "حذف المحادثة؟", text: "سيتم حذف المحادثة ورسائلها إذا سمحت صلاحيات الحساب.", icon: "🗑️", danger: true });
+    if (!ok) return;
+    const { error } = await supabase.from("conversations").delete().eq("id", id);
+    if (error) showAuthError("تعذّر حذف المحادثة: " + error.message); else { closeConversationSelection(); await loadContacts(); showAuthError("تم حذف المحادثة."); }
+  }
+  closeConversationSelection();
+}
+function wireConversationListActions() {
+  const list = $("#contact-list");
+  if (!list || list.dataset.actionsWired === "1") return;
+  list.dataset.actionsWired = "1";
+  list.addEventListener("pointerdown", (event) => {
+    const row = event.target.closest(".contact-row");
+    if (!row || event.target.closest("button, input, a")) return;
+    clearTimeout(conversationPressTimer);
+    conversationPressTimer = setTimeout(() => {
+      selectedConversationActionId = row.dataset.conversationId;
+      document.querySelectorAll(".contact-row.conversation-selected").forEach((el) => el.classList.remove("conversation-selected"));
+      row.classList.add("conversation-selected");
+      $("#conversation-selection-title").textContent = "محادثة محددة";
+      $("#conversation-selection-bar")?.classList.remove("hidden");
+    }, 520);
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach((name) => list.addEventListener(name, () => clearTimeout(conversationPressTimer)));
+  $("#conversation-selection-close")?.addEventListener("click", closeConversationSelection);
+  [["delete", "conversation-action-delete"], ["archive", "conversation-action-archive"], ["mute", "conversation-action-mute"], ["pin", "conversation-action-pin"]].forEach(([action, id]) => $("#" + id)?.addEventListener("click", () => runConversationAction(action)));
+}
 function wireAdminFeatures() {
+  wireConversationListActions();
   wireContactFilters();
   wireMessageSearch();
   wireRenamePanel();
