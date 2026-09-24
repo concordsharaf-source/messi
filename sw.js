@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v44";
+const CACHE_NAME = "wa-clone-shell-v45";
 // هيكل التطبيق: كل ما يلزم للإقلاع بلا إنترنت (بما فيه المكتبات المحلية)
 const APP_SHELL = [
   "./",

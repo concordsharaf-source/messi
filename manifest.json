@@ -15,5 +15,6 @@
   "theme_color": "#111b21",
   "description": "تطبيق محادثات ومتابعة طلبات العملاء",
   "lang": "ar",
+  "launch_handler": { "client_mode": ["navigate-existing", "auto"] },
   "dir": "rtl"
 }

@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "44";
+const BUILD = "45";
 
 const state = {
   me: null,
@@ -236,8 +236,26 @@ async function boot() {
   updateOfflineBanner();
 
   navigator.serviceWorker?.addEventListener("message", async (event) => {
-    if (event.data?.type === "OPEN_CONVERSATION" && state.me) {
-      await openConversationById(event.data.conversationId);
+    const payload = event.data || {};
+
+    // v45: عند النقر على الإشعار (والتطبيق مفتوح) يُرسل Firebase الحمولة إلى
+    // هذه النافذة بدل فتح نافذة جديدة ⇒ نفتح المحادثة الخاصة بالإشعار مباشرةً.
+    if (payload.isFirebaseMessaging || payload.messageType === "notification_open") {
+      if (!state.me) return;
+
+      const conversationId =
+        payload.data?.conversationId ||
+        payload.data?.conversation_id ||
+        payload.notification?.data?.conversationId ||
+        null;
+
+      if (conversationId) await openConversationById(conversationId);
+      return;
+    }
+
+    // مسار sw.js نفسه (رسائل بلا حقل notification)
+    if (payload.type === "OPEN_CONVERSATION" && state.me) {
+      await openConversationById(payload.conversationId);
     }
   });
 
@@ -4878,22 +4896,40 @@ function escapeHtml(str) {
 
 async function openConversationFromNotificationRoute() {
   const conversationId = new URLSearchParams(location.search).get("conversation");
-  if (conversationId) await openConversationById(conversationId);
+  if (!conversationId) return;
+
+  const opened = await openConversationById(conversationId);
+
+  // v45: نُنظّف الرابط بعد الفتح حتى لا يُعاد فتح المحادثة عند أي تحديث للصفحة
+  if (opened) window.history.replaceState({}, "", window.location.pathname);
 }
 
 async function openConversationById(conversationId) {
-  if (!conversationId || !state.me) return;
+  if (!conversationId || !state.me) return false;
+
   const { data: conversation, error } = await supabase
     .from("conversations")
     .select("*")
     .eq("id", conversationId)
     .maybeSingle();
-  if (error || !conversation) return;
-  const otherId = state.me.can_moderate
-    ? conversation.user_id
-    : conversation.admin_id;
+  if (error || !conversation) return false;
+
+  // v45: الطرف الآخر = المشارك الذي ليس أنا (كان can_moderate يجرّ المشرف العام
+  // إلى فتح محادثة مع نفسه لأن user_id هو هو). ثم الخطة الاحتياطية للأقسام الإدارية.
+  const myId = String(state.me.id);
+  const otherId =
+    String(conversation.user_id) === myId
+      ? conversation.admin_id
+      : String(conversation.admin_id) === myId
+      ? conversation.user_id
+      : state.me.can_moderate
+      ? conversation.user_id
+      : conversation.admin_id;
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", otherId).maybeSingle();
-  if (profile) await openConversation({ ...profile, _conversationId: conversationId });
+  if (!profile) return false;
+
+  await openConversation({ ...profile, _conversationId: conversationId });
+  return true;
 }
 
 // ===============================================================
