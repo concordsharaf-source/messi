@@ -93,18 +93,21 @@ begin
     return new;
   end if;
 
-  insert into public.messages (conversation_id, sender_id, content, buttons, status)
+  -- v47: clock_timestamp() (لا now()) حتى تكون رسالة الترحيب أحدث فعلاً من
+  -- رسالة المستخدم — وإلا تساوت الطوابع الزمنية فظهرت رسالة قديمة في الرئيسية.
+  insert into public.messages (conversation_id, sender_id, content, buttons, status, created_at)
   values (
     new.conversation_id,
     v_admin_id,
     v_settings.greeting,
     case when jsonb_array_length(v_settings.buttons) > 0 then v_settings.buttons else null end,
-    'sent'
+    'sent',
+    clock_timestamp()
   );
 
   update public.conversations
      set last_message        = v_settings.greeting,
-         last_message_at     = now(),
+         last_message_at     = clock_timestamp(),
          last_sender_id      = v_admin_id,
          last_message_status = 'sent'
    where id = new.conversation_id;

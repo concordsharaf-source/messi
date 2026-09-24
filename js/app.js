@@ -4928,11 +4928,30 @@ async function patchContactUIOnNewMessage(
   // -------------------------------------------------------------
 
   if (row) {
-    const previewEl =
-      row.querySelector(".contact-preview");
+    // v47: نتجاهل حدثاً أقدم من آخر رسالة معروضة — كان حدث متأخر يكتب
+    // رسالة قديمة فوق الأحدث (فتبدو الرئيسية «قديمة» مثل ما اشتكى المستخدم).
+    const rowAt = row.dataset.lastMessageAt
+      ? new Date(row.dataset.lastMessageAt).getTime()
+      : 0;
+    const msgAt = message.created_at ? new Date(message.created_at).getTime() : Date.now();
+    const stale = Boolean(rowAt) && msgAt < rowAt;
 
-    if (previewEl) {
+    const previewEl = ensureContactPreview(row);
+
+    if (previewEl && !stale) {
       previewEl.textContent = preview;
+    }
+
+    if (!stale) {
+      const contact = homeContacts().find(
+        (c) => c._conversationId === conversationId
+      );
+      if (contact) {
+        contact._lastMessage = preview;
+        contact._lastMessageAt = message.created_at || new Date().toISOString();
+        contact._lastSenderId = message.sender_id;
+        contact._lastMessageStatus = message.status || null;
+      }
     }
 
     // التكات كما في واتساب (للرسائل الصادرة فقط)
@@ -4952,13 +4971,15 @@ async function patchContactUIOnNewMessage(
     const timeEl =
       row.querySelector(".contact-time");
 
-    if (timeEl) {
+    if (timeEl && !stale) {
       timeEl.textContent =
         formatContactTime(message.created_at);
     }
 
-    row.dataset.lastMessageAt =
-      message.created_at || new Date().toISOString();
+    if (!stale) {
+      row.dataset.lastMessageAt =
+        message.created_at || new Date().toISOString();
+    }
 
     let unread =
       parseInt(
@@ -7863,6 +7884,12 @@ async function sendMessage({
         incrementUnread: false,
       }
     );
+
+    // v47: بعد الإرسال نطابق المعاينة مع حقيقة القاعدة (قد تصل رسالة أخرى
+    // مثل رسالة الترحيب في نفس اللحظة) — فلا تبقى الرئيسية على رسالة قديمة.
+    setTimeout(() => {
+      refreshConversationPreviewsFromServer();
+    }, 1800);
   }
 
   // ملخّص المحادثة يُحدَّث تلقائياً من تريغر القاعدة bump_conversation_summary
