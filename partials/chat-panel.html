@@ -52,12 +52,31 @@
       <button id="reply-preview-cancel" type="button">✕</button>
     </div>
 
-    <!-- شريط تسجيل الصوت -->
+    <!-- شريط تسجيل الصوت (مثل واتساب) -->
     <div id="recording-bar" class="recording-bar hidden">
-      <span class="recording-dot"></span>
-      <span id="recording-timer">00:00</span>
-      <span class="recording-hint" data-i18n="recording_hint">جاري التسجيل...</span>
-      <button id="recording-cancel" type="button">🗑️</button>
+      <button id="recording-send" class="rec-send" type="button" aria-label="إرسال التسجيل" title="إرسال">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M3.4 20.4l17.45-7.48a1 1 0 0 0 0-1.84L3.4 3.6a1 1 0 0 0-1.39 1.06L3.6 11l9.4 2-9.4 2-.59 6.34A1 1 0 0 0 3.4 20.4z"/></svg>
+      </button>
+
+      <button id="recording-pause" class="rec-pause hidden" type="button" aria-label="إيقاف مؤقت" title="إيقاف مؤقت">
+        <svg class="rp-pause" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>
+        <svg class="rp-play hidden" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+      </button>
+
+      <div class="rec-main">
+        <span class="rec-dot" aria-hidden="true"></span>
+        <span id="recording-timer" class="rec-timer">0:00</span>
+        <canvas id="recording-wave" class="rec-wave" height="42" aria-hidden="true"></canvas>
+        <span id="recording-hint" class="rec-hint"></span>
+        <span class="rec-lock-hint" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="15" height="15"><path fill="currentColor" d="M12 2 4 6v6c0 5 3.4 9.7 8 10 4.6-.3 8-5 8-10V6l-8-4zm0 2.2 6 3v4.8c0 3.9-2.5 7.7-6 8-3.5-.3-6-4.1-6-8V7.2l6-3z"/></svg>
+          <b class="rec-lock-arrow">▲</b>
+        </span>
+      </div>
+
+      <button id="recording-trash" class="rec-trash" type="button" aria-label="حذف التسجيل" title="حذف">
+        <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2zM6 9h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 9z"/></svg>
+      </button>
     </div>
 
     <form id="composer-form" class="composer">
@@ -65,7 +84,9 @@
       <div id="emoji-panel" class="emoji-panel hidden"></div>
       <label class="attach-btn">📎<input id="attach-input" type="file" accept="image/*,video/*,audio/*" hidden /></label>
       <textarea id="composer-input" rows="1" autocomplete="off" spellcheck="true" data-i18n-placeholder="type_message" placeholder="اكتب رسالة"></textarea>
-      <button type="button" id="mic-btn" class="mic-btn" title="رسالة صوتية">🎤</button>
+      <button type="button" id="mic-btn" class="mic-btn" title="اضغط مطولاً للتسجيل" aria-label="رسالة صوتية">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5.3-3a5.3 5.3 0 0 1-10.6 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-1.7z"/></svg>
+      </button>
       <button type="submit" id="send-btn" class="send-btn" title="إرسال (Ctrl+Enter)">➤</button>
     </form>
   </div>

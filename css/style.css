@@ -7118,3 +7118,299 @@ body[data-theme="light"] #my-password {
   color: #d8f7e4;
   font-weight: 700;
 }
+
+/* =================================================================
+   §v38) الصوت مثل واتساب
+   زر الميكروفون · شريط التسجيل (سحب للإلغاء/للقفل) · مشغّل الرسالة
+   ================================================================= */
+
+/* ---------- زر الميكروفون: دائرة خضراء مثل واتساب ---------- */
+.composer #mic-btn.mic-btn {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #00a884;
+  color: #ffffff;
+  cursor: pointer;
+  transition: transform .12s ease, filter .15s ease;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.composer #mic-btn.mic-btn:hover { filter: brightness(1.08); }
+.composer #mic-btn.mic-btn:active { transform: scale(.94); }
+.composer #mic-btn.mic-btn.recording-hold { transform: scale(.88); }
+.composer #mic-btn.mic-btn:disabled { opacity: .55; cursor: default; }
+.composer #mic-btn.mic-btn svg { display: block; }
+
+/* ---------- زر الإرسال: نفس الشكل ---------- */
+.composer #send-btn.send-btn {
+  width: 42px !important;
+  height: 42px !important;
+  flex: 0 0 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #00a884;
+  color: #ffffff;
+}
+
+/* ---------- شريط التسجيل ---------- */
+.recording-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin: 0 14px 4px;
+  border-radius: 12px;
+  background: #1f2c33;
+}
+
+body[data-theme="light"] .recording-bar { background: #f0f2f5; }
+
+.recording-bar button { margin-inline-start: 0 !important; }
+
+.rec-main {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.rec-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #ff4d4f;
+  animation: rec-pulse 1s infinite;
+}
+
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .22; }
+}
+
+.rec-timer {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: calc(14px * var(--wa-font-scale));
+  color: var(--wa-text-primary);
+  flex: 0 0 auto;
+}
+
+.rec-wave {
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 42px;
+  display: block;
+}
+
+.rec-hint {
+  flex: 0 0 auto;
+  max-width: 45%;
+  font-size: calc(12px * var(--wa-font-scale));
+  color: var(--wa-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rec-lock-hint {
+  display: none;
+  align-items: center;
+  gap: 2px;
+  color: var(--wa-text-secondary);
+  font-size: 10px;
+}
+
+.rec-lock-arrow {
+  display: inline-block;
+  animation: rec-lock-bounce 1.15s infinite;
+}
+
+@keyframes rec-lock-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.recording-bar:not(.locked):not(.cancel-armed) .rec-lock-hint { display: inline-flex; }
+body.pointer-fine .rec-lock-hint { display: none !important; }
+.recording-bar.locked .rec-lock-hint { display: none !important; }
+
+.rec-trash,
+.rec-send,
+.rec-pause {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+
+.rec-trash {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  color: #8696a0;
+  transition: transform .12s ease, color .15s ease, background .15s ease;
+}
+
+.rec-trash:hover { color: #ff6b6b; background: rgba(255, 107, 107, .12); }
+
+.rec-send {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  background: #00a884;
+  color: #ffffff;
+  transition: transform .12s ease, filter .15s ease;
+}
+
+.rec-send:hover { filter: brightness(1.08); }
+.rec-send:active { transform: scale(.94); }
+
+.rec-pause {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  color: var(--wa-text-primary);
+}
+
+.rec-pause:hover { background: rgba(134, 150, 160, .16); }
+
+/* السحب لليسار للإلغاء: يتوهّج سلة الحذف مثل واتساب */
+.recording-bar.cancel-armed .rec-trash {
+  color: #ffffff;
+  background: #ff4d4f;
+  transform: scale(1.12);
+}
+
+.recording-bar.cancel-armed .rec-hint {
+  color: #ff8d8d;
+  font-weight: 700;
+}
+
+.recording-bar.lock-armed .rec-lock-hint { color: #25d366; }
+.recording-bar.lock-armed .rec-hint { color: #25d366; font-weight: 700; }
+
+/* ---------- مشغّل الرسالة الصوتية ---------- */
+.voice-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 208px;
+  max-width: 100%;
+  padding: 1px 0;
+}
+
+.voice-play {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #00a884;
+  cursor: pointer;
+}
+
+.voice-play:hover { background: rgba(0, 168, 132, .12); }
+.voice-play svg { display: block; }
+
+.voice-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.voice-wave {
+  display: block;
+  width: 100%;
+  height: 34px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.voice-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: calc(11.5px * var(--wa-font-scale));
+  color: var(--wa-text-secondary);
+}
+
+.voice-time { font-variant-numeric: tabular-nums; }
+
+.voice-speed {
+  padding: 0 3px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: #00a884;
+  font-size: calc(11.5px * var(--wa-font-scale));
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.voice-note.pending { opacity: .65; }
+.voice-audio { display: none; }
+
+/* ---------- نافذة تأكيد حذف التسجيل ---------- */
+.admin-btn-danger {
+  border: 0;
+  border-radius: 9px;
+  padding: 9px 16px;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 12.5px;
+  color: #ffffff;
+  background: #ea0038;
+}
+
+.admin-btn-danger:hover { filter: brightness(1.1); }
+
+.voice-delete-card h3 { margin: 0 0 6px; font-size: 16px; }
+
+.voice-delete-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  color: var(--wa-text-secondary);
+}
+
+.voice-delete-card .notes-actions { justify-content: flex-end; }
+
+/* ---------- الجوال ---------- */
+@media (max-width: 480px) {
+  .recording-bar { padding: 6px 8px; gap: 6px; }
+  .rec-wave { min-width: 40px; }
+  .rec-hint { max-width: 38%; font-size: 11px; }
+  .rec-send { width: 38px; height: 38px; flex: 0 0 38px; }
+  .rec-trash, .rec-pause { width: 34px; height: 34px; flex: 0 0 34px; }
+  .composer #mic-btn.mic-btn,
+  .composer #send-btn.send-btn { width: 40px !important; height: 40px !important; flex: 0 0 40px; }
+  .voice-note { min-width: 180px; }
+}

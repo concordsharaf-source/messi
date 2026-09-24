@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "37";
+const BUILD = "38";
 
 const state = {
   me: null,
@@ -3570,15 +3570,7 @@ function wireChatPanel() {
     clearReply
   );
 
-  $("#mic-btn")?.addEventListener(
-    "click",
-    toggleRecording
-  );
-
-  $("#recording-cancel")?.addEventListener(
-    "click",
-    cancelRecording
-  );
+  wireVoiceRecorder();
 
   autoGrowComposer();
   updateComposerButtons();
@@ -3663,6 +3655,8 @@ function updateComposerButtons() {
 }
 
 function wireConversationOptions() {
+  wireVoiceNotes();
+
   $("#chat-options-toggle")?.addEventListener("click", (event) => {
     event.stopPropagation();
     const menu = $("#chat-options-menu");
@@ -4898,6 +4892,9 @@ function renderMessages() {
 
   if (!box) return;
 
+  // الرسائل الصوتية: نضبط المشغّل (المدة، الموجة، الأزرار)
+  paintEveryVoiceNote();
+
   // ---------------------------------------------------------------
   // رسم تزايدي (Reconciling render)
   //
@@ -5223,14 +5220,7 @@ function buildMessageBubble(m) {
       `;
       mediaHint = `<div class="media-save-hint">اضغط مطولا لحفظ الفيديو</div>`;
     } else if (m.attachment_type === "audio") {
-      attach = `
-        <audio
-          class="msg-audio"
-          controls
-          preload="metadata"
-          src="${escapeHtml(m.attachment_url)}"
-        ></audio>
-      `;
+      attach = buildVoiceNoteHtml(m);
     } else {
       attach = `
         <a
@@ -7549,215 +7539,1097 @@ async function handleWallpaperUpload(e) {
 }
 
 // ===============================================================
-// VOICE
+// VOICE NOTES — نفس آلية واتساب
+//   · إمساك زر الميكروفون للتسجيل (جوال) / ضغطة واحدة (كمبيوتر)
+//   · سحب لليسار للإلغاء · سحب للأعلى للقفل (تسجيل بدون إمساك)
+//   · إيقاف مؤقت/متابعة · إرسال بزر ➤ · حذف بزر 🗑️ مع تأكيد
 // ===============================================================
 
-async function toggleRecording() {
-  if (state.recording) {
-    await stopAndSendRecording();
-  } else {
-    await startRecording();
-  }
+const VOICE_MAX_SECONDS = 30 * 60;   // حد واتساب: ٣٠ دقيقة
+const VOICE_MIN_SECONDS = 1;         // أقل من ثانية = ضغطة خاطئة
+const VOICE_CANCEL_PX = 70;          // مسافة السحب لليسار للإلغاء
+const VOICE_LOCK_PX = 70;            // مسافة السحب للأعلى للقفل
+
+let voiceHold = null;                // حالة الإمساك الحالية (أجهزة اللمس)
+
+function voiceT(key, fallback) {
+  return state.t?.[key] || fallback;
 }
 
-async function startRecording() {
-  if (!state.activeConversation) return;
+function voiceSupported() {
+  return Boolean(navigator.mediaDevices?.getUserMedia) && typeof MediaRecorder !== "undefined";
+}
 
-  if (
-    !navigator.mediaDevices ||
-    !window.MediaRecorder
-  ) {
-    showAuthError(
-      "التسجيل الصوتي غير مدعوم في هذا المتصفح"
-    );
+function voiceMimeCandidates() {
+  return [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/mp4",
+  ];
+}
 
-    return;
+function pickVoiceMime() {
+  if (typeof MediaRecorder === "undefined" || typeof MediaRecorder.isTypeSupported !== "function") return "";
+  for (const type of voiceMimeCandidates()) {
+    try {
+      if (MediaRecorder.isTypeSupported(type)) return type;
+    } catch (_) {}
+  }
+  return "";
+}
+
+function voiceExtensionFor(mime) {
+  const m = String(mime || "").toLowerCase();
+  if (m.includes("mp4")) return "m4a";
+  if (m.includes("mpeg")) return "mp3";
+  if (m.includes("ogg")) return "ogg";
+  return "webm";
+}
+
+function voiceMicErrorText(err) {
+  const name = err?.name || "";
+  if (name === "NotAllowedError" || name === "SecurityError") {
+    return "تم رفض إذن الميكروفون — اسمح بالوصول من إعدادات المتصفح ثم أعد المحاولة.";
+  }
+  if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+    return "لم يُعثر على ميكروفون في هذا الجهاز.";
+  }
+  if (name === "NotReadableError" || name === "TrackStartError") {
+    return "الميكروفون مستخدم من تطبيق آخر — أغلقه وأعد المحاولة.";
+  }
+  return "تعذّر تشغيل الميكروفون — تأكد من منح الإذن.";
+}
+
+// الزمن الحالي للتسجيل (بالثواني) مع مراعاة الإيقاف المؤقت
+function voiceElapsed(rec = state.recording) {
+  if (!rec) return 0;
+  if (rec.readyBlob) return rec.seconds || 0;
+  const live = rec.paused ? 0 : (Date.now() - rec.startedAt) / 1000;
+  return Math.max(0, rec.accumulated + live);
+}
+
+function formatVoiceClock(seconds) {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// ------------------------------------------------------------------
+// بدء التسجيل
+// ------------------------------------------------------------------
+async function startVoiceRecording({ viaHold = false } = {}) {
+  if (state.recording) return true;
+  if (!state.activeConversation) return false;
+
+  if (!voiceSupported()) {
+    showAuthError("التسجيل الصوتي غير مدعوم في هذا المتصفح.");
+    return false;
   }
 
   if (!state.isOnline) {
-    showAuthError(
-      "لا يمكن رفع الرسالة الصوتية بدون اتصال بالإنترنت."
-    );
-
-    return;
+    showAuthError("لا يمكن إرسال الرسائل الصوتية بدون اتصال بالإنترنت.");
+    return false;
   }
 
+  let stream;
   try {
-    const stream =
-      await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-
-    const mediaRecorder =
-      new MediaRecorder(stream);
-
-    const chunks = [];
-
-    mediaRecorder.ondataavailable =
-      (e) => {
-        if (e.data?.size) {
-          chunks.push(e.data);
-        }
-      };
-
-    mediaRecorder.start();
-
-    state.recording = {
-      mediaRecorder,
-      chunks,
-      stream,
-      seconds: 0,
-      timerInterval: null,
-    };
-
-    $("#recording-bar")?.classList.remove(
-      "hidden"
-    );
-
-    $("#composer-input")?.classList.add(
-      "hidden"
-    );
-
-    $("#mic-btn").textContent =
-      "✅";
-
-    $("#mic-btn")?.classList.add(
-      "recording-active"
-    );
-
-    state.recording.timerInterval =
-      setInterval(() => {
-        if (!state.recording) return;
-
-        state.recording.seconds += 1;
-
-        const mm =
-          String(
-            Math.floor(
-              state.recording.seconds /
-                60
-            )
-          ).padStart(2, "0");
-
-        const ss =
-          String(
-            state.recording.seconds %
-              60
-          ).padStart(2, "0");
-
-        $("#recording-timer").textContent =
-          `${mm}:${ss}`;
-      }, 1000);
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    });
   } catch (err) {
-    console.error(
-      "Microphone error:",
-      err
-    );
+    console.error("Microphone error:", err);
+    showAuthError(voiceMicErrorText(err));
+    return false;
+  }
 
-    showAuthError(
-      "لم يتم منح إذن الوصول للميكروفون"
-    );
+  const mime = pickVoiceMime();
+
+  let recorder;
+  try {
+    recorder = mime
+      ? new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: 64000 })
+      : new MediaRecorder(stream);
+  } catch (err) {
+    try {
+      recorder = new MediaRecorder(stream);
+    } catch (err2) {
+      stream.getTracks().forEach((t) => t.stop());
+      console.error("MediaRecorder error:", err2);
+      showAuthError("تعذّر بدء التسجيل في هذا المتصفح.");
+      return false;
+    }
+  }
+
+  // محلّل الصوت للرسم الحي (مثل موجة واتساب)
+  let audioCtx = null;
+  let analyser = null;
+  let samples = null;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (Ctx) {
+      audioCtx = new Ctx();
+      const source = audioCtx.createMediaStreamSource(stream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      samples = new Uint8Array(analyser.fftSize);
+    }
+  } catch (err) {
+    analyser = null;
+  }
+
+  const chunks = [];
+  recorder.ondataavailable = (event) => {
+    if (event.data && event.data.size) chunks.push(event.data);
+  };
+
+  try {
+    recorder.start(250);
+  } catch (err) {
+    recorder.start();
+  }
+
+  state.recording = {
+    recorder,
+    chunks,
+    stream,
+    audioCtx,
+    analyser,
+    samples,
+    startedAt: Date.now(),
+    accumulated: 0,
+    paused: false,
+    locked: !viaHold,     // على الكمبيوتر التسجيل يستمر بلا إمساك
+    cancelArmed: false,
+    lockArmed: false,
+    levels: [],
+    lastSampleAt: 0,
+    rafId: null,
+    tick: null,
+    seconds: 0,
+    readyBlob: null,
+    readyMime: null,
+  };
+
+  showVoiceRecordingUI();
+
+  const rec = state.recording;
+  rec.tick = setInterval(onVoiceTick, 200);
+  rec.rafId = requestAnimationFrame(paintVoiceWaveLoop);
+  paintVoiceHint();
+
+  return true;
+}
+
+function onVoiceTick() {
+  const rec = state.recording;
+  if (!rec) return;
+
+  rec.seconds = voiceElapsed(rec);
+
+  const timer = $("#recording-timer");
+  if (timer) timer.textContent = formatVoiceClock(rec.seconds);
+
+  // عند بلوغ الحد الأقصى: نُوقف التسجيل ونتركه جاهزاً للإرسال (مثل واتساب)
+  if (!rec.readyBlob && !rec.paused && rec.seconds >= VOICE_MAX_SECONDS) {
+    markVoiceReady();
   }
 }
 
-async function stopAndSendRecording() {
-  const rec =
-    state.recording;
+// ------------------------------------------------------------------
+// واجهة التسجيل
+// ------------------------------------------------------------------
+function showVoiceRecordingUI() {
+  $("#recording-bar")?.classList.remove("hidden");
+  // مثل واتساب: صف الكتابة كله يُستبدل بشريط التسجيل
+  $("#composer-form")?.classList.add("hidden");
+  $("#composer-input")?.classList.add("hidden");
+  $("#mic-btn")?.classList.add("hidden");
+  $("#send-btn")?.classList.add("hidden");
+
+  const timer = $("#recording-timer");
+  if (timer) timer.textContent = "0:00";
+
+  $("#recording-pause")?.classList.add("hidden");
+  $("#recording-bar")?.classList.remove("cancel-armed", "lock-armed");
+
+  // على الكمبيوتر التسجيل يستمر بلا إمساك ⇒ زر الإيقاف المؤقت ظاهر مباشرة
+  if (state.recording?.locked) $("#recording-pause")?.classList.remove("hidden");
+}
+
+function resetVoiceUI() {
+  const rec = state.recording;
+  clearVoiceTimers(rec);
+  state.recording = null;
+  voiceHold = null;
+
+  $("#recording-bar")?.classList.add("hidden");
+  $("#recording-bar")?.classList.remove("cancel-armed", "lock-armed", "locked");
+
+  $("#recording-pause")?.classList.add("hidden");
+  $("#recording-pause .rp-pause")?.classList.remove("hidden");
+  $("#recording-pause .rp-play")?.classList.add("hidden");
+
+  const timer = $("#recording-timer");
+  if (timer) timer.textContent = "0:00";
+
+  const hint = $("#recording-hint");
+  if (hint) hint.textContent = "";
+
+  clearVoiceCanvas();
+
+  $("#composer-form")?.classList.remove("hidden");
+  $("#composer-input")?.classList.remove("hidden");
+  $("#mic-btn")?.classList.remove("hidden", "recording-active", "recording-hold");
+  $("#mic-btn")?.setAttribute("title", "اضغط مطولاً للتسجيل");
+
+  updateComposerButtons();
+}
+
+function clearVoiceTimers(rec) {
+  if (!rec) return;
+  clearInterval(rec.tick);
+  if (rec.rafId) cancelAnimationFrame(rec.rafId);
+  rec.rafId = null;
+}
+
+function clearVoiceCanvas() {
+  const canvas = $("#recording-wave");
+  const ctx = canvas?.getContext("2d");
+  if (canvas && ctx) {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
+// نص التلميح حسب حالة التسجيل (مثل واتساب)
+function paintVoiceHint() {
+  const rec = state.recording;
+  const hint = $("#recording-hint");
+  const bar = $("#recording-bar");
+
+  if (!hint || !bar) return;
+
+  bar.classList.toggle("cancel-armed", Boolean(rec?.cancelArmed));
+  bar.classList.toggle("lock-armed", Boolean(rec?.lockArmed));
+  bar.classList.toggle("locked", Boolean(rec?.locked));
 
   if (!rec) return;
 
-  const blob =
-    await finalizeRecording(rec);
+  if (rec.readyBlob) {
+    hint.textContent = voiceT("voice_ready", "جاهز للإرسال — اضغط ➤");
+    return;
+  }
+  if (rec.cancelArmed) {
+    hint.textContent = voiceT("voice_release_cancel", "اترك للإلغاء");
+    return;
+  }
+  if (rec.lockArmed) {
+    hint.textContent = voiceT("voice_release_lock", "اترك لقفل التسجيل");
+    return;
+  }
+  if (rec.paused) {
+    hint.textContent = voiceT("voice_paused", "متوقف مؤقتاً — اضغط ▶ للمتابعة");
+    return;
+  }
+  if (rec.locked) {
+    hint.textContent = voiceT("voice_locked", "جارٍ التسجيل — اضغط ⏸ للإيقاف المؤقت");
+    return;
+  }
+  hint.textContent = voiceT("voice_slide_cancel", "اسحب للإلغاء");
+}
 
-  resetRecordingUI();
+// ------------------------------------------------------------------
+// الموجة الحيّة (مثل واتساب)
+// ------------------------------------------------------------------
+function paintVoiceWaveLoop() {
+  paintVoiceWave();
 
-  if (!blob) return;
+  const rec = state.recording;
+  if (rec) rec.rafId = requestAnimationFrame(paintVoiceWaveLoop);
+}
+
+function paintVoiceWave() {
+  const canvas = $("#recording-wave");
+  const rec = state.recording;
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = Math.max(80, canvas.clientWidth || 220);
+  const cssH = 42;
+
+  if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  if (!rec) return;
+
+  const BAR_W = 3;
+  const GAP = 2;
+  const STEP = BAR_W + GAP;
+  const count = Math.max(10, Math.floor((cssW - 6) / STEP));
+
+  // مستوى الصوت الحالي
+  let level = 0;
+  if (rec.analyser && !rec.paused && !rec.readyBlob) {
+    try {
+      rec.analyser.getByteTimeDomainData(rec.samples);
+      let sum = 0;
+      for (let i = 0; i < rec.samples.length; i += 1) {
+        const v = (rec.samples[i] - 128) / 128;
+        sum += v * v;
+      }
+      level = Math.min(1, Math.sqrt(sum / rec.samples.length) * 3.4);
+    } catch (_) {}
+  }
+
+  const now = performance.now();
+  if (!rec.lastSampleAt || now - rec.lastSampleAt >= 70) {
+    rec.lastSampleAt = now;
+    rec.levels.push(level);
+    while (rec.levels.length > count) rec.levels.shift();
+  }
+  while (rec.levels.length < count) rec.levels.unshift(0);
+
+  const mid = cssH / 2;
+  const minH = 3;
+
+  ctx.fillStyle = rec.paused ? "#8696a0" : "#00a884";
+
+  for (let i = 0; i < rec.levels.length; i += 1) {
+    const h = Math.max(minH, rec.levels[i] * (cssH - 8));
+    const x = i * STEP + 3;
+    const y = mid - h / 2;
+    const radius = BAR_W / 2;
+
+    ctx.beginPath();
+    if (typeof ctx.roundRect === "function") {
+      ctx.roundRect(x, y, BAR_W, h, radius);
+    } else {
+      ctx.rect(x, y, BAR_W, h);
+    }
+    ctx.fill();
+  }
+}
+
+// ------------------------------------------------------------------
+// إيقاف مؤقت / متابعة
+// ------------------------------------------------------------------
+function pauseVoiceRecording() {
+  const rec = state.recording;
+  if (!rec || rec.paused || rec.readyBlob) return;
+
+  rec.accumulated = voiceElapsed(rec);
+  rec.paused = true;
+
+  try {
+    if (rec.recorder.state === "recording") rec.recorder.pause();
+  } catch (_) {}
+
+  $("#recording-pause .rp-pause")?.classList.add("hidden");
+  $("#recording-pause .rp-play")?.classList.remove("hidden");
+  $("#recording-pause")?.setAttribute("title", "متابعة");
+  paintVoiceHint();
+}
+
+function resumeVoiceRecording() {
+  const rec = state.recording;
+  if (!rec || !rec.paused) return;
+
+  rec.paused = false;
+  rec.startedAt = Date.now();
+
+  try {
+    if (rec.recorder.state === "paused") rec.recorder.resume();
+  } catch (_) {}
+
+  $("#recording-pause .rp-pause")?.classList.remove("hidden");
+  $("#recording-pause .rp-play")?.classList.add("hidden");
+  $("#recording-pause")?.setAttribute("title", "إيقاف مؤقت");
+  paintVoiceHint();
+}
+
+// الحد الأقصى: نُغلق الملف ونتركه جاهزاً للإرسال
+async function markVoiceReady() {
+  const rec = state.recording;
+  if (!rec || rec.readyBlob) return;
+
+  const seconds = voiceElapsed(rec);
+  const mime = rec.recorder?.mimeType || pickVoiceMime() || "audio/webm";
+
+  clearInterval(rec.tick);
+  if (rec.rafId) cancelAnimationFrame(rec.rafId);
+  rec.rafId = null;
+
+  const blob = await finalizeVoiceRecording(rec, { discard: false });
+
+  if (!state.recording) return; // أُلغي أثناء الانتظار
+
+  rec.readyBlob = blob;
+  rec.readyMime = mime;
+  rec.seconds = seconds;
+  rec.paused = false;
+
+  $("#recording-pause")?.classList.add("hidden");
+  paintVoiceHint();
+}
+
+// ------------------------------------------------------------------
+// إغلاق الملف (إرسال أو حذف)
+// ------------------------------------------------------------------
+function finalizeVoiceRecording(rec, { discard = false } = {}) {
+  return new Promise((resolve) => {
+    if (!rec) {
+      resolve(null);
+      return;
+    }
+
+    const finish = () => {
+      try {
+        rec.stream?.getTracks?.().forEach((track) => track.stop());
+      } catch (_) {}
+      try {
+        rec.audioCtx?.close?.();
+      } catch (_) {}
+
+      if (discard) {
+        resolve(null);
+        return;
+      }
+
+      const mime = rec.recorder?.mimeType || pickVoiceMime() || "audio/webm";
+      const blob = new Blob(rec.chunks, { type: mime });
+      resolve(blob.size > 0 ? blob : null);
+    };
+
+    try {
+      if (rec.recorder && rec.recorder.state !== "inactive") {
+        rec.recorder.onstop = finish;
+        rec.recorder.stop();
+      } else {
+        finish();
+      }
+    } catch (err) {
+      finish();
+    }
+  });
+}
+
+// ------------------------------------------------------------------
+// إرسال الرسالة الصوتية
+// ------------------------------------------------------------------
+async function sendVoiceRecording() {
+  const rec = state.recording;
+  if (!rec) return;
+
+  const seconds = rec.readyBlob ? rec.seconds : voiceElapsed(rec);
+  const mime = rec.readyBlob ? rec.readyMime : rec.recorder?.mimeType || pickVoiceMime() || "audio/webm";
+
+  if (!rec.readyBlob && seconds < VOICE_MIN_SECONDS) {
+    discardVoiceRecording();
+    showAuthError(voiceT("voice_too_short", "التسجيل قصير جداً — اضغط مطولاً على زر الميكروفون للتسجيل."));
+    return;
+  }
+
+  const blob = rec.readyBlob || (await finalizeVoiceRecording(rec, { discard: false }));
+
+  const extension = voiceExtensionFor(mime);
+
+  resetVoiceUI();
+
+  if (!blob) {
+    showAuthError("تعذّر إنشاء الرسالة الصوتية — حاول مرة أخرى.");
+    return;
+  }
 
   await sendMessage({
     content: null,
     attachmentFile: blob,
     attachmentType: "audio",
-    attachmentExtension: "webm",
+    attachmentExtension: extension,
   });
 }
 
-function cancelRecording() {
-  const rec =
-    state.recording;
-
+// ------------------------------------------------------------------
+// الحذف / الإلغاء
+// ------------------------------------------------------------------
+function discardVoiceRecording() {
+  const rec = state.recording;
   if (!rec) return;
 
-  finalizeRecording(rec, true);
-  resetRecordingUI();
+  clearVoiceTimers(rec);
+
+  if (rec.readyBlob) {
+    try {
+      rec.stream?.getTracks?.().forEach((track) => track.stop());
+    } catch (_) {}
+    resetVoiceUI();
+    return;
+  }
+
+  finalizeVoiceRecording(rec, { discard: true });
+  resetVoiceUI();
 }
 
-function finalizeRecording(
-  rec,
-  discard = false
-) {
-  return new Promise((resolve) => {
-    clearInterval(
-      rec.timerInterval
-    );
+function openVoiceDeleteModal() {
+  $("#voice-delete-modal")?.classList.remove("hidden");
+}
 
-    rec.mediaRecorder.onstop =
-      () => {
-        rec.stream
-          .getTracks()
-          .forEach((t) => t.stop());
+function closeVoiceDeleteModal() {
+  $("#voice-delete-modal")?.classList.add("hidden");
+}
 
-        if (discard) {
-          resolve(null);
-          return;
-        }
+function requestDeleteVoiceRecording() {
+  if (!state.recording) return;
+  openVoiceDeleteModal();
+}
 
-        const mime =
-          rec.mediaRecorder.mimeType ||
-          "audio/webm";
+// ------------------------------------------------------------------
+// القفل (تسجيل بدون إمساك)
+// ------------------------------------------------------------------
+function lockVoiceRecording() {
+  const rec = state.recording;
+  if (!rec || rec.locked) return;
 
-        resolve(
-          new Blob(
-            rec.chunks,
-            { type: mime }
-          )
-        );
-      };
+  rec.locked = true;
+  rec.cancelArmed = false;
+  rec.lockArmed = false;
+  voiceHold = null;
 
-    if (
-      rec.mediaRecorder.state !==
-      "inactive"
-    ) {
-      rec.mediaRecorder.stop();
-    } else {
-      resolve(null);
+  $("#recording-pause")?.classList.remove("hidden");
+  $("#mic-btn")?.classList.remove("recording-hold");
+  paintVoiceHint();
+}
+
+// ------------------------------------------------------------------
+// إيماءات اللمس: إمساك ← سحب لليسار (إلغاء) / سحب للأعلى (قفل)
+// ------------------------------------------------------------------
+function wireVoiceRecorder() {
+  const mic = $("#mic-btn");
+  if (!mic) return;
+
+  mic.addEventListener("contextmenu", (event) => {
+    if (state.recording) event.preventDefault();
+  });
+
+  mic.addEventListener("pointerdown", async (event) => {
+    if (state.recording || mic.disabled) return;
+    if (event.pointerType !== "touch" && event.button !== 0) return;
+
+    const isTouch = event.pointerType === "touch";
+
+    // إيماءة اللمس: نتابع الحركة فوراً — إذن الميكروفون قد يتأخر جزءاً من الثانية
+    // وفي واتساب يبدأ حساب السحب من لحظة اللمس لا من لحظة جاهزية التسجيل.
+    const gesture = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      dx: 0,
+      dy: 0,
+      ended: false,
+      cancelArmed: false,
+      lockArmed: false,
+      cleanup: null,
+    };
+
+    const stopListening = () => {
+      document.removeEventListener("pointermove", onGestureMove, true);
+      document.removeEventListener("pointerup", onGestureEnd, true);
+      document.removeEventListener("pointercancel", onGestureEnd, true);
+    };
+
+    function onGestureMove(moveEvent) {
+      if (moveEvent.pointerId !== gesture.pointerId) return;
+      gesture.dx = moveEvent.clientX - gesture.startX;
+      gesture.dy = moveEvent.clientY - gesture.startY;
+
+      if (voiceHold === gesture) voiceHoldMove(gesture);
+    }
+
+    function onGestureEnd(endEvent) {
+      if (endEvent.pointerId !== gesture.pointerId) return;
+      gesture.ended = true;
+      stopListening();
+
+      if (voiceHold === gesture) voiceHoldEnd(gesture);
+      else gesture.pendingEnd = true;
+    }
+
+    gesture.cleanup = stopListening;
+
+    if (isTouch) {
+      event.preventDefault();
+      mic.classList.add("recording-hold");
+      document.addEventListener("pointermove", onGestureMove, true);
+      document.addEventListener("pointerup", onGestureEnd, true);
+      document.addEventListener("pointercancel", onGestureEnd, true);
+    }
+
+    const started = await startVoiceRecording({ viaHold: isTouch });
+
+    if (!started) {
+      gesture.cleanup?.();
+      mic.classList.remove("recording-hold");
+      return;
+    }
+
+    // على الكمبيوتر: ضغطة واحدة تبدأ التسجيل، ويستمر حتى الإرسال أو الحذف
+    if (!isTouch) return;
+
+    voiceHold = gesture;
+
+    // حركة حدثت أثناء انتظار الإذن تُحسب فوراً (سحب للإلغاء / سحب للقفل)
+    if (gesture.dx <= -VOICE_CANCEL_PX) {
+      gesture.cancelArmed = true;
+      if (state.recording) state.recording.cancelArmed = true;
+      paintVoiceHint();
+    } else if (gesture.dy <= -VOICE_LOCK_PX) {
+      lockVoiceRecording();
+    }
+
+    // رفع إصبعه قبل جاهزية التسجيل ⇒ نحسم النتيجة فوراً
+    if (gesture.ended) voiceHoldEnd(gesture);
+  });
+
+  $("#recording-trash")?.addEventListener("click", requestDeleteVoiceRecording);
+
+  $("#recording-send")?.addEventListener("click", () => {
+    sendVoiceRecording();
+  });
+
+  $("#recording-pause")?.addEventListener("click", () => {
+    const rec = state.recording;
+    if (!rec || rec.readyBlob) return;
+    if (rec.paused) resumeVoiceRecording();
+    else pauseVoiceRecording();
+  });
+
+  $("#voice-delete-cancel")?.addEventListener("click", closeVoiceDeleteModal);
+
+  $("#voice-delete-confirm")?.addEventListener("click", () => {
+    closeVoiceDeleteModal();
+    discardVoiceRecording();
+  });
+
+  $("#voice-delete-modal")?.addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeVoiceDeleteModal();
+  });
+
+  // على الكمبيوتر: لا معنى للقفل ولا لتلميح السحب
+  if (!isTouchUi()) document.body.classList.add("pointer-fine");
+
+  // الخروج من المحادثة أثناء التسجيل يُلغيه (مثل واتساب)
+  window.addEventListener("blur", () => {
+    if (state.recording && !state.recording.locked) {
+      // نُبقي التسجيل (قد يكون المستخدم يفتح تطبيقاً آخر) — لا شيء هنا.
     }
   });
 }
 
-function resetRecordingUI() {
-  state.recording = null;
+function voiceHoldMove(gesture) {
+  const rec = state.recording;
+  if (!gesture || !rec || rec.locked || rec.readyBlob) return;
+  if (gesture.cancelArmed || gesture.lockArmed) return; // أول عتبة تُقطع تُثبَّت
 
-  $("#recording-bar")?.classList.add(
-    "hidden"
-  );
-
-  if ($("#recording-timer")) {
-    $("#recording-timer").textContent =
-      "00:00";
+  if (gesture.dx <= -VOICE_CANCEL_PX) {
+    gesture.cancelArmed = true;
+    rec.cancelArmed = true;
+    paintVoiceHint();
+    return;
   }
 
-  $("#composer-input")?.classList.remove(
-    "hidden"
-  );
-
-  if ($("#mic-btn")) {
-    $("#mic-btn").textContent =
-      "🎤";
-
-    $("#mic-btn").classList.remove(
-      "recording-active"
-    );
+  if (gesture.dy <= -VOICE_LOCK_PX) {
+    gesture.lockArmed = true;
+    rec.lockArmed = true;
+    lockVoiceRecording();
   }
+}
+
+function voiceHoldEnd(gesture) {
+  const rec = state.recording;
+  voiceHold = null;
+  $("#mic-btn")?.classList.remove("recording-hold");
+
+  if (!rec) return;
+
+  // مسك مفتوح (قفل): التسجيل يستمر بلا إمساك
+  if (rec.locked) return;
+
+  if (gesture?.cancelArmed || rec.cancelArmed) {
+    discardVoiceRecording();
+    return;
+  }
+
+  // مثل واتساب: ترك الزر يُرسل الرسالة الصوتية
+  sendVoiceRecording();
+}
+
+function isTouchUi() {
+  try {
+    if (Number(navigator.maxTouchPoints || 0) > 0) return true;
+    return Boolean(window.matchMedia?.("(hover: none) and (pointer: coarse)")?.matches);
+  } catch (_) {
+    return false;
+  }
+}
+
+// ===============================================================
+// مشغّل الرسالة الصوتية داخل الفقاعة (مثل واتساب)
+// ===============================================================
+let voicePlaybackSpeed = 1;
+let activeVoiceAudio = null;
+
+function voiceSeedFrom(id) {
+  const text = String(id || "voice");
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+// شكل موجة ثابت لكل رسالة (نفس الشكل في كل مرة تُعرض فيها)
+function voiceBarsFor(id, count) {
+  let seed = voiceSeedFrom(id);
+  const bars = [];
+  let shape = 0.5;
+
+  for (let i = 0; i < count; i += 1) {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    const rnd = (seed % 1000) / 1000;
+    shape = shape * 0.62 + rnd * 0.38;
+    const wave = 0.55 + 0.45 * Math.abs(Math.sin(i / 3.1 + (voiceSeedFrom(id) % 7)));
+    bars.push(Math.max(0.16, Math.min(1, shape * wave + 0.12)));
+  }
+
+  return bars;
+}
+
+function voiceBarsCountFor(duration) {
+  const d = Number(duration);
+  if (!Number.isFinite(d) || d <= 0) return 30;
+  return Math.max(18, Math.min(58, Math.round(d * 2.4)));
+}
+
+function buildVoiceNoteHtml(m) {
+  const bars = voiceBarsCountFor(0);
+  const speedLabel = voicePlaybackSpeed === 1 ? "1x" : `${voicePlaybackSpeed}x`;
+  const pending = m._pending ? " pending" : "";
+  const url = escapeHtml(m.attachment_url || "");
+
+  return `
+    <div class="voice-note${pending}" data-voice-id="${escapeHtml(m.id)}" data-voice-bars="${bars}">
+      <button class="voice-play" type="button" aria-label="${voiceT("voice_play", "تشغيل الرسالة الصوتية")}">
+        <svg class="vp-play" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>
+        <svg class="vp-pause hidden" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M7 5h3v14H7zM14 5h3v14h-3z"/></svg>
+      </button>
+
+      <div class="voice-body">
+        <canvas class="voice-wave" height="34" role="slider" aria-label="موضع التشغيل"></canvas>
+        <div class="voice-line">
+          <span class="voice-time">${m._pending ? "…" : "0:00"}</span>
+          <button class="voice-speed" type="button" title="${voiceT("voice_speed", "سرعة التشغيل")}">${speedLabel}</button>
+        </div>
+      </div>
+    </div>
+    <audio class="voice-audio" preload="metadata" src="${url}"></audio>
+  `;
+}
+
+function paintVoiceNoteCanvas(canvas, id, progress, duration) {
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = Math.max(120, Math.round(canvas.clientWidth || 200));
+  const cssH = 34;
+
+  if (canvas.width !== Math.round(cssW * dpr) || canvas.height !== Math.round(cssH * dpr)) {
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+  }
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const STEP = 3 + 2;
+  const BAR_W = 3;
+  const count = Math.max(6, Math.floor((cssW - 2) / STEP));
+  const bars = voiceBarsFor(id, Math.max(count, voiceBarsCountFor(duration)));
+  const mid = cssH / 2;
+  const p = Math.max(0, Math.min(1, Number(progress) || 0));
+  const playedUntil = p * count;
+
+  for (let i = 0; i < count; i += 1) {
+    const h = Math.max(3, (bars[i % bars.length] || 0.3) * (cssH - 8));
+    const x = i * STEP + 1;
+    const played = i < playedUntil;
+    ctx.fillStyle = played ? "#00a884" : "rgba(134, 150, 160, .55)";
+    ctx.beginPath();
+    if (typeof ctx.roundRect === "function") ctx.roundRect(x, mid - h / 2, BAR_W, h, BAR_W / 2);
+    else ctx.rect(x, mid - h / 2, BAR_W, h);
+    ctx.fill();
+  }
+
+  // مؤشر التشغيل (مثل واتساب)
+  if (p > 0 && p < 1) {
+    const x = Math.min(cssW - 2, playedUntil * STEP);
+    ctx.beginPath();
+    ctx.arc(x, mid, 3.4, 0, Math.PI * 2);
+    ctx.fillStyle = "#00a884";
+    ctx.fill();
+  }
+}
+
+function voiceNoteElements(note) {
+  const audio = note?.nextElementSibling?.classList?.contains("voice-audio")
+    ? note.nextElementSibling
+    : note?.parentElement?.querySelector(".voice-audio");
+
+  return {
+    canvas: note?.querySelector(".voice-wave") || null,
+    time: note?.querySelector(".voice-time") || null,
+    playBtn: note?.querySelector(".voice-play") || null,
+    speedBtn: note?.querySelector(".voice-speed") || null,
+    audio: audio || null,
+  };
+}
+
+function setVoiceNotePlaying(note, playing) {
+  const { playBtn, audio } = voiceNoteElements(note);
+  playBtn?.querySelector(".vp-play")?.classList.toggle("hidden", playing);
+  playBtn?.querySelector(".vp-pause")?.classList.toggle("hidden", !playing);
+  if (audio) audio.dataset.playing = playing ? "1" : "0";
+}
+
+// واتساب يعرض المدة الصحيحة؛ ملفات webm قد تصل بلا مدة ⇒ نحسبها بالبحث
+async function ensureVoiceDuration(audio) {
+  if (!audio) return 0;
+
+  const cached = Number(audio.dataset.duration || 0);
+  if (cached > 0) return cached;
+
+  const known = Number(audio.duration);
+  if (Number.isFinite(known) && known > 0) {
+    audio.dataset.duration = String(known);
+    return known;
+  }
+
+  // ملفات webm المسجّلة قد تصل بلا مدة معروفة ⇒ نطلبها بالبحث مع الحفاظ على
+  // مكان التشغيل: نُوقفه مؤقتاً، نحسب المدة، ثم نُعيده من حيث كان.
+  const wasPlaying = !audio.paused;
+  const position = audio.currentTime || 0;
+
+  if (wasPlaying) {
+    try { audio.pause(); } catch (_) {}
+  }
+
+  const value = await new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => done(Number(audio.duration) || 0), 2000);
+
+    function cleanup() {
+      clearTimeout(timer);
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("durationchange", onDur);
+    }
+
+    function done(v) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(Number.isFinite(v) && v > 0 ? v : 0);
+    }
+
+    function onDur() {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) done(audio.duration);
+    }
+
+    function onTime() {
+      if (Number.isFinite(audio.duration) && audio.duration > 0) done(audio.duration);
+    }
+
+    audio.addEventListener("durationchange", onDur);
+    audio.addEventListener("timeupdate", onTime);
+
+    try {
+      audio.currentTime = 1e101;
+    } catch (_) {
+      done(0);
+    }
+  });
+
+  if (value > 0) audio.dataset.duration = String(value);
+
+  try {
+    audio.currentTime = wasPlaying ? Math.min(position, Math.max(0, value - 0.15)) : 0;
+  } catch (_) {}
+
+  if (wasPlaying) {
+    audio.playbackRate = voicePlaybackSpeed;
+    audio.play().catch(() => {});
+  }
+
+  return value;
+}
+
+function refreshVoiceNote(note, audio, durationOverride) {
+  if (!note || !audio) return;
+
+  const duration =
+    durationOverride ||
+    Number(audio.dataset.duration || 0) ||
+    (Number.isFinite(audio.duration) ? audio.duration : 0);
+  const { canvas, time } = voiceNoteElements(note);
+
+  // عدد الأعمدة يناسب الطول (مثل واتساب: الرسالة الأطول موجة أوسع)
+  const wanted = voiceBarsCountFor(duration);
+  if (note.dataset.voiceBars !== String(wanted)) {
+    note.dataset.voiceBars = String(wanted);
+  }
+
+  const progress = duration > 0 ? Math.min(1, audio.currentTime / duration) : 0;
+  paintVoiceNoteCanvas(canvas, note.dataset.voiceId || "voice", progress, duration);
+
+  if (time) {
+    if (audio.dataset.playing === "1" && duration > 0) {
+      time.textContent = formatVoiceClock(duration - audio.currentTime);
+    } else {
+      time.textContent = duration > 0 ? formatVoiceClock(duration) : "0:00";
+    }
+  }
+}
+
+function wireVoiceNoteEvents(note) {
+  const { audio } = voiceNoteElements(note);
+  if (!audio || audio.dataset.wired === "1") return;
+
+  audio.dataset.wired = "1";
+
+  audio.addEventListener("loadedmetadata", async () => {
+    const duration = await ensureVoiceDuration(audio);
+    refreshVoiceNote(note, audio, duration);
+  });
+
+  audio.addEventListener("timeupdate", () => refreshVoiceNote(note, audio));
+  audio.addEventListener("play", () => {
+    setVoiceNotePlaying(note, true);
+    refreshVoiceNote(note, audio);
+  });
+  audio.addEventListener("pause", () => {
+    setVoiceNotePlaying(note, false);
+    refreshVoiceNote(note, audio);
+  });
+  audio.addEventListener("ended", () => {
+    audio.currentTime = 0;
+    setVoiceNotePlaying(note, false);
+    refreshVoiceNote(note, audio);
+    activeVoiceAudio = null;
+  });
+
+  // أول رسم بالشكل الثابت (قبل معرفة المدة)
+  refreshVoiceNote(note, audio, Number.isFinite(audio.duration) ? audio.duration : 0);
+
+  ensureVoiceDuration(audio).then((duration) => refreshVoiceNote(note, audio, duration));
+}
+
+function paintEveryVoiceNote() {
+  document.querySelectorAll("#chat-messages .voice-note").forEach((note) => {
+    wireVoiceNoteEvents(note);
+    const { audio } = voiceNoteElements(note);
+    const duration = audio && Number.isFinite(audio.duration) ? audio.duration : 0;
+    refreshVoiceNote(note, audio, duration);
+  });
+}
+
+function wireVoiceNotes() {
+  const host = $("#chat-messages");
+  if (!host || host.dataset.voiceWired === "1") return;
+
+  host.dataset.voiceWired = "1";
+
+  host.addEventListener("click", async (event) => {
+    const playBtn = event.target.closest(".voice-play");
+    const speedBtn = event.target.closest(".voice-speed");
+    const wave = event.target.closest(".voice-wave");
+
+    if (!playBtn && !speedBtn && !wave) return;
+
+    const note = event.target.closest(".voice-note");
+    if (!note) return;
+
+    const { audio, canvas } = voiceNoteElements(note);
+    if (!audio) return;
+
+    // زر السرعة: 1x ← 1.5x ← 2x (مثل واتساب) ويُحفظ للرسائل التالية
+    if (speedBtn) {
+      voicePlaybackSpeed = voicePlaybackSpeed === 1 ? 1.5 : voicePlaybackSpeed === 1.5 ? 2 : 1;
+      document.querySelectorAll("#chat-messages .voice-speed").forEach((btn) => {
+        btn.textContent = voicePlaybackSpeed === 1 ? "1x" : `${voicePlaybackSpeed}x`;
+      });
+      audio.playbackRate = voicePlaybackSpeed;
+      return;
+    }
+
+    // النقر على الموجة: انتقال لمكان معيّن
+    if (wave && !playBtn) {
+      const duration = Number(audio.dataset.duration || 0) || (await ensureVoiceDuration(audio));
+      if (duration > 0 && canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        audio.currentTime = ratio * duration;
+        refreshVoiceNote(note, audio, duration);
+      }
+      return;
+    }
+
+    if (playBtn) {
+      if (audio.paused) {
+        // صوت واحد فقط في نفس الوقت (مثل واتساب)
+        document.querySelectorAll("#chat-messages .voice-audio").forEach((other) => {
+          if (other !== audio) other.pause();
+        });
+
+        if (activeVoiceAudio && activeVoiceAudio !== audio) activeVoiceAudio.pause();
+
+        try {
+          // المدة أولاً (بلا تشغيل) ثم نُشغّل — حتى لا يقفز الصوت لآخره
+          if (!(Number(audio.dataset.duration || 0) > 0)) {
+            await ensureVoiceDuration(audio);
+          }
+
+          audio.playbackRate = voicePlaybackSpeed;
+          await audio.play();
+
+          activeVoiceAudio = audio;
+          setVoiceNotePlaying(note, true);
+          refreshVoiceNote(note, audio, Number(audio.dataset.duration || 0) || 0);
+        } catch (err) {
+          console.error("تعذّر تشغيل الرسالة الصوتية:", err);
+          showAuthError("تعذّر تشغيل الرسالة الصوتية في هذا المتصفح.");
+        }
+      } else {
+        audio.pause();
+      }
+    }
+  });
+
+  paintEveryVoiceNote();
 }
 
 // ===============================================================
