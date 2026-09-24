@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "42";
+const BUILD = "43";
 
 const state = {
   me: null,
@@ -71,7 +71,8 @@ const state = {
   activeConversation: null,
   messages: [],
   reactions: {},
-  selectedMessageId: null,   // v40: الرسالة المحددة (خيارات الرأس)
+  selectedMessageId: null,   // التوافق مع الكود القديم
+  selectedMessageIds: [],     // تحديد عدة رسائل مثل واتساب
   forwardingMessage: null,   // v40: رسالة قيد إعادة التوجيه
   replyingTo: null,
 
@@ -315,6 +316,7 @@ function openConversationUIState(conversationId) {
 }
 
 function closeChatView() {
+  stopVoiceCall();
   // v40: لا نترك لوحة التفاعل أو شريط خيارات الرسالة مفتوحاً بعد الخروج
   closeQuickReact(true);
 
@@ -1641,6 +1643,7 @@ async function renderAdminTools() {
 }
 
 function wireAdminTools() {
+  $("#admin-users-sort")?.addEventListener("change", () => loadAdminUsers());
   $("#btn-add-reply-button")?.addEventListener("click", () => addReplyButtonRow());
   $("#btn-save-auto-reply")?.addEventListener("click", saveAutoReplySettings);
   $("#btn-preview-auto-reply")?.addEventListener("click", renderReplyPreview);
@@ -2013,6 +2016,13 @@ async function sendUserResetLink(profile) {
 // ---------------------------------------------------------------
 
 function wirePreferences() {
+  // يضمن ظهور تبديل المستخدم في بداية الإعدادات حتى مع نسخة HTML قديمة مخزنة.
+  const settingsPanel = document.querySelector("#settings-panel");
+  const switchBlock = document.querySelector("#switch-user-block");
+  const firstSettingsSection = settingsPanel?.querySelector(".settings-note + details");
+  if (settingsPanel && switchBlock && firstSettingsSection && switchBlock !== firstSettingsSection) {
+    settingsPanel.insertBefore(switchBlock, firstSettingsSection);
+  }
   renderFontSizeChoices();
   renderWallpaperGrid();
   renderToneList();
@@ -3804,9 +3814,16 @@ function wireMessageActions() {
       closeQuickReact(true);
     });
 
-    $("#msg-act-copy")?.addEventListener("click", () => copySelectedMessage());
+    $("#msg-act-copy")?.addEventListener("click", () => {
+      const text = selectedMessages().map((m) => m.content || "").filter(Boolean).join("\n");
+      if (text) navigator.clipboard?.writeText(text).then(() => showAuthError("تم نسخ الرسائل."));
+    });
     $("#msg-act-forward")?.addEventListener("click", () => openForwardPanel());
-    $("#msg-act-delete")?.addEventListener("click", () => deleteMessageForMe());
+    $("#msg-act-delete")?.addEventListener("click", async () => {
+      const chosen = selectedMessages().filter((m) => !m._pending);
+      for (const message of chosen) await deleteMessageForMe(message);
+      closeMessageSelection();
+    });
   }
 
   const panel = $("#forward-panel");
@@ -3826,8 +3843,49 @@ function wireMessageActions() {
   }
 }
 
+let voiceCall = { pc: null, channel: null, stream: null, active: false, remoteId: null };
+function callChannelName() { return state.activeConversation?.id ? `voice-call-${state.activeConversation.id}` : null; }
+async function startVoiceCall(asAnswer = false) {
+  if (!state.activeConversation || voiceCall.active) return;
+  if (!navigator.mediaDevices?.getUserMedia) { showAuthError("الاتصال الصوتي غير مدعوم في هذا المتصفح."); return; }
+  try {
+    const channelName = callChannelName();
+    const channel = supabase.channel(channelName, { config: { broadcast: { self: false } } });
+    voiceCall = { pc: new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }), channel, stream: null, active: true, remoteId: getActiveChatTargetId() };
+    await new Promise((resolve, reject) => { channel.on("broadcast", { event: "signal" }, ({ payload }) => handleVoiceSignal(payload)); channel.subscribe((status) => status === "SUBSCRIBED" ? resolve() : status === "CHANNEL_ERROR" ? reject(new Error("channel")) : null); });
+    voiceCall.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    voiceCall.stream.getTracks().forEach((track) => voiceCall.pc.addTrack(track, voiceCall.stream));
+    voiceCall.pc.onicecandidate = (e) => e.candidate && voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "ice", candidate: e.candidate, from: state.me.id } });
+    voiceCall.pc.ontrack = (e) => { const audio = document.getElementById("voice-call-audio") || Object.assign(document.createElement("audio"), { id: "voice-call-audio", autoplay: true }); audio.srcObject = e.streams[0]; document.body.appendChild(audio); };
+    if (!asAnswer) {
+      const offer = await voiceCall.pc.createOffer(); await voiceCall.pc.setLocalDescription(offer);
+      await voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "offer", offer, from: state.me.id } });
+      showAuthError("جارٍ الاتصال صوتيًا…");
+    }
+  } catch (error) { stopVoiceCall(); showAuthError("تعذّر بدء الاتصال الصوتي: " + error.message); }
+}
+async function handleVoiceSignal(payload) {
+  if (!payload || payload.from === state.me?.id || !state.activeConversation) return;
+  if (payload.type === "offer") {
+    const accept = await showAppConfirm({ title: "اتصال صوتي", text: "يريد الطرف الآخر بدء اتصال صوتي.", icon: "☎" });
+    if (!accept) return;
+    await startVoiceCall(true);
+    await voiceCall.pc.setRemoteDescription(payload.offer);
+    const answer = await voiceCall.pc.createAnswer(); await voiceCall.pc.setLocalDescription(answer);
+    await voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "answer", answer, from: state.me.id } });
+  } else if (payload.type === "answer" && voiceCall.pc) await voiceCall.pc.setRemoteDescription(payload.answer);
+  else if (payload.type === "ice" && voiceCall.pc) { try { await voiceCall.pc.addIceCandidate(payload.candidate); } catch (_) {} }
+  else if (payload.type === "hangup") stopVoiceCall(false);
+}
+function stopVoiceCall(notify = true) {
+  if (!voiceCall.active) return;
+  if (notify && voiceCall.channel) voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "hangup", from: state.me?.id } }).catch(() => {});
+  voiceCall.stream?.getTracks().forEach((t) => t.stop()); voiceCall.pc?.close(); if (voiceCall.channel) supabase.removeChannel(voiceCall.channel);
+  document.getElementById("voice-call-audio")?.remove(); voiceCall = { pc: null, channel: null, stream: null, active: false, remoteId: null };
+}
 function wireConversationOptions() {
   wireVoiceNotes();
+  $("#chat-call-btn")?.addEventListener("click", startVoiceCall);
   wireMessageActions();
 
   // الضغط على رأس المحادثة يعرض بيانات المستخدم (مثل واتساب)
@@ -4777,7 +4835,9 @@ async function getChatMemberRole(conversationId, userId) {
   return data?.role || null;
 }
 
+let openingConversationToken = 0;
 async function openConversation(otherProfile) {
+  const openToken = ++openingConversationToken;
   if (!otherProfile.id) {
     showAuthError(
       "هذا المشرف لم يُنشئ حسابه في التطبيق بعد، لا يمكن بدء محادثة معه حالياً."
@@ -6029,6 +6089,11 @@ function buildMessageBubble(m) {
   }
 
   wireMessageLongPress(div, m, canDeleteMessage);
+  div.addEventListener("click", (event) => {
+    if (!isMessageSelected() || event.target.closest("button, a, audio, video")) return;
+    event.preventDefault();
+    openMessageSelection(m);
+  }, true);
 
   const reactBtn =
     div.querySelector(
@@ -6304,7 +6369,7 @@ function closeQuickReact(force = false) {
 
 /** v40: هل توجد رسالة محددة الآن؟ */
 function isMessageSelected() {
-  return Boolean(state.selectedMessageId);
+  return Boolean(state.selectedMessageIds?.length || state.selectedMessageId);
 }
 
 /** يُظهر شريط خيارات الرسالة في رأس المحادثة (مثل واتساب) */
@@ -6328,7 +6393,7 @@ function openMessageSelection(m) {
 
   const title = $("#msg-act-title");
   if (title) {
-    title.textContent = m.attachment_type === "audio" ? "رسالة صوتية" : "رسالة محددة";
+    title.textContent = `${state.selectedMessageIds.length} رسالة محددة`;
   }
 
   document.body.classList.add("msg-selected");
@@ -6337,7 +6402,9 @@ function openMessageSelection(m) {
 /** يُخفي شريط خيارات الرسالة */
 function closeMessageSelection() {
   state.selectedMessageId = null;
+  state.selectedMessageIds = [];
   state.forwardMessage = null;
+  document.querySelectorAll(".message-selected").forEach((el) => el.classList.remove("message-selected"));
 
   $("#msg-actions")?.classList.add("hidden");
   document.querySelector("#chat-active .chat-header")?.classList.remove("actions-mode");
@@ -6346,8 +6413,13 @@ function closeMessageSelection() {
 
 /** الرسالة المحددة حالياً (من قائمة الرسائل المعروضة) */
 function selectedMessage() {
-  if (!state.selectedMessageId) return null;
-  return (state.messages || []).find((m) => String(m.id) === state.selectedMessageId) || null;
+  const id = state.selectedMessageId || state.selectedMessageIds?.[0];
+  if (!id) return null;
+  return (state.messages || []).find((m) => String(m.id) === String(id)) || null;
+}
+function selectedMessages() {
+  const ids = state.selectedMessageIds?.length ? state.selectedMessageIds : (state.selectedMessageId ? [state.selectedMessageId] : []);
+  return (state.messages || []).filter((m) => ids.includes(String(m.id)));
 }
 
 function openQuickReact(row, m) {
@@ -6407,7 +6479,8 @@ function wireMessageLongPress(row, m, canDelete) {
 
   const openFor = () => {
     if (canDelete) row.classList.add("long-pressed");
-    openQuickReact(row, m);
+    // الضغط المطول يدخل نمط واتساب لتحديد الرسائل؛ النقر على رسائل أخرى يضيفها.
+    openMessageSelection(m);
   };
 
   row.addEventListener("pointerdown", (event) => {
@@ -10168,6 +10241,7 @@ function subscribeInboxUpdates() {
 // ===============================================================
 
 function subscribeGlobalMessageWatch() {
+  subscribeNewUserNotifications();
   if (!state.me) {
     return;
   }
@@ -10248,6 +10322,16 @@ function subscribeGlobalMessageWatch() {
       });
 }
 
+let newUserChannel = null;
+function subscribeNewUserNotifications() {
+  if (!state.me?.is_super_admin) return;
+  if (newUserChannel) supabase.removeChannel(newUserChannel);
+  newUserChannel = supabase.channel("new-user-alerts").on("postgres_changes", { event: "INSERT", schema: "public", table: "profiles" }, ({ new: profile }) => {
+    showAuthError(`👤 تسجيل مستخدم جديد: ${profile.display_name || profile.phone || profile.email || "مستخدم"}`);
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") new Notification("تسجيل مستخدم جديد", { body: profile.display_name || profile.phone || profile.email || "مستخدم جديد", icon: "./icons/icon-192.png" });
+    loadAdminUsers();
+  }).subscribe();
+}
 // ===============================================================
 // NOTIFICATION SOUND
 // ===============================================================

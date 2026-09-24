@@ -297,6 +297,19 @@
 
       <div class="settings-note" data-i18n="settings_note">اضغط على عنوان أي قسم لفتحه أو إغلاقه</div>
 
+      <!-- تبديل المستخدم يظهر أولاً للمشرف العام -->
+      <details class="admin-block hidden" id="switch-user-block">
+        <summary>🔁 تبديل المستخدم<span class="block-value" id="value-switch"></span></summary>
+        <div class="settings-hint">دخول سريع إلى أي حساب مشرف محفوظ، مع زر واضح للعودة إلى حسابك الأصلي.</div>
+        <div id="switch-back-row" class="switch-back-row hidden">
+          <div class="switch-back-info"><small>حسابك الأصلي</small><b id="switch-back-name">—</b></div>
+          <button id="btn-switch-back" type="button" class="admin-btn-primary">↩ رجوع إلى حسابي</button>
+        </div>
+        <label>الحسابات المتاحة</label>
+        <div id="switch-user-list" class="switch-user-list"><div class="settings-hint">جارٍ التحميل…</div></div>
+        <div id="switch-user-status" class="settings-hint"></div>
+      </details>
+
       <!-- ============ 1) الملف الشخصي ============ -->
       <details class="admin-block" open>
         <summary>👤 <span data-i18n="profile">الملف الشخصي</span><span class="block-value" id="value-profile"></span></summary>
@@ -473,9 +486,15 @@
           </div>
 
           <div class="admin-group">
-            <div class="admin-group-head">
+            <div class="admin-group-head admin-users-toolbar">
               <span>👤 المستخدمون</span>
               <span class="admin-group-count" id="admin-group-users-count">0</span>
+              <select id="admin-users-sort" aria-label="ترتيب المستخدمين">
+                <option value="newest">الأحدث تسجيلًا</option>
+                <option value="oldest">الأقدم تسجيلًا</option>
+                <option value="az">أبجديًا أ-ي</option>
+                <option value="za">أبجديًا ي-أ</option>
+              </select>
             </div>
             <div id="admin-users-list-users" class="admin-users"></div>
           </div>
@@ -486,36 +505,11 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v42</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v43</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
         <div class="admin-hint" id="update-status"></div>
-      </details>
-
-      <!-- ============ تبديل المستخدم (للمشرف العام فقط) ============ -->
-      <details class="admin-block hidden" id="switch-user-block">
-        <summary>🔁 تبديل المستخدم<span class="block-value" id="value-switch"></span></summary>
-
-        <div class="settings-hint">
-          دخول سريع إلى أي حساب من حسابات المشرفين بضغطة واحدة — بلا كتابة بريد أو كلمة مرور.
-          وحسابك الحالي يبقى محفوظاً للرجوع إليه في أي لحظة.
-        </div>
-
-        <div id="switch-back-row" class="switch-back-row hidden">
-          <div class="switch-back-info">
-            <small>حسابك الأصلي</small>
-            <b id="switch-back-name">—</b>
-          </div>
-          <button id="btn-switch-back" type="button" class="admin-btn-primary">↩ رجوع إلى حسابي</button>
-        </div>
-
-        <label>الحسابات المتاحة</label>
-        <div id="switch-user-list" class="switch-user-list">
-          <div class="settings-hint">جارٍ التحميل…</div>
-        </div>
-
-        <div id="switch-user-status" class="settings-hint"></div>
       </details>
 
       <button id="btn-logout" class="logout-btn" data-i18n="logout">تسجيل الخروج</button>

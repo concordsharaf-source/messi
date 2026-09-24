@@ -525,3 +525,18 @@ alter default privileges in schema public
 -- update public.profiles
 --    set is_admin = true, is_super_admin = true
 --  where lower(email) = 'بريدك@مثال.com';
+
+
+-- v43: فهارس ترتيب المستخدمين وإتاحة تنبيه التسجيل عبر Realtime.
+create index if not exists profiles_created_at_idx on public.profiles(created_at desc);
+alter table public.profiles replica identity full;
+-- يتيح للمشرف العام استقبال تنبيه التسجيل الجديد فورًا عند فتح التطبيق.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'profiles') then
+    execute 'alter publication supabase_realtime add table public.profiles';
+  end if;
+exception when others then
+  raise notice 'profiles realtime publication could not be updated: %', sqlerrm;
+end $$;
