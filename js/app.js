@@ -43,7 +43,25 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "46";
+const BUILD = "47";
+
+// ===============================================================
+// الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
+// ===============================================================
+const DEFAULT_AVATAR =
+  "data:image/svg+xml;charset=utf-8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 212 212">' +
+      '<rect width="212" height="212" fill="#dfe5e7"/>' +
+      '<circle cx="106" cy="82" r="38" fill="#ffffff"/>' +
+      '<path d="M106 132c-34 0-62 20-68 47v33h136v-33c-6-27-34-47-68-47z" fill="#ffffff"/>' +
+    "</svg>"
+  );
+
+/** يعيد رابط الصورة أو الصورة الافتراضية (واتساب) */
+function avatarUrl(person) {
+  return (person && person.avatar_url) || DEFAULT_AVATAR;
+}
 
 const state = {
   me: null,
@@ -213,6 +231,12 @@ async function boot() {
         await markConversationRead(state.activeConversation.id);
         reconcileMessageStatuses(state.activeConversation.id);
       }
+
+      // v47: وحدّث العدّادات والمعاينات من الخادم
+      syncUnreadBadgesFromServer();
+      if (typeof refreshConversationPreviewsFromServer === "function") {
+        refreshConversationPreviewsFromServer();
+      }
       // v44.1: أندرويد يُبطل توكن الإشعارات عند تحديث التطبيق المثبَّت أو تغيّر
       // اشتراك Push؛ نجددّه صامتاً عند العودة للتطبيق (مرة كل 6 ساعات كحد أقصى).
       refreshFcmTokenSilently();
@@ -223,6 +247,10 @@ async function boot() {
     state.isOnline = true;
     updateOfflineBanner();
     resubscribeRealtime();
+
+    // v47: عودة الاتصال ⇒ مزامنة فورية للعدّادات والمعاينات
+    syncUnreadBadgesFromServer();
+    refreshConversationPreviewsFromServer();
 
     // بعد عودة الاتصال: نُرسل ما كُتب بلا إنترنت ثم نُحدّث القائمة والرسائل
     Promise.resolve(flushOutbox())
@@ -345,6 +373,21 @@ function openConversationUIState(conversationId) {
 function closeChatView() {
   stopVoiceCall();
   stopStatusReconcile();
+
+  // v47: أوقف قنوات المحادثة — كانت تبقى مفتوحة بعد الخروج فتعتبر كل رسالة
+  // جديدة «مقروءة» (تختفي علامة غير المقروء تلقائياً والمستخدم خارج الشات).
+  if (state.msgChannel) {
+    removeRealtimeChannel(state.msgChannel);
+    state.msgChannel = null;
+  }
+  if (state.typingChannel) {
+    removeRealtimeChannel(state.typingChannel);
+    state.typingChannel = null;
+  }
+  if (state.reactionsChannel) {
+    removeRealtimeChannel(state.reactionsChannel);
+    state.reactionsChannel = null;
+  }
   // v40: لا نترك لوحة التفاعل أو شريط خيارات الرسالة مفتوحاً بعد الخروج
   closeQuickReact(true);
 
@@ -510,7 +553,13 @@ async function enterApp() {
   await touchLastSeen(true);
   startHeartbeat();
 
+  // v47: صورة بديلة عند فشل تحميل أي صورة مستخدم
+  installAvatarFallback();
+
   await loadContacts();
+
+  // v47: مزامنة دورية للرئيسية (المعاينة/العدّاد)
+  startHomeSync();
 
   subscribeGlobalPresence();
   subscribeInboxUpdates();
@@ -599,19 +648,57 @@ function showInAppNotification({ title, body, conversationId }) {
   };
 }
 
-async function handleForegroundNotification(notification) {
-  if (state.appState !== "active") return;
+// v47: إشعار نظام من داخل التطبيق (يعمل حتى والتطبيق مفتوح) عبر مُشغِّل Firebase
+async function showSystemNotification({ title, body, conversationId, tag }) {
+  try {
+    if (!("Notification" in window) || Notification.permission !== "granted") return false;
 
+    const regs = await navigator.serviceWorker.getRegistrations();
+    const reg =
+      regs.find((r) => r.scope.includes("firebase-cloud-messaging-push-scope")) ||
+      regs.find((r) => r.active) ||
+      null;
+
+    if (!reg) return false;
+
+    await reg.showNotification(title || "رسالة جديدة", {
+      body: body || "لديك رسالة جديدة",
+      icon: "./icons/icon-192.png",
+      badge: "./icons/icon-192.png",
+      tag: tag || conversationId || `wa-${Date.now()}`,
+      renotify: true,
+      silent: false,
+      data: { conversationId, url: conversationId ? `./index.html?conversation=${conversationId}` : "./index.html" },
+      vibrate: [100, 50, 100],
+    });
+
+    return true;
+  } catch (err) {
+    console.warn("showSystemNotification failed:", err?.message || err);
+    return false;
+  }
+}
+
+async function handleForegroundNotification(notification) {
   const payload = notification?.payload || notification;
   const data = notification?.data || payload?.data || {};
   const conversationId = data.conversation_id || data.conversationId || payload?.conversation_id || payload?.conversationId;
   const message = extractNotificationMessage(payload);
 
-  showInAppNotification({
-    title: notification?.title || data.title || "رسالة جديدة",
-    body: notification?.body || data.body || message?.content || "لديك رسالة جديدة",
-    conversationId,
-  });
+  const title = notification?.title || data.title || "رسالة جديدة";
+  const body = notification?.body || data.body || message?.content || "لديك رسالة جديدة";
+
+  const viewingThisChat =
+    state.activeConversation &&
+    String(state.activeConversation.id) === String(conversationId) &&
+    document.visibilityState === "visible";
+
+  // v47: إن لم يكن المستخدم يشاهد هذه المحادثة الآن ⇒ إشعار نظام + بانر داخل التطبيق
+  if (!viewingThisChat) {
+    await showSystemNotification({ title, body, conversationId });
+
+    showInAppNotification({ title, body, conversationId });
+  }
 
   if (message?.conversation_id) {
     await patchContactUIOnNewMessage(message);
@@ -3663,6 +3750,9 @@ function wireChrome() {
 
   // أي تفاعل داخل الإعدادات يُحدّث القيم المعروضة بجانب العناوين
   $("#settings-panel")?.addEventListener("click", () => setTimeout(syncSettingsValues, 80));
+  // v47: عند فتح الإعدادات نُحدّث عدد أجهزة الحساب المسجَّلة
+  $("#settings-panel")?.addEventListener("toggle", () => setTimeout(refreshPushDeviceCount, 120), true);
+  $("#btn-settings")?.addEventListener("click", () => setTimeout(refreshPushDeviceCount, 600));
   $("#settings-panel")?.addEventListener("change", () => setTimeout(syncSettingsValues, 80));
 
   wireChatPanel();
@@ -4578,11 +4668,7 @@ function buildContactRow(c, opts = {}) {
 
   row.innerHTML = `
     <div class="avatar">
-      ${
-        c.avatar_url
-          ? `<img src="${escapeHtml(c.avatar_url)}" alt="">`
-          : initials
-      }
+      <img src="${escapeHtml(avatarUrl(c))}" alt="">
 
       ${
         online
@@ -4664,6 +4750,153 @@ function buildContactRow(c, opts = {}) {
  * 3. تحريك المحادثة إلى أعلى قسمها.
  * 4. إبقاء مرجع العنصر في state.contactElements.
  */
+/**
+ * v47: مزامنة العدّادات والمعاينات من الخادم (مثل واتساب).
+ * تُنادى بعد فتح المحادثة، وعند العودة للتطبيق، وعند عودة الاتصال.
+ */
+/**
+ * v47: المعاينة في الرئيسية = آخر رسالة فعلية في المحادثة.
+ * كانت أحياناً تظهر رسالة قديمة بسبب الاعتماد على ملخّص مخزّن.
+ */
+async function refreshConversationPreviewsFromServer() {
+  const list = homeContacts();
+  if (!state.me || !state.isOnline || !list.length) return;
+
+  const ids = list.map((c) => c._conversationId).filter(Boolean);
+  if (!ids.length) return;
+
+  try {
+    const { data, error } = await supabase
+      .from("messages")
+      .select("conversation_id, content, attachment_type, status, created_at, sender_id")
+      .in("conversation_id", ids)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (error || !Array.isArray(data)) return;
+
+    const newest = {};
+    for (const message of data) {
+      const key = message.conversation_id;
+      if (!newest[key]) newest[key] = message;   // القائمة مرتّبة تنازلياً
+    }
+
+    let changed = false;
+
+    list.forEach((contact) => {
+      const message = newest[contact._conversationId];
+      if (!message) return;
+
+      const text = messagePreviewText(message);
+      if (!text) return;
+
+      const isNewer =
+        !contact._lastMessageAt ||
+        new Date(message.created_at) >= new Date(contact._lastMessageAt);
+
+      if (!isNewer) return;
+
+      contact._lastMessage = text;
+      contact._lastMessageAt = message.created_at;
+      contact._lastSenderId = message.sender_id;
+      contact._lastMessageStatus = message.status || null;
+
+      const row = state.contactElements[contact._conversationId];
+      if (!row) return;
+
+      const previewEl = ensureContactPreview(row);
+      if (previewEl && previewEl.textContent !== text) {
+        previewEl.textContent = text;
+        changed = true;
+      }
+
+      const timeEl = row.querySelector(".contact-time");
+      if (timeEl) timeEl.textContent = formatContactTime(message.created_at);
+
+      const ticksEl = row.querySelector(".contact-ticks");
+      if (ticksEl) {
+        const mine = String(message.sender_id) === String(state.me.id);
+        const status = message.status || "sent";
+        ticksEl.classList.toggle("hidden", !mine);
+        ticksEl.classList.toggle("read", status === "read");
+        ticksEl.textContent = status === "sent" ? "✓" : "✓✓";
+      }
+    });
+
+    if (changed) renderConversationSection();
+  } catch (err) {
+    // غير حرج
+  }
+}
+
+async function syncUnreadBadgesFromServer() {
+  const list = homeContacts();
+  if (!state.me || !state.isOnline || !list.length) return;
+
+  const ids = list.map((c) => c._conversationId).filter(Boolean);
+  if (!ids.length) return;
+
+  const counts = await getConversationUnreadCounts(ids);
+
+  list.forEach((c) => {
+    const value = counts[c._conversationId] || 0;
+    c._unread = value;
+
+    const row = state.contactElements[c._conversationId];
+    if (!row) return;
+
+    row.dataset.unread = String(value);
+
+    let badge = row.querySelector(".unread-badge");
+
+    if (value > 0) {
+      if (!badge) {
+        badge = document.createElement("div");
+        badge.className = "unread-badge";
+        const meta = row.querySelector(".contact-meta");
+        if (meta) meta.appendChild(badge);
+        else row.appendChild(badge);
+      }
+      badge.textContent = String(value);
+    } else {
+      badge?.remove();
+    }
+  });
+}
+
+/**
+ * v47: قائمة الرئيسية موحّدة.
+ * المشرف يبني `conversationRows`، والمستخدم العادي يبني `contacts` فقط —
+ * فكانت كل تحديثات (١) المعاينة و(٢) العدّاد لا تصل للمستخدم العادي أصلاً.
+ */
+function homeContacts() {
+  const out = [];
+  const seen = new Set();
+
+  [...(state.conversationRows || []), ...(state.contacts || [])].forEach((c) => {
+    if (!c || !c._conversationId || seen.has(c._conversationId)) return;
+    seen.add(c._conversationId);
+    out.push(c);
+  });
+
+  return out;
+}
+
+/** يضمن وجود عنصر المعاينة داخل صف القائمة (كان يُمسح بكتابة textContent مباشرة) */
+function ensureContactPreview(row) {
+  const sub = row.querySelector(".contact-sub");
+  if (!sub) return null;
+
+  let preview = sub.querySelector(".contact-preview");
+
+  if (!preview) {
+    sub.insertAdjacentHTML("beforeend", '<span class="contact-preview"></span>');
+    preview = sub.querySelector(".contact-preview");
+  }
+
+  return preview;
+}
+
 async function patchContactUIOnNewMessage(
   message,
   options = {}
@@ -4815,18 +5048,42 @@ function patchContactUIOnConversationUpdate(
     return;
   }
 
-  const sub =
-    row.querySelector(".contact-sub");
+  // v47: كان الكود يكتب textContent على .contact-sub فيمسح عنصر المعاينة
+  // والتكات — وبعدها لا يستطيع أي تحديث لاحق تعديل المعاينة (تبقى قديمة).
+  if (conversation.last_message !== undefined) {
+    const preview = ensureContactPreview(row);
+    if (preview) preview.textContent = conversation.last_message || "";
 
-  if (sub && conversation.last_message !== undefined) {
-    sub.textContent =
-      conversation.last_message || "";
+    const ticksEl = row.querySelector(".contact-ticks");
+
+    if (ticksEl) {
+      const mine =
+        conversation.last_sender_id &&
+        String(conversation.last_sender_id) === String(state.me?.id);
+
+      const status = conversation.last_message_status || "sent";
+
+      ticksEl.classList.toggle("hidden", !mine);
+      ticksEl.classList.toggle("read", status === "read");
+      ticksEl.textContent = status === "sent" ? "✓" : "✓✓";
+    }
   }
 
   if (conversation.last_message_at) {
-    row.dataset.lastMessageAt =
-      conversation.last_message_at;
+    row.dataset.lastMessageAt = conversation.last_message_at;
+
+    const timeEl = row.querySelector(".contact-time");
+    if (timeEl) timeEl.textContent = formatContactTime(conversation.last_message_at);
   }
+
+  // نُحدّث نسخة البيانات أيضاً حتى لا تعود القيمة القديمة بعد أي إعادة رسم
+  homeContacts().forEach((c) => {
+    if (c._conversationId !== conversation.id) return;
+    if (conversation.last_message !== undefined) c._lastMessage = conversation.last_message;
+    if (conversation.last_message_at) c._lastMessageAt = conversation.last_message_at;
+    if (conversation.last_sender_id) c._lastSenderId = conversation.last_sender_id;
+    if (conversation.last_message_status) c._lastMessageStatus = conversation.last_message_status;
+  });
 
   moveContactRowToTop(row);
 }
@@ -5041,7 +5298,7 @@ async function openConversation(otherProfile) {
     }
 
     const headerAvatarEl = $("#chat-header-avatar");
-    if (headerAvatarEl) headerAvatarEl.src = otherProfile.avatar_url || "";
+    if (headerAvatarEl) headerAvatarEl.src = avatarUrl(otherProfile);
 
     const headerStatusEl = $("#chat-header-status");
     if (headerStatusEl) headerStatusEl.textContent = "";
@@ -5135,7 +5392,7 @@ async function openConversation(otherProfile) {
     $("#chat-header-name")?.setAttribute("dir", nameDirection(otherProfile.display_name));
 
     $("#chat-header-avatar").src =
-      otherProfile.avatar_url || "";
+      avatarUrl(otherProfile);
 
     await refreshPresenceLabel(
       otherProfile.id
@@ -5563,9 +5820,7 @@ function renderForwardList(query = "") {
     row.type = "button";
     row.className = "forward-row";
 
-    const avatar = c.avatar_url
-      ? `<img src="${escapeHtml(c.avatar_url)}" alt="" />`
-      : escapeHtml((c.display_name || "؟").trim().charAt(0));
+    const avatar = `<img src="${escapeHtml(avatarUrl(c))}" alt="" />`;
 
     row.innerHTML = `
       <span class="forward-avatar">${avatar}</span>
@@ -8084,13 +8339,10 @@ function avatarPublicUrl(path) {
 /** رسم الصورة في كل مواضع الواجهة (بلا جلب بيانات) */
 function paintAvatarPreview() {
   const me = state.me;
-  const url = me?.avatar_url || "";
+  const url = avatarUrl(me);
 
   const sidebar = $("#my-avatar");
-  if (sidebar) {
-    if (url) sidebar.src = url;
-    else sidebar.removeAttribute("src");
-  }
+  if (sidebar) sidebar.src = url;
 
   const previewImg = $("#avatar-preview-img");
   const previewInitial = $("#avatar-preview-initial");
@@ -9846,6 +10098,14 @@ function subscribeToConversation(
         async (payload) => {
           const message = payload.new;
           const isIncoming = String(message.sender_id) !== String(state.me.id);
+
+          // v47: لا نعدّ الرسالة «مقروءة» إلا إذا كانت المحادثة مفتوحة فعلاً
+          const stillViewing = Boolean(
+            state.activeConversation &&
+            String(state.activeConversation.id) === String(conversationId) &&
+            document.visibilityState !== "hidden"
+          );
+
           const receivedMessage = isIncoming && message.status === "sent"
             ? { ...message, status: "delivered" }
             : message;
@@ -9864,7 +10124,7 @@ function subscribeToConversation(
                 m.id === receivedMessage.id
             );
 
-          if (!exists) {
+          if (!exists && stillViewing) {
             state.messages.push(receivedMessage);
 
             state.animateId = receivedMessage.id;
@@ -9890,7 +10150,7 @@ function subscribeToConversation(
             }
           );
 
-          if (isIncoming) {
+          if (isIncoming && stillViewing) {
             notifySoundFor(conversationId);
 
             // المحادثة مفتوحة، لذلك لا نزيد العداد.
@@ -10024,6 +10284,20 @@ function subscribeToConversation(
 //  لا تظهر ✓✓ حتى الخروج من المحادثة والعودة. هذه المزامنة الدورية (١٥ ثانية)
 //  + عند عودة التطبيق للمقدمة + عند إعادة الاشتراك تضمن الظهور خلال ثوانٍ.
 
+// v47: مزامنة الرئيسية (المعاينة + العدّاد) لتطابق الخادم دائماً مثل واتساب
+let homeSyncTimer = null;
+
+function startHomeSync() {
+  clearInterval(homeSyncTimer);
+  homeSyncTimer = setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    if (!state.me || !state.isOnline) return;
+
+    refreshConversationPreviewsFromServer();
+    syncUnreadBadgesFromServer();
+  }, 25000);
+}
+
 let statusReconcileTimer = null;
 let statusReconcileConvId = null;
 
@@ -10109,37 +10383,53 @@ async function markConversationRead(
   // بلا إنترنت: تُعلَّم الرسائل مقروءة تلقائياً عند عودة الاتصال
   if (!state.isOnline) return;
 
-  try {
-    const { error } =
-      await supabase
-        .from("messages")
-        .update({
-          status: "read",
-        })
-        .eq(
-          "conversation_id",
-          conversationId
-        )
-        .neq(
-          "sender_id",
-          state.me.id
-        )
-        .neq(
-          "status",
-          "read"
-        );
+  // v47: نتحقق ونجرّب مرتين — كانت بعض الرسائل تبقى «غير مقروءة» فيظهر
+  // العدّاد من جديد بعد إعادة تشغيل التطبيق (وهمياً).
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { error } =
+        await supabase
+          .from("messages")
+          .update({
+            status: "read",
+          })
+          .eq(
+            "conversation_id",
+            conversationId
+          )
+          .neq(
+            "sender_id",
+            state.me.id
+          )
+          .neq(
+            "status",
+            "read"
+          );
 
-    if (error) {
+      if (error) {
+        console.error(
+          "markConversationRead failed:",
+          error
+        );
+        continue;
+      }
+
+      const { count, error: countError } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .neq("sender_id", state.me.id)
+        .neq("status", "read");
+
+      if (!countError && !count) break;   // نجحت المزامنة
+    } catch (err) {
       console.error(
-        "markConversationRead failed:",
-        error
+        "markConversationRead network error:",
+        err
       );
     }
-  } catch (err) {
-    console.error(
-      "markConversationRead network error:",
-      err
-    );
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
   }
 
   // =============================================================
@@ -10149,6 +10439,10 @@ async function markConversationRead(
   clearUnreadBadge(
     conversationId
   );
+
+  // v47: نعيد حساب العدّادات والمعاينات من الخادم للتأكد من مطابقتها للواقع
+  syncUnreadBadgesFromServer();
+  refreshConversationPreviewsFromServer();
 
     // تحديث تكات آخر رسالة في صف المحادثة (مثل واتساب)
     try {
@@ -10585,7 +10879,77 @@ function subscribeInboxUpdates() {
 // GLOBAL MESSAGE WATCH
 // ===============================================================
 
-function subscribeGlobalMessageWatch() {
+/** v47: اسم صاحب الرسالة (من بيانات القائمة المحمّلة، بلا طلب شبكة) */
+function senderDisplayName(senderId) {
+  if (!senderId) return "رسالة جديدة";
+  if (String(senderId) === String(state.me?.id)) return state.me?.display_name || "أنا";
+
+  const hit = homeContacts().find((c) => String(c.id) === String(senderId));
+  if (hit?.display_name) return hit.display_name;
+
+  const admin = state.otherAdminProfiles?.find((p) => String(p.id) === String(senderId));
+  if (admin?.display_name) return admin.display_name;
+
+  return "رسالة جديدة";
+}
+
+/**
+ * v47: إشعار وصول رسالة لحظياً من الـRealtime — يعمل حتى والتطبيق مفتوح،
+ * وبلا اعتماد على FCM (كان الإشعار لا يظهر إذا لم يفتح المستخدم التطبيق أو
+ * كانت حالة الصفحة غير «active»).
+ */
+async function notifyIncomingMessageLive(message) {
+  if (!message?.conversation_id) return;
+  if (String(message.sender_id) === String(state.me?.id)) return;
+
+  const conversationId = message.conversation_id;
+
+  const viewing =
+    state.activeConversation &&
+    String(state.activeConversation.id) === String(conversationId) &&
+    document.visibilityState === "visible";
+
+  if (viewing) return;                       // يشاهد نفس المحادثة الآن
+
+  const title = senderDisplayName(message.sender_id);
+  const body = messagePreviewText(message) || "لديك رسالة جديدة";
+
+  await showSystemNotification({ title, body, conversationId, tag: conversationId });
+
+  showInAppNotification({ title, body, conversationId });
+}
+
+/**
+ * v47: أي صورة مستخدم يفشل تحميلها (شبكة/رابط ميت/حصة جوجل) تُستبدل
+ * بالصورة الافتراضية نفسها المستخدمة في واتساب — فلا تظهر صورة مكسورة.
+ */
+function installAvatarFallback() {
+  document.addEventListener(
+    "error",
+    (event) => {
+      const el = event.target;
+
+      if (!el || el.tagName !== "IMG") return;
+
+      const holder = el.closest(
+        ".avatar, .forward-avatar, .msg-avatar, .chat-avatar, #my-avatar, #avatar-preview-img, #contact-info-img, #chat-header-avatar"
+      );
+
+      if (!holder && el.id !== "my-avatar") return;
+
+      let url = "";
+      try { url = el.getAttribute("src") || ""; } catch (_) { return; }
+
+      if (!url || url.startsWith("data:")) return;
+
+      el.dataset.avatarFallback = "1";
+      el.src = DEFAULT_AVATAR;
+    },
+    true
+  );
+}
+
+async function subscribeGlobalMessageWatch() {
   subscribeNewUserNotifications();
   if (!state.me) {
     return;
@@ -10660,6 +11024,9 @@ function subscribeGlobalMessageWatch() {
           }
 
           notifySoundFor(msg.conversation_id);
+
+          // v47: إشعار النظام/الواجهة لحظياً (زي واتساب) حتى والتطبيق مفتوح
+          notifyIncomingMessageLive(msg);
         }
       )
       .subscribe((status) => {
@@ -11798,9 +12165,10 @@ function openContactInfoPanel(profile) {
   const avatar = $("#contact-info-img");
   const initial = $("#contact-info-initial");
 
-  if (person.avatar_url) {
+  if (true) {
     if (avatar) {
-      avatar.src = person.avatar_url;
+      // v47: الصورة الافتراضية زي واتساب عند عدم وجود صورة
+      avatar.src = avatarUrl(person);
       avatar.classList.remove("hidden");
     }
     initial?.classList.add("hidden");
@@ -12273,6 +12641,26 @@ function pushPermissionLabel() {
 function renderPushStatus(message) {
   const el = $("#push-status");
   if (el) el.textContent = message || pushPermissionLabel();
+  refreshPushDeviceCount();
+}
+
+/** v47: كم جهازاً مسجَّلاً لهذا الحساب؟ (ليتأكد المستخدم بنفسه) */
+async function refreshPushDeviceCount() {
+  const el = $("#push-device-count");
+  if (!el || !state.me) return;
+
+  try {
+    const { count, error } = await supabase
+      .from("fcm_tokens")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", state.me.id);
+
+    if (error) return;
+
+    el.textContent = count
+      ? `الأجهزة المسجَّلة لحسابك: ${count} ✅`
+      : "لا يوجد جهاز مسجَّل — اضغط «تفعيل إشعارات الجهاز» على جهازك.";
+  } catch (_) {}
 }
 
 let pushAutoAsked = false;
@@ -12552,3 +12940,13 @@ document.addEventListener(
   "DOMContentLoaded",
   boot
 );
+
+// ===============================================================
+// v47: أدوات تشخيص (للفحص الآلي) — لا تؤثر على السلوك
+// ===============================================================
+window.__waDebug = {
+  state,
+  refreshConversationPreviewsFromServer,
+  syncUnreadBadgesFromServer,
+  getConversationUnreadCounts,
+};

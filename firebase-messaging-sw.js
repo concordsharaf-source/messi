@@ -21,6 +21,57 @@ const firebaseConfig = {
 };
 
 firebase.initializeApp(firebaseConfig);
+
+// ===============================================================
+// v47: فتح «التطبيق» لا المتصفح عند النقر على الإشعار
+// ---------------------------------------------------------------
+// نُسجّل معالجنا قبل تهيئة Firebase حتى ينفّذ أولاً: نُركّز نافذة التطبيق
+// القائمة إن وُجدت، وإلا نفتح رابط الإشعار (داخل نطاق التطبيق ⇒ يفتح
+// التطبيق المثبَّت على أندرويد/آيفون بدل تبويب متصفح).
+// ===============================================================
+function fcmPayloadData(notification) {
+  const raw = notification?.data?.FCM_MSG || null;
+  const data = raw?.data || notification?.data || {};
+  return {
+    conversationId: data.conversationId || data.conversation_id || "",
+    url: data.click_action || notification?.data?.url || "",
+  };
+}
+
+self.addEventListener("notificationclick", (event) => {
+  const { conversationId } = fcmPayloadData(event.notification);
+
+  if (!conversationId) return;   // نترك المعالجة الافتراضية
+
+  event.stopImmediatePropagation();
+  event.notification.close();
+
+  // نُفضّل فتح التطبيق المثبَّت (نطاق الجذر) على أي تبويب آخر
+  const targetUrl = new URL(
+    `./index.html?conversation=${encodeURIComponent(conversationId)}`,
+    self.location.href
+  ).href;
+
+  event.waitUntil((async () => {
+    const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+
+    for (const client of clientList) {
+      const clientUrl = new URL(client.url, self.location.href);
+      if (clientUrl.origin === self.location.origin) {
+        if ("focus" in client) {
+          try { await client.focus(); } catch (_) {}
+          client.postMessage({ type: "OPEN_CONVERSATION", conversationId });
+          return;
+        }
+      }
+    }
+
+    if (self.clients.openWindow) {
+      await self.clients.openWindow(targetUrl);
+    }
+  })());
+});
+
 const messaging = firebase.messaging();
 
 // FCM may retry delivery. Keep a short-lived in-memory id cache so a retry

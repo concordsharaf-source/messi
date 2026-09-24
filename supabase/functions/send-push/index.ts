@@ -103,6 +103,17 @@ serve(async (req) => {
       );
     }
 
+    // v47: عنوان الإشعار = اسم المرسل (مثل واتساب) بدل «رسالة جديدة»
+    let senderName = "رسالة جديدة";
+    if (!isSelfTest && senderId) {
+      const { data: senderProfile } = await admin
+        .from("profiles")
+        .select("display_name, phone")
+        .eq("id", senderId)
+        .maybeSingle();
+      senderName = senderProfile?.display_name || senderProfile?.phone || "رسالة جديدة";
+    }
+
     const { data: tokens, error: tokenError } = await admin
       .from("fcm_tokens")
       .select("token")
@@ -135,7 +146,7 @@ serve(async (req) => {
     // ⚠️ حقول الويب (icon/badge/tag/actions…) لا يقبلها message.notification في FCM v1،
     //    بل تُوضع في webpush.notification. الحقل العلوي يحتوي العنوان والنص فقط.
     const webNotification = {
-      title: "رسالة جديدة",
+      title: senderName,
       body,
       icon: "./icons/icon-192.png",
       badge: "./icons/icon-192.png",
@@ -159,9 +170,9 @@ serve(async (req) => {
         body: JSON.stringify({
           message: {
             token,
-            notification: { title: "رسالة جديدة", body },
+            notification: { title: senderName, body },
             data: {
-              title: "رسالة جديدة",
+              title: senderName,
               body,
               conversationId: String(conversationId || ""),
               senderId: String(senderId || ""),

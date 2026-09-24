@@ -117,3 +117,42 @@ drop trigger if exists aab_send_welcome_on_first_user_message on public.messages
 create trigger aab_send_welcome_on_first_user_message
   after insert on public.messages
   for each row execute function public.send_welcome_on_first_user_message();
+
+-- ---------- v47: سجل الإشعارات يحتفظ بنتيجة «وصلت» ----------
+alter table public.push_logs add column if not exists delivered boolean not null default false;
+
+-- ---------- v47: ملخّص المحادثة = آخر رسالة دائماً (بلا شرط زمني) ----------
+create or replace function public.bump_conversation_summary()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_preview text;
+  v_at      timestamptz := coalesce(new.created_at, now());
+begin
+  v_preview := coalesce(
+    nullif(btrim(coalesce(new.content, '')), ''),
+    case coalesce(new.attachment_type, '')
+      when 'image' then '📷 صورة'
+      when 'audio' then '🎤 رسالة صوتية'
+      when 'video' then '🎬 فيديو'
+      when 'file'  then '📎 ملف'
+      else 'رسالة'
+    end
+  );
+
+  -- بلا شرط زمني: أي رسالة جديدة تصبح هي ملخّص المحادثة في الرئيسية.
+  -- (كان الشرط الزمني يمنع التحديث إذا كان ساعة جهاز المُرسل متأخرة قليلاً)
+  update public.conversations c
+     set last_message        = left(v_preview, 300),
+         last_message_at     = v_at,
+         last_sender_id      = new.sender_id,
+         last_message_status = coalesce(new.status, 'sent')
+   where c.id = new.conversation_id
+     and (c.last_message_at is null or v_at >= c.last_message_at - interval '5 minutes');
+
+  return new;
+end;
+$$;

@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v46";
+const CACHE_NAME = "wa-clone-shell-v47";
 // هيكل التطبيق: كل ما يلزم للإقلاع بلا إنترنت (بما فيه المكتبات المحلية)
 const APP_SHELL = [
   "./",
@@ -58,6 +58,42 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
 });
+
+// ===============================================================
+// v47: النقر على الإشعار يفتح «التطبيق» على المحادثة (لا المتصفح)
+// ===============================================================
+self.addEventListener("notificationclick", (event) => {
+  const data = event.notification?.data || {};
+  const conversationId = data.conversationId || data.conversation_id || "";
+
+  event.notification.close();
+
+  const targetUrl = new URL(
+    conversationId
+      ? `./index.html?conversation=${encodeURIComponent(conversationId)}`
+      : "./index.html",
+    self.location.href
+  ).href;
+
+  event.waitUntil((async () => {
+    const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+
+    for (const client of clientList) {
+      const clientUrl = new URL(client.url, self.location.href);
+      if (clientUrl.origin !== self.location.origin) continue;
+
+      if ("focus" in client) {
+        try { await client.focus(); } catch (_) {}
+        client.postMessage({ type: "OPEN_CONVERSATION", conversationId });
+        return;
+      }
+    }
+
+    if (self.clients.openWindow) await self.clients.openWindow(targetUrl);
+  })());
+});
+
+self.addEventListener("notificationclose", () => {});
 
 // مطابقة الكاش مع تجاهل رقم النسخة (?v=37). سابقاً كانت المطابقة بالرابط الكامل،
 // فتفشل بلا إنترنت لأن المخزَّن بلا `?v=` والمطلوب معه ⇒ كان المتصفح يستلم
