@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "39";
+const BUILD = "40";
 
 const state = {
   me: null,
@@ -71,6 +71,8 @@ const state = {
   activeConversation: null,
   messages: [],
   reactions: {},
+  selectedMessageId: null,   // v40: الرسالة المحددة (خيارات الرأس)
+  forwardingMessage: null,   // v40: رسالة قيد إعادة التوجيه
   replyingTo: null,
 
   msgChannel: null,
@@ -236,6 +238,10 @@ async function boot() {
   });
 
   window.addEventListener("popstate", (event) => {
+    // v40: أي رجوع يُغلق لوحة التفاعل/خيارات الرسالة فوراً
+    // (كانت تبقى ظاهرة بعد الرجوع إلى القائمة الرئيسية).
+    closeQuickReact(true);
+
     // إغلاق داخلي للإعدادات: لا نفعل شيئاً (الحالة سُحبت بالفعل)
     if (popstateFromSettings) {
       popstateFromSettings = false;
@@ -309,6 +315,9 @@ function openConversationUIState(conversationId) {
 }
 
 function closeChatView() {
+  // v40: لا نترك لوحة التفاعل أو شريط خيارات الرسالة مفتوحاً بعد الخروج
+  closeQuickReact(true);
+
   document.body.classList.remove("viewing-chat");
   closeMediaViewer();
   state.activeConversation = null;
@@ -3240,6 +3249,9 @@ function openSettings(options = {}) {
     history.pushState({ waSettings: true }, "", "#settings");
   }
 
+  // v40: كل الأقسام مطوية عند كل فتح — إلا ما يُفتح تلقائياً بسبب تركيز حقل
+  collapseSettingsSections();
+
   // نُحمّل بيانات اللوحة عند كل فتح (لتكون طازجة دائماً)
   renderAdminTools();
   syncSettingsValues();
@@ -3261,10 +3273,19 @@ function openSettings(options = {}) {
  * يغلق الإعدادات.
  * viaBack = true عندما يكون الإغلاق بسبب زر الرجوع نفسه (الحالة سُحبت أصلاً).
  */
+/** v40: كل أقسام الإعدادات تُطوى عند مغادرتها، فتعود مطوية عند العودة */
+function collapseSettingsSections() {
+  document.querySelectorAll("#settings-panel details").forEach((details) => {
+    details.open = false;
+  });
+}
+
 function closeSettings(viaBack = false) {
   const panel = $("#settings-panel");
 
   if (!panel || panel.classList.contains("hidden")) return;
+
+  collapseSettingsSections();
 
   panel.classList.add("hidden");
   $("#settings-backdrop")?.classList.add("hidden");
@@ -3660,8 +3681,45 @@ function updateComposerButtons() {
   send.classList.toggle("hidden", !hasText);
 }
 
+function wireMessageActions() {
+  const bar = $("#msg-actions");
+
+  if (bar && bar.dataset.wired !== "1") {
+    bar.dataset.wired = "1";
+
+    $("#msg-act-close")?.addEventListener("click", () => closeQuickReact(true));
+
+    $("#msg-act-reply")?.addEventListener("click", () => {
+      const m = selectedMessage();
+      if (m) setReplyTarget(m);
+      closeQuickReact(true);
+    });
+
+    $("#msg-act-copy")?.addEventListener("click", () => copySelectedMessage());
+    $("#msg-act-forward")?.addEventListener("click", () => openForwardPanel());
+    $("#msg-act-delete")?.addEventListener("click", () => deleteMessageForMe());
+  }
+
+  const panel = $("#forward-panel");
+
+  if (panel && panel.dataset.wired !== "1") {
+    panel.dataset.wired = "1";
+
+    $("#forward-close")?.addEventListener("click", closeForwardPanel);
+
+    panel.addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) closeForwardPanel();
+    });
+
+    $("#forward-search")?.addEventListener("input", (event) => {
+      renderForwardList(event.target.value);
+    });
+  }
+}
+
 function wireConversationOptions() {
   wireVoiceNotes();
+  wireMessageActions();
 
   // الضغط على رأس المحادثة يعرض بيانات المستخدم (مثل واتساب)
   const openInfo = () => {
@@ -4794,6 +4852,242 @@ async function getPendingOutboxMessages(conversationId) {
   }
 }
 
+// ---------------------------------------------------------------
+// v40: تنبيه صغير داخل المحادثة (نسخ/حذف/إعادة توجيه)
+// ---------------------------------------------------------------
+function showChatToast(text) {
+  const toast = $("#global-toast");
+  if (!toast) return;
+
+  toast.textContent = text;
+  toast.classList.remove("hidden");
+
+  clearTimeout(toast._hideTimeout);
+  toast._hideTimeout = setTimeout(() => toast.classList.add("hidden"), 2600);
+}
+
+/** وصف مختصر للرسالة (يُستخدم في معاينة إعادة التوجيه) */
+function messagePreviewLabel(m) {
+  if (!m) return "";
+
+  const text = (m.content || "").trim();
+  if (text) return text.length > 140 ? text.slice(0, 140) + "…" : text;
+
+  if (m.attachment_type === "image") return "🖼️ صورة";
+  if (m.attachment_type === "video") return "🎬 فيديو";
+  if (m.attachment_type === "audio") return "🎤 رسالة صوتية";
+  if (m.attachment_url) return "📎 مرفق";
+
+  return "رسالة";
+}
+
+/** نسخ نص الرسالة المحددة */
+async function copySelectedMessage() {
+  const m = selectedMessage();
+  if (!m) return;
+
+  const text = (m.content || "").trim();
+
+  if (!text) {
+    showChatToast("هذه الرسالة بلا نص لنسخه");
+    return;
+  }
+
+  let copied = false;
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    }
+  } catch (_) {
+    copied = false;
+  }
+
+  if (!copied) {
+    try {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.setAttribute("readonly", "");
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+      copied = true;
+    } catch (_) {
+      copied = false;
+    }
+  }
+
+  showChatToast(copied ? "تم نسخ الرسالة" : "تعذّر النسخ — انسخ النص يدوياً");
+  closeQuickReact(true);
+}
+
+/** «حذف من عندي»: تختفي الرسالة عندك أنت فقط، وتبقى عند الطرف الآخر */
+async function deleteMessageForMe() {
+  const m = selectedMessage();
+  const conv = state.activeConversation;
+
+  if (!m || !conv) return;
+
+  if (!window.confirm("حذف هذه الرسالة من عندك أنت فقط؟\nلن تُحذف عند الطرف الآخر.")) return;
+
+  hideMessageLocally(conv.id, m.id);
+
+  state.messages = (state.messages || []).filter((x) => String(x.id) !== String(m.id));
+  delete state.reactions[m.id];
+
+  closeQuickReact(true);
+  renderMessages();
+
+  await cacheMessages(
+    conv.id,
+    (state.messages || []).filter((x) => !x._pending)
+  );
+
+  showChatToast("تم حذف الرسالة من عندك");
+}
+
+// ---------------------------------------------------------------
+// v40: إعادة التوجيه — اختيار المحادثة ثم إرسال نفس المحتوى
+// ---------------------------------------------------------------
+function openForwardPanel() {
+  const m = selectedMessage();
+  if (!m) return;
+
+  state.forwardingMessage = {
+    content: m.content || "",
+    attachment_url: m.attachment_url || null,
+    attachment_type: m.attachment_type || null,
+  };
+
+  const preview = $("#forward-preview");
+  if (preview) preview.textContent = messagePreviewLabel(m);
+
+  const search = $("#forward-search");
+  if (search) search.value = "";
+
+  renderForwardList("");
+  $("#forward-panel")?.classList.remove("hidden");
+
+  closeQuickReact(true);
+}
+
+function closeForwardPanel() {
+  $("#forward-panel")?.classList.add("hidden");
+  state.forwardingMessage = null;
+}
+
+function renderForwardList(query = "") {
+  const host = $("#forward-list");
+  if (!host) return;
+
+  const q = String(query || "").trim().toLowerCase();
+
+  const contacts = (state.contacts || []).filter((c) => {
+    const name = (c.display_name || "").toLowerCase();
+    const phone = String(c.phone || "");
+    return !q || name.includes(q) || phone.includes(q);
+  });
+
+  if (!contacts.length) {
+    host.innerHTML = `<div class="settings-hint">لا توجد محادثات مطابقة.</div>`;
+    return;
+  }
+
+  host.innerHTML = "";
+
+  contacts.slice(0, 60).forEach((c) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "forward-row";
+
+    const avatar = c.avatar_url
+      ? `<img src="${escapeHtml(c.avatar_url)}" alt="" />`
+      : escapeHtml((c.display_name || "؟").trim().charAt(0));
+
+    row.innerHTML = `
+      <span class="forward-avatar">${avatar}</span>
+      <span class="forward-name" dir="${nameDirection(c.display_name)}">${escapeHtml(c.display_name || "بدون اسم")}</span>
+      <span class="forward-go">إرسال</span>
+    `;
+
+    row.addEventListener("click", () => forwardToContact(c));
+    host.appendChild(row);
+  });
+}
+
+async function forwardToContact(contact) {
+  const payload = state.forwardingMessage;
+
+  $("#forward-panel")?.classList.add("hidden");
+
+  if (!payload || !contact) return;
+
+  try {
+    await openConversation(contact);
+
+    await sendMessage({
+      content: payload.content || "",
+      attachmentUrl: payload.attachment_url || null,
+      attachmentType: payload.attachment_type || null,
+    });
+
+    showChatToast("تمت إعادة توجيه الرسالة");
+  } catch (error) {
+    console.error("forward failed:", error);
+    showChatToast("تعذّرت إعادة التوجيه");
+  }
+
+  state.forwardingMessage = null;
+}
+
+// ---------------------------------------------------------------
+// v40: «حذف من عندي» — نحفظ معرّفات الرسائل المحذوفة محلياً لكل محادثة،
+// فلا تظهر لك مرة أخرى (ولا تُحذف عند الطرف الآخر إطلاقاً).
+// ---------------------------------------------------------------
+
+const HIDDEN_MESSAGES_KEY = "wa_hidden_messages";
+
+function readHiddenMap() {
+  try {
+    return JSON.parse(localStorage.getItem(HIDDEN_MESSAGES_KEY) || "{}") || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function hiddenIdsFor(conversationId) {
+  const map = readHiddenMap();
+  return new Set(map[String(conversationId)] || []);
+}
+
+function hideMessageLocally(conversationId, messageId) {
+  if (!conversationId || !messageId) return;
+
+  const map = readHiddenMap();
+  const key = String(conversationId);
+  const list = new Set(map[key] || []);
+
+  list.add(String(messageId));
+
+  // سقف معقول حتى لا يتضخّم التخزين المحلي
+  map[key] = [...list].slice(-500);
+
+  try {
+    localStorage.setItem(HIDDEN_MESSAGES_KEY, JSON.stringify(map));
+  } catch (_) {}
+}
+
+function filterHiddenMessages(conversationId, list) {
+  const hidden = hiddenIdsFor(conversationId);
+  if (!hidden.size) return list;
+
+  return (list || []).filter((m) => !hidden.has(String(m.id)));
+}
+
 async function loadMessages(conversationId) {
   const cached =
     await getCachedMessages(
@@ -4803,7 +5097,7 @@ async function loadMessages(conversationId) {
   const pendingOutbox = await getPendingOutboxMessages(conversationId);
 
   if (cached.length || pendingOutbox.length) {
-    state.messages = [...cached, ...pendingOutbox];
+    state.messages = filterHiddenMessages(conversationId, [...cached, ...pendingOutbox]);
     renderMessages();
   }
 
@@ -4831,16 +5125,16 @@ async function loadMessages(conversationId) {
     return;
   }
 
-  state.messages = [
+  state.messages = filterHiddenMessages(conversationId, [
     ...(data || []),
     ...(await getPendingOutboxMessages(conversationId)),
-  ];
+  ]);
 
   renderMessages();
 
   await cacheMessages(
     conversationId,
-    data || []
+    filterHiddenMessages(conversationId, data || [])
   );
 }
 
@@ -5642,8 +5936,11 @@ function closeQuickReact(force = false) {
   // ---------------------------------------------------------------
   // مهلة سماح: التمرير/تغيّر المقاس/النقرة الشبحية بعد رفع الإصبع كانت
   // تُغلق اللوحة فور فتحها فتظهر "تومض وتختفي". لا نُغلق داخل المهلة.
+  // (لكن زر الرجوع/مغادرة المحادثة يُغلقها فوراً بـ force=true)
   // ---------------------------------------------------------------
   if (!force && performance.now() - quickReactOpenedAt < 600) return;
+
+  closeMessageSelection();
 
   document
     .querySelectorAll(".bubble-row.react-open, .bubble-row.long-pressed")
@@ -5654,6 +5951,54 @@ function closeQuickReact(force = false) {
 
   quickReactTarget = null;
   quickReactOpenedAt = 0;
+}
+
+/** v40: هل توجد رسالة محددة الآن؟ */
+function isMessageSelected() {
+  return Boolean(state.selectedMessageId);
+}
+
+/** يُظهر شريط خيارات الرسالة في رأس المحادثة (مثل واتساب) */
+function openMessageSelection(m) {
+  if (!m) return;
+
+  state.selectedMessageId = String(m.id);
+
+  const bar = $("#msg-actions");
+  const header = document.querySelector("#chat-active .chat-header");
+
+  if (bar) bar.classList.remove("hidden");
+  header?.classList.add("actions-mode");
+
+  // لا نُظهر زر «نسخ» لرسالة بلا نص (صورة/ملف)
+  const copyBtn = $("#msg-act-copy");
+  if (copyBtn) {
+    const hasText = Boolean((m.content || "").trim());
+    copyBtn.classList.toggle("hidden", !hasText);
+  }
+
+  const title = $("#msg-act-title");
+  if (title) {
+    title.textContent = m.attachment_type === "audio" ? "رسالة صوتية" : "رسالة محددة";
+  }
+
+  document.body.classList.add("msg-selected");
+}
+
+/** يُخفي شريط خيارات الرسالة */
+function closeMessageSelection() {
+  state.selectedMessageId = null;
+  state.forwardMessage = null;
+
+  $("#msg-actions")?.classList.add("hidden");
+  document.querySelector("#chat-active .chat-header")?.classList.remove("actions-mode");
+  document.body.classList.remove("msg-selected");
+}
+
+/** الرسالة المحددة حالياً (من قائمة الرسائل المعروضة) */
+function selectedMessage() {
+  if (!state.selectedMessageId) return null;
+  return (state.messages || []).find((m) => String(m.id) === state.selectedMessageId) || null;
 }
 
 function openQuickReact(row, m) {
@@ -5682,6 +6027,9 @@ function openQuickReact(row, m) {
   panel.style.visibility = "visible";
 
   getReactBackdrop().classList.remove("hidden");
+
+  // v40: يظهر شريط الخيارات في الرأس مع ظهور أيقونات التفاعل
+  openMessageSelection(m);
 
   if (navigator.vibrate) {
     try {
@@ -5818,7 +6166,14 @@ document.addEventListener(
 );
 
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeQuickReact(true);
+  if (event.key !== "Escape") return;
+
+  if (!$("#forward-panel")?.classList.contains("hidden")) {
+    closeForwardPanel();
+    return;
+  }
+
+  closeQuickReact(true);
 });
 
 // ---------------------------------------------------------------
