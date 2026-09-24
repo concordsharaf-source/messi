@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "49";
+const BUILD = "50";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -1646,8 +1646,109 @@ async function loadAdminUsers() {
   if (adminsCount) adminsCount.textContent = String(admins.length);
   if (usersCount) usersCount.textContent = String(users.length);
 
-  renderAdminUsersGroup(adminsHost, admins, "لا يوجد مشرفون حتى الآن.");
-  renderAdminUsersGroup(usersHost, users, "لا يوجد مستخدمون حتى الآن.");
+  // v50: الفرز كان قائمة شكلية لا تُطبَّق أبدًا — الآن يُطبَّق فعلاً + بحث
+  const mode = readAdminUsersSort();
+  const query = String($("#admin-users-search")?.value || "").trim().toLowerCase();
+
+  const filteredUsers = query
+    ? users.filter((p) => adminUserSearchText(p).includes(query))
+    : users;
+
+  state.adminAllUsers = users;
+  state.adminAllAdmins = admins;
+
+  renderAdminUsersGroup(
+    adminsHost,
+    sortAdminProfiles(admins, mode),
+    query ? "لا يوجد مشرف مطابق للبحث." : "لا يوجد مشرفون حتى الآن."
+  );
+
+  renderAdminUsersGroup(
+    usersHost,
+    sortAdminProfiles(filteredUsers, mode),
+    query ? "لا يوجد مستخدم مطابق للبحث." : "لا يوجد مستخدمون حتى الآن."
+  );
+
+  const result = $("#admin-users-result");
+  if (result) {
+    result.textContent = query || mode !== "newest"
+      ? `المعروض: ${filteredUsers.length} من ${users.length} مستخدم`
+      : "";
+  }
+
+  if (usersCount) {
+    usersCount.textContent = query
+      ? `${filteredUsers.length}/${users.length}`
+      : String(users.length);
+  }
+}
+
+// ===============================================================
+// v50: فرز/بحث المستخدمين
+// ===============================================================
+
+const ADMIN_USERS_SORT_KEY = "wa_admin_users_sort_v1";
+
+function readAdminUsersSort() {
+  return localStorage.getItem(ADMIN_USERS_SORT_KEY) || "newest";
+}
+
+function adminUserSearchText(profile) {
+  return [profile.display_name, profile.phone, profile.email]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+/** نشاط المستخدم = وقت آخر رسالة في محادثاته (وإن لم توجد: وقت التسجيل) */
+function adminUserActivity(profile) {
+  const rows = state.conversationRows || [];
+  let newest = 0;
+
+  rows.forEach((row) => {
+    const sameUser =
+      String(row.id) === String(profile.id) ||
+      String(row._conversationUserId || "") === String(profile.id);
+
+    if (!sameUser) return;
+
+    const at = Date.parse(row._lastMessageAt || "") || 0;
+    if (at > newest) newest = at;
+  });
+
+  return newest || Date.parse(profile.created_at || "") || 0;
+}
+
+function sortAdminProfiles(list, mode) {
+  const rows = [...(list || [])];
+
+  const nameOf = (p) =>
+    String(p.display_name || p.phone || p.email || "").trim();
+
+  rows.sort((a, b) => {
+    switch (mode) {
+      case "oldest":
+        return (Date.parse(a.created_at || "") || 0) - (Date.parse(b.created_at || "") || 0);
+
+      case "az":
+        return nameOf(a).localeCompare(nameOf(b), "ar");
+
+      case "za":
+        return nameOf(b).localeCompare(nameOf(a), "ar");
+
+      case "activity":
+        return adminUserActivity(b) - adminUserActivity(a);
+
+      case "idle":
+        return adminUserActivity(a) - adminUserActivity(b);
+
+      case "newest":
+      default:
+        return (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0);
+    }
+  });
+
+  return rows;
 }
 
 /** معرّفات البطاقات المفتوحة (تُحفظ حتى لا تُطوى عند تحديث القائمة) */
@@ -1812,6 +1913,47 @@ function buildAdminUserCard(p) {
   return row;
 }
 
+/** v50: إعادة رسم قائمة المستخدمين من البيانات المحمّلة (فرز/بحث بلا شبكة) */
+function renderAdminUsersFromState() {
+  const usersHost = $("#admin-users-list-users");
+  const adminsHost = $("#admin-users-list");
+  if (!usersHost || !state.adminAllUsers) return;
+
+  const mode = readAdminUsersSort();
+  const query = String($("#admin-users-search")?.value || "").trim().toLowerCase();
+
+  const users = query
+    ? (state.adminAllUsers || []).filter((p) => adminUserSearchText(p).includes(query))
+    : state.adminAllUsers || [];
+
+  renderAdminUsersGroup(
+    usersHost,
+    sortAdminProfiles(users, mode),
+    query ? "لا يوجد مستخدم مطابق للبحث." : "لا يوجد مستخدمون حتى الآن."
+  );
+
+  renderAdminUsersGroup(
+    adminsHost,
+    sortAdminProfiles(state.adminAllAdmins || [], mode),
+    "لا يوجد مشرفون حتى الآن."
+  );
+
+  const result = $("#admin-users-result");
+  if (result) {
+    result.textContent =
+      query || mode !== "newest"
+        ? `المعروض: ${users.length} من ${(state.adminAllUsers || []).length} مستخدم`
+        : "";
+  }
+
+  const usersCount = $("#admin-group-users-count");
+  if (usersCount) {
+    usersCount.textContent = query
+      ? `${users.length}/${(state.adminAllUsers || []).length}`
+      : String((state.adminAllUsers || []).length);
+  }
+}
+
 function renderAdminUsersGroup(host, profiles, emptyText) {
   if (!host) return;
 
@@ -1941,7 +2083,21 @@ async function renderAdminTools() {
 }
 
 function wireAdminTools() {
-  $("#admin-users-sort")?.addEventListener("change", () => loadAdminUsers());
+  // v50: الفرز يُطبَّق فورًا على المعروض (بلا إعادة جلب) ويُحفظ للجلسات القادمة
+  const sortSelect = $("#admin-users-sort");
+  if (sortSelect) {
+    sortSelect.value = readAdminUsersSort();
+    sortSelect.addEventListener("change", () => {
+      localStorage.setItem(ADMIN_USERS_SORT_KEY, sortSelect.value);
+      renderAdminUsersFromState();
+    });
+  }
+
+  // v50: بحث فوري في المستخدمين (اسم/رقم/بريد)
+  $("#admin-users-search")?.addEventListener("input", () => {
+    clearTimeout(window.__adminUsersSearchTimer);
+    window.__adminUsersSearchTimer = setTimeout(renderAdminUsersFromState, 150);
+  });
   $("#btn-add-reply-button")?.addEventListener("click", () => addReplyButtonRow());
   $("#btn-save-auto-reply")?.addEventListener("click", saveAutoReplySettings);
   $("#btn-preview-auto-reply")?.addEventListener("click", renderReplyPreview);
@@ -2064,12 +2220,14 @@ function applyChatBackground() {
   const preset =
     CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg) || CHAT_WALLPAPERS[0];
 
-  // نُفرِّغ التنسيقات السطرية ليعود النمط الافتراضي من CSS (النقشة)
+  // v50: نُفرِّغ التنسيقات السطرية ونترك CSS يرسم نقشة «رسوم واتساب»
+  // باللون المناسب للثيم أو للخلفية الجاهزة المختارة.
   box.style.backgroundImage = "";
   box.style.backgroundSize = "";
   box.style.backgroundPosition = "";
   box.style.backgroundRepeat = "";
-  box.style.backgroundColor = preset.color || "";
+  box.style.backgroundColor = "";
+  box.dataset.bg = preset.id;
 }
 
 function renderWallpaperGrid() {
