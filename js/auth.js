@@ -87,21 +87,35 @@ export async function signOut(userId) {
   }
 }
 
-export async function getCurrentProfile() {
+export async function getCurrentProfile(preferredUserId = null) {
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return null;
+    // v49: كنا نطلب /auth/v1/user (دور شبكة كامل) في كل إقلاع. صاحب الجلسة
+    // معروف محلياً، وقراءة الملف محمية بسياسات القاعدة ⇒ نستغني عن الدور.
+    let userId = preferredUserId || null;
+
+    if (!userId) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        userId = data?.session?.user?.id || null;
+      } catch (_) {}
+    }
+
+    if (!userId) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) return null;
+      userId = user.id;
+    }
 
     const { data: profile, error } = await supabase
       .from("profiles")
       .select("*")
-      .eq("id", user.id)
+      .eq("id", userId)
       .maybeSingle();
 
     if (error) throw error;
     if (!profile) return null;
 
-    const normalizedEmail = (profile.email || user.email || "").trim().toLowerCase();
+    const normalizedEmail = (profile.email || "").trim().toLowerCase();
 
     return {
       ...profile,

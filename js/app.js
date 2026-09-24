@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "48";
+const BUILD = "49";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -177,6 +177,12 @@ async function boot() {
   const canEnterOffline = !navigator.onLine && Boolean(readCachedProfile()?.id);
 
   if (session || canEnterOffline) {
+    // v49: معرّف المستخدم من الجلسة ⇒ نُطلق الطلبات قبل أي انتظار
+    state._sessionUserId = session?.user?.id || readCachedProfile()?.id || null;
+
+    // v49: نرسم المخزَّن فوراً (بلا انتظار الشبكة) ثم نُحدّثه
+    if (session) await paintFromCacheInstant(session);
+
     await enterApp();
 
     await revealApp();
@@ -199,7 +205,8 @@ async function boot() {
         (event === "SIGNED_IN" || event === "INITIAL_SESSION") &&
         session?.user
       ) {
-        await autoEnableNotifications(session.user.id);
+        // v49: تسجيل توكن الإشعارات لا يحجب شيئاً — في الخلفية
+        autoEnableNotifications(session.user.id).catch(() => {});
         return;
       }
 
@@ -495,13 +502,33 @@ async function resolveMyProfile() {
     return cached ? { ...cached, _offline_profile: true } : null;
   }
 
-  let sessionUserId = null;
+  let sessionUserId = state._sessionUserId || null;
   try {
-    const { data } = await supabase.auth.getSession();
-    sessionUserId = data?.session?.user?.id || null;
+    if (!sessionUserId) {
+      const { data } = await supabase.auth.getSession();
+      sessionUserId = data?.session?.user?.id || null;
+    }
   } catch (err) {}
 
-  const profile = await getCurrentProfile();
+  // v49: استخدم الوعود المُطلقة مسبقاً إن وُجدت (نفس الطلب بلا تكرار)
+  let profile = null;
+  const prefetched = sessionUserId ? consumePrefetch("profile") : null;
+
+  if (prefetched) {
+    try {
+      const { data } = await prefetched;
+      profile = data;
+      if (profile) {
+        profile = {
+          ...profile,
+          is_admin: Boolean(profile.is_admin),
+          is_super_admin: Boolean(profile.is_super_admin),
+        };
+      }
+    } catch (_) {}
+  }
+
+  if (!profile) profile = await getCurrentProfile(sessionUserId);
 
   if (profile) {
     cacheMyProfile(profile);
@@ -515,7 +542,127 @@ async function resolveMyProfile() {
   return null;
 }
 
+/**
+ * v49: عرض فوري — إن كان هناك ملف شخصي مخزّن مطابق للجلسة، نُظهر الواجهة
+ * والقائمة المخزّنة في نفس اللحظة، ثم يأتي تحديث الشبكة بعدها.
+ * (كان المستخدم ينتظر ٤-٧ طلبات متسلسلة قبل رؤية أي شيء.)
+ */
+async function paintFromCacheInstant(session) {
+  try {
+    const cached = readCachedProfile();
+    if (!cached?.id) return false;
+
+    const sessionUserId = session?.user?.id || null;
+    if (sessionUserId && String(sessionUserId) !== String(cached.id)) return false;
+
+    state.me = { ...cached };
+
+    $("#auth-screen")?.classList.add("hidden");
+    $("#app-shell")?.classList.remove("hidden");
+
+    const nameEl = $("#my-name");
+    if (nameEl) {
+      nameEl.textContent = cached.display_name || "";
+      nameEl.setAttribute("dir", nameDirection(cached.display_name || ""));
+    }
+
+    paintAvatarPreview();
+    applyThemeVars();
+
+    const cachedContacts = await getCachedContacts();
+    if (cachedContacts?.length && !$("#contact-list")?.children.length) {
+      renderContactsFromCache(cachedContacts);
+    }
+
+    state._cachePainted = true;
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+/**
+ * v49: جلبٌ مسبق متوازٍ — نُطلق كل طلبات الإقلاع فور معرفة معرّف المستخدم،
+ * بلا انتظار انتهاء قراءة الملف الشخصي، ثم تُستهلك نفس الوعود (بلا تكرار طلبات).
+ */
+const bootPrefetch = { startedFor: null, admins: null, conversations: null, unread: null, profile: null };
+
+function startBootPrefetch(userId) {
+  if (!userId || !state.isOnline) return;
+  if (bootPrefetch.startedFor === userId) return;
+
+  bootPrefetch.startedFor = userId;
+
+  // مهم: باني استعلامات Supabase «كسول» — لا يُرسل الطلب إلا عند then()
+  // لذلك نُثبّت .then() الآن حتى تنطلق الطلبات فعلاً بالتوازي.
+  const kick = (builder) => {
+    const promise = builder.then((result) => result);
+    promise.catch(() => {});
+    return promise;
+  };
+
+  bootPrefetch.admins = kick(supabase.from("profiles").select("*").eq("is_admin", true));
+  bootPrefetch.conversations = kick(
+    supabase
+      .from("conversations")
+      .select("*")
+      .eq("user_id", userId)
+      .order("last_message_at", { ascending: false })
+  );
+  bootPrefetch.unread = getMyUnreadCounts(userId);
+  bootPrefetch.profile = kick(
+    supabase.from("profiles").select("*").eq("id", userId).maybeSingle()
+  );
+}
+
+function consumePrefetch(key) {
+  const promise = bootPrefetch[key];
+  bootPrefetch[key] = null;
+  return promise;
+}
+
+/**
+ * v49: بعد نجاح الدخول مباشرة — نُثبّت معرّف الجلسة ونُطلق كل طلبات الإقلاع
+ * بالتوازي (ملف + أدوار + قوائم + عدّادات) قبل أن يطلبها enterApp.
+ */
+async function primeBootPrefetchAfterAuth() {
+  try {
+    const { data } = await supabase.auth.getSession();
+    state._sessionUserId = data?.session?.user?.id || state._sessionUserId || null;
+
+    if (state._sessionUserId) {
+      startBootPrefetch(state._sessionUserId);
+      // الأدوار أيضاً بالتوازي (تُخزَّن الوعود في getModerationRoles فلا تُكرَّر)
+      getModerationRoles(state._sessionUserId).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+/** v49: يُنفّذ المهمة بعد أول رسم للواجهة (requestIdleCallback أو ٣٠٠ مللي) */
+function scheduleAfterFirstPaint(task) {
+  const run = () => {
+    try { task(); } catch (err) { console.warn("after-first-paint task failed:", err?.message || err); }
+  };
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(run, { timeout: 1200 });
+  } else {
+    setTimeout(run, 300);
+  }
+}
+
 async function enterApp() {
+  // v49: نعرف معرّف المستخدم من الجلسة/الكاش قبل قراءة الملف ⇒ نُطلق كل
+  // الطلبات المستقلة معاً (ملف + أدوار + قوائم + عدّادات) بدل سلسلة انتظار.
+  const earlyUserId =
+    state._sessionUserId || readCachedProfile()?.id || null;
+
+  if (earlyUserId && state.isOnline) startBootPrefetch(earlyUserId);
+
+  const rolesPromise = earlyUserId
+    ? getModerationRoles(earlyUserId).catch(() => [])
+    : Promise.resolve([]);
+
   state.me = await resolveMyProfile();
 
   // وقت الدخول: يُضبط مرة واحدة عند دخول الجلسة (لا يتغيّر أثناءها)
@@ -533,8 +680,10 @@ async function enterApp() {
 
   maybePromptPassword();
 
-  const moderationRoles = await getModerationRoles(state.me.id);
-  state.me.chat_roles = moderationRoles;
+  const moderationRoles = earlyUserId
+    ? await rolesPromise
+    : await getModerationRoles(state.me.id);
+  state.me.chat_roles = moderationRoles || [];
   state.me.can_moderate = Boolean(
     state.me.is_admin ||
     moderationRoles.some((role) => ["admin", "moderator"].includes(role))
@@ -559,29 +708,31 @@ async function enterApp() {
 
   await loadContacts();
 
-  // v47: مزامنة دورية للرئيسية (المعاينة/العدّاد)
-  startHomeSync();
+  // v49: كل ما ليس ضرورياً لرؤية القائمة يُنفَّذ بعد أول رسم (إقلاع أسرع)
+  scheduleAfterFirstPaint(() => {
+    startHomeSync();
 
-  subscribeGlobalPresence();
-  subscribeInboxUpdates();
-  subscribeGlobalMessageWatch();
+    subscribeGlobalPresence();
+    subscribeInboxUpdates();
+    subscribeGlobalMessageWatch();
 
-  if (!state.foregroundMessagesUnsub) {
-    try {
-      state.foregroundMessagesUnsub =
-        listenForForegroundMessages({
-          soundUrl: toneUrl(),
-          onNotification: handleForegroundNotification,
-          shouldPlaySound: (data) =>
-            !isViewingConversation(data?.conversation_id || data?.conversationId),
-        });
-    } catch (err) {
-      console.error(
-        "تعذّر تفعيل استماع رسائل FCM الأمامية:",
-        err
-      );
+    if (!state.foregroundMessagesUnsub) {
+      try {
+        state.foregroundMessagesUnsub =
+          listenForForegroundMessages({
+            soundUrl: toneUrl(),
+            onNotification: handleForegroundNotification,
+            shouldPlaySound: (data) =>
+              !isViewingConversation(data?.conversation_id || data?.conversationId),
+          });
+      } catch (err) {
+        console.error(
+          "تعذّر تفعيل استماع رسائل FCM الأمامية:",
+          err
+        );
+      }
     }
-  }
+  });
 
   if (state.isOnline) {
     flushOutbox();
@@ -720,6 +871,34 @@ async function touchLastSeen(online) {
   // بلا إنترنت: لا نداء شبكة (يُحدَّث آخر ظهور عند عودة الاتصال)
   if (!state.isOnline) return;
 
+  // v49: لا نكتب أكثر من مرة كل دقيقة، ولا ننتظر الرد (كان يبطئ الدخول)
+  const now = Date.now();
+  if (online && state._lastSeenWriteAt && now - state._lastSeenWriteAt < 60000) return;
+  state._lastSeenWriteAt = now;
+
+  if (!online) {
+    // إشعار الخروج يُهمَل إن فشل — لا نُعطّل شيئاً بسببه
+    supabase
+      .from("profiles")
+      .update({ is_online: false, last_seen: new Date().toISOString() })
+      .eq("id", state.me.id)
+      .then(() => {})
+      .catch(() => {});
+    return;
+  }
+
+  setTimeout(() => {
+    supabase
+      .from("profiles")
+      .update({ is_online: true, last_seen: new Date().toISOString() })
+      .eq("id", state.me.id)
+      .then(() => {})
+      .catch(() => {});
+  }, 200);
+
+  return;
+
+  /* eslint-disable no-unreachable */
   try {
     await supabase
       .from("profiles")
@@ -794,6 +973,7 @@ function wireAuthForms() {
 
         saveSavedPhone({ full: buildFullPhone(phone, dial), country: $("#signup-country").value });
 
+        await primeBootPrefetchAfterAuth();   // v49: ابدأ الطلبات فوراً
         await enterApp();
       } catch (err) {
         showAuthError(err.message);
@@ -855,6 +1035,7 @@ function wireAuthForms() {
     await withBusy("#login-email-wrap button[type=submit]", "جارٍ الدخول…", async () => {
       try {
         await signIn({ email, password });
+        await primeBootPrefetchAfterAuth();   // v49: ابدأ الطلبات فوراً
         await enterApp();
       } catch (err) {
         showAuthError(err.message);
@@ -929,6 +1110,7 @@ async function submitPhoneLogin() {
 
       saveSavedPhone({ full: buildFullPhone(phone, dial), country: $("#login-country").value });
 
+      await primeBootPrefetchAfterAuth();   // v49: ابدأ الطلبات فوراً
       await enterApp();
     } catch (err) {
       showAuthError(err.message);
@@ -4222,7 +4404,8 @@ async function loadContacts() {
   }
 
   // بعد رسم القائمة: نجلب حالة/وسوم/كتم كل محادثة ونطبّق الفلتر
-  await loadAdminMeta();
+  // v49: بلا انتظار — القائمة ظهرت بالفعل وهذا تحسين ثانوي (RPC للمشرفين).
+  loadAdminMeta().catch(() => {});
 }
 
 function renderContactsFromCache(cached) {
@@ -4256,6 +4439,35 @@ function compareContactsByActivity(first, second) {
   ) || 0;
 
   return secondTime - firstTime;
+}
+
+/**
+ * v49: عدّاد غير المقروء على مستوى المستخدم كله في نداء واحد — بلا انتظار
+ * قائمة المحادثات، فيعمل بالتوازي مع جلب جهات الاتصال (تسريع الإقلاع).
+ */
+async function getMyUnreadCounts(userId = null) {
+  const counts = {};
+
+  const meId = userId || state.me?.id || null;
+  if (!meId || !state.isOnline) return counts;
+
+  try {
+    const { data, error } = await supabase
+      .from("messages")
+      .select("conversation_id")
+      .neq("sender_id", meId)
+      .or("status.is.null,status.neq.read")
+      .order("created_at", { ascending: false })
+      .limit(3000);
+
+    if (error) return counts;
+
+    for (const message of data || []) {
+      counts[message.conversation_id] = (counts[message.conversation_id] || 0) + 1;
+    }
+  } catch (_) {}
+
+  return counts;
 }
 
 async function getConversationUnreadCounts(conversationIds) {
@@ -4292,26 +4504,25 @@ async function loadContactsFromNetwork() {
   resetContactIndex();
 
   if (!state.me.can_moderate) {
-    const [profilesResult, conversationsResult] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select("*")
-        .eq("is_admin", true),
-      supabase
-        .from("conversations")
-        .select("*")
-        .eq("user_id", state.me.id)
-        .order("last_message_at", {
-          ascending: false,
-        }),
+    const [profilesResult, conversationsResult, unreadCounts] = await Promise.all([
+      consumePrefetch("admins") ||
+        supabase
+          .from("profiles")
+          .select("*")
+          .eq("is_admin", true),
+      consumePrefetch("conversations") ||
+        supabase
+          .from("conversations")
+          .select("*")
+          .eq("user_id", state.me.id)
+          .order("last_message_at", {
+            ascending: false,
+          }),
+      consumePrefetch("unread") || getMyUnreadCounts(),
     ]);
 
     const adminProfiles = profilesResult.data;
     const userConversations = conversationsResult.data;
-
-    const unreadCounts = await getConversationUnreadCounts(
-      (userConversations || []).map((conversation) => conversation.id)
-    );
 
     const rows = (adminProfiles || []).map((profile) => {
         const conversation =
@@ -4399,9 +4610,24 @@ async function loadContactsFromNetwork() {
   }
 
   const userContacts = [];
-  const unreadCounts = await getConversationUnreadCounts(
-    (convs || []).map((conversation) => conversation.id)
-  );
+
+  // v49: العدّادات كانت تُطلب بعد قائمة المحادثات (دور شبكة زائد لكل مشرف).
+  // نستخدم العدّاد العام المُطلق مسبقاً والمتوازي (مع احتياطي عند غيابه).
+  let unreadCounts = {};
+  try {
+    const prefetchedUnread = consumePrefetch("unread");
+    unreadCounts = prefetchedUnread
+      ? (await prefetchedUnread) || {}
+      : await getMyUnreadCounts();
+  } catch (_) {
+    unreadCounts = {};
+  }
+
+  if (!Object.keys(unreadCounts).length && (convs || []).length) {
+    unreadCounts = await getConversationUnreadCounts(
+      (convs || []).map((conversation) => conversation.id)
+    );
+  }
 
   for (const c of convs || []) {
     userContacts.push({
@@ -4669,7 +4895,7 @@ function buildContactRow(c, opts = {}) {
 
   row.innerHTML = `
     <div class="avatar">
-      <img src="${escapeHtml(avatarUrl(c))}" alt="">
+      <img src="${escapeHtml(avatarUrl(c))}" alt="" loading="lazy" decoding="async">
 
       ${
         online
@@ -5248,17 +5474,76 @@ function updateConversationOptions() {
 
 async function getModerationRoles(userId) {
   if (!userId) return [];
+
+  // v49: الأدوار لا تتغيّر كثيراً ⇒ نقرأها من الكاش المحلي فوراً (بلا نداء شبكة)
+  // ونُحدّثها في الخلفية — كان هذا نداءً على مسار الدخول الحرج.
+  const cachedRoles = readCachedRoles(userId);
+  if (cachedRoles) {
+    if (state.isOnline) {
+      setTimeout(() => {
+        supabase
+          .from("chat_members")
+          .select("role")
+          .eq("user_id", userId)
+          .in("role", ["admin", "moderator"])
+          .then(({ data }) => {
+            if (data) writeCachedRoles(userId, [...new Set(data.map((r) => r.role))]);
+          })
+          .catch(() => {});
+      }, 1200);
+    }
+    return cachedRoles;
+  }
+
   if (!state.isOnline) return [];
-  const { data, error } = await supabase
-    .from("chat_members")
-    .select("role")
-    .eq("user_id", userId)
-    .in("role", ["admin", "moderator"]);
+
+  // v49: طلب واحد أثناء التنفيذ لكل مستخدم (كان يُرسل مرتين عند الدخول)
+  if (!rolesInFlight.has(userId)) {
+    rolesInFlight.set(
+      userId,
+      supabase
+        .from("chat_members")
+        .select("role")
+        .eq("user_id", userId)
+        .in("role", ["admin", "moderator"])
+        .then((result) => {
+          rolesInFlight.delete(userId);
+          return result;
+        })
+    );
+  }
+  const { data, error } = await rolesInFlight.get(userId);
   if (error) {
     console.warn("تعذّر قراءة أدوار المستخدم:", error.message);
     return [];
   }
-  return [...new Set((data || []).map((item) => item.role))];
+
+  const roles = [...new Set((data || []).map((item) => item.role))];
+  writeCachedRoles(userId, roles);
+  return roles;
+}
+
+// v49: كاش أدوار المستخدم (١٢ ساعة) — يُخرج نداءً من مسار الدخول الحرج
+const ROLES_CACHE_KEY = "wa_roles_cache_v1";
+const rolesInFlight = new Map();
+
+function readCachedRoles(userId) {
+  try {
+    const raw = localStorage.getItem(ROLES_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed.userId !== userId) return null;
+    if (Date.now() - (parsed.at || 0) > 12 * 60 * 60 * 1000) return null;
+    return Array.isArray(parsed.roles) ? parsed.roles : [];
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeCachedRoles(userId, roles) {
+  try {
+    localStorage.setItem(ROLES_CACHE_KEY, JSON.stringify({ userId, roles, at: Date.now() }));
+  } catch (_) {}
 }
 
 async function getChatMemberRole(conversationId, userId) {
@@ -5420,15 +5705,15 @@ async function openConversation(otherProfile) {
       otherProfile.id
     );
 
-    await loadMessages(
-      conversationId
-    );
-
-    await loadReactionsForConversation();
-
+    // v49: نُشترك أولاً (لاستقبال اللحظي فوراً)، ثم نجلب الرسائل (تُرسم من
+    // الكاش لحظياً ثم تُحدَّث من الشبكة)، والتفاعلات في الخلفية بلا تعطيل.
     subscribeToConversation(
       conversationId
     );
+
+    await loadMessages(conversationId);
+
+    loadReactionsForConversation().catch(() => {});
 
     // v46: هل الطرف الآخر يكتب/يسجّل الآن؟
     refreshPeerActivityState();
@@ -5842,7 +6127,7 @@ function renderForwardList(query = "") {
     row.type = "button";
     row.className = "forward-row";
 
-    const avatar = `<img src="${escapeHtml(avatarUrl(c))}" alt="" />`;
+    const avatar = `<img src="${escapeHtml(avatarUrl(c))}" alt="" loading="lazy" decoding="async" />`;
 
     row.innerHTML = `
       <span class="forward-avatar">${avatar}</span>

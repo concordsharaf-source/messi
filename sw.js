@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v48";
+const CACHE_NAME = "wa-clone-shell-v49";
 // هيكل التطبيق: كل ما يلزم للإقلاع بلا إنترنت (بما فيه المكتبات المحلية)
 const APP_SHELL = [
   "./",
@@ -133,20 +133,57 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // 2) ملفات التطبيق: الشبكة أولاً (لتصل التحديثات فوراً) ثم الكاش بلا إنترنت
+  // 2) ملفات التطبيق (js/css/أيقونات/خطوط): v49 — الكاش أولاً للنسخة المطابقة
+  //    بالضبط (روابط الملفات تحمل رقم النسخة ?v=NN) ثم تحديث صامت في الخلفية.
+  //    هذا يجعل الإقلاع لاحقاً فورياً بلا انتظار الشبكة، ومع ذلك تصل التحديثات:
+  //    أي نسخة جديدة تعني رابطاً جديداً (?v=49) ⇒ لا يطابق الكاش ⇒ تُجلب من الشبكة،
+  //    و version.json يبقى «الشبكة أولاً» ليُنبّه التطبيق بوجود نسخة جديدة.
+  if (isSameOrigin && !url.pathname.endsWith("version.json")) {
+    event.respondWith((async () => {
+      let cached = null;
+      try {
+        cached = await caches.match(request);   // مطابقة دقيقة (مع ?v=)
+      } catch (_) {}
+
+      const network = fetch(request)
+        .then((response) => {
+          if (response && response.ok && response.type === "basic") {
+            const copy = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+          }
+          return response;
+        })
+        .catch(() => null);
+
+      if (cached) {
+        network.catch(() => {});   // تحديث صامت
+        return cached;             // بلا انتظار الشبكة
+      }
+
+      const response = await network;
+      if (response) return response;
+
+      const fallback = await matchCached(request);
+      if (fallback) return fallback;
+
+      return new Response("", { status: 504, statusText: "offline", headers: TEXT });
+    })());
+    return;
+  }
+
+  // 2ب) version.json: الشبكة أولاً دائماً (مصدر الحقيقة لرقم النسخة)
   if (isSameOrigin) {
     event.respondWith((async () => {
       try {
         const response = await fetch(request);
-        if (response && response.ok && response.type === "basic") {
+        if (response && response.ok) {
           const copy = response.clone();
           caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
         }
         return response;
       } catch (err) {
-        const cached = await matchCached(request);
-        if (cached) return cached;
-        return new Response("", { status: 504, statusText: "offline", headers: TEXT });
+        return (await matchCached(request)) ||
+          new Response("{}", { headers: { "Content-Type": "application/json" } });
       }
     })());
     return;
