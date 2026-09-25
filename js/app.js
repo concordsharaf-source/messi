@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "62";
+const BUILD = "63";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -2317,6 +2317,27 @@ function applyChatBackground() {
 function syncWallpaperValue() {
   const el = $("#value-wallpaper");
   if (el) el.textContent = wallpaperLabel();
+  paintWallpaperPreview();
+}
+
+/** v63: معاينة حيّة أعلى المنتقي — نفس الخلفية المختارة خلف فقاعتين تجريبيتين */
+function paintWallpaperPreview() {
+  const box = $("#wp-preview-chat");
+  if (!box) return;
+
+  if (customWallpaperActive()) {
+    box.dataset.mode = "custom";
+    box.style.backgroundColor = "";
+    box.style.backgroundImage = `url("${state.me.wallpaper_url}")`;
+    return;
+  }
+
+  const preset = CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg) || CHAT_WALLPAPERS[0];
+  const wanted = preset.tile === "theme" ? (document.body?.dataset?.theme === "light" ? "light" : "dark") : preset.tile;
+
+  box.dataset.mode = "preset";
+  box.style.backgroundColor = preset.color || waDefaultColor();
+  box.style.backgroundImage = `url("${wanted === "dark" ? WA_TILE.dark : WA_TILE.light}")`;
 }
 
 const WP_UPLOAD_ICON =
@@ -2384,13 +2405,15 @@ function renderWallpaperGrid() {
 
   CHAT_WALLPAPERS.forEach((w) => {
     const btn = buildWallpaperTile({ id: w.id, label: w.label, preset: w });
-    btn.addEventListener("click", () => selectWallpaperPreset(w));
+    // v63: نمنع انتشار النقرة — إعادة بناء الشبكة تُخرج العنصر المنقور من اللوحة،
+    // فكان مستمع «النقر خارج اللوحة» يظنّه خارجًا ويغلق الإعدادات فور الاختيار.
+    btn.addEventListener("click", (event) => { event.stopPropagation(); selectWallpaperPreset(w); });
     grid.appendChild(btn);
   });
 
   if (state.me?.wallpaper_url) {
     const mine = buildWallpaperTile({ id: "custom", label: "خلفيتي", custom: true });
-    mine.addEventListener("click", selectCustomWallpaper);
+    mine.addEventListener("click", (event) => { event.stopPropagation(); selectCustomWallpaper(); });
     grid.appendChild(mine);
   }
 
@@ -2401,7 +2424,7 @@ function renderWallpaperGrid() {
   upload.className = "wp-tile wp-upload";
   upload.title = "رفع صورة من جهازك";
   upload.innerHTML = `${WP_UPLOAD_ICON}<span>رفع صورة</span>`;
-  upload.addEventListener("click", () => $("#wallpaper-input")?.click());
+  upload.addEventListener("click", (event) => { event.stopPropagation(); $("#wallpaper-input")?.click(); });
   grid.appendChild(upload);
 
   // زر الإزالة يظهر فقط عند وجود خلفية مرفوعة
@@ -4211,7 +4234,7 @@ function wireChrome() {
   wireAvatarEditor();
 
   $("#btn-remove-avatar")?.addEventListener("click", removeAvatar);
-  $("#btn-remove-wallpaper")?.addEventListener("click", removeWallpaper);
+  $("#btn-remove-wallpaper")?.addEventListener("click", (event) => { event.stopPropagation(); removeWallpaper(); });
 
   document.addEventListener("click", (event) => {
     const panel = $("#settings-panel");
@@ -4221,8 +4244,14 @@ function wireChrome() {
     // لأن التنبيه خارج اللوحة ⇒ كان الضغط على «اضغط هنا» يبدو بلا أثر.
     const clickedToast = Boolean(event.target?.closest?.("#global-toast"));
 
+    // v63: نستخدم مسار الحدث (الذي يُلتقط لحظة النقر) بدل العنصر الحالي — كي لا يُغلق
+    // القسم إذا أُعيد بناء العنصر المنقور أثناء معالجة نفس النقرة.
+    const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+    const insidePanel = path.includes(panel) || panel.contains(event.target);
+    const insideTrigger = path.includes(trigger) || event.target === trigger;
+
     if (panel && !panel.classList.contains("hidden") &&
-        !panel.contains(event.target) && event.target !== trigger && !clickedToast) {
+        !insidePanel && !insideTrigger && !clickedToast) {
       closeSettings();
     }
   });
