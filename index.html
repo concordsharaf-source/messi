@@ -26,7 +26,7 @@
   <!-- v49: اتصال مبكر بخادم البيانات + تحميل مسبق لكود التطبيق (إقلاع أسرع) -->
   <link rel="preconnect" href="https://jjamwoidjxrdovsoftbq.supabase.co" crossorigin />
   <link rel="dns-prefetch" href="https://jjamwoidjxrdovsoftbq.supabase.co" />
-  <link rel="modulepreload" href="./js/app.js?v=55" />
+  <link rel="modulepreload" href="./js/app.js?v=56" />
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
@@ -35,7 +35,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "55";
+  window.WA_BUILD = "56";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -94,8 +94,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=55" />
-  <script src="./vendor/supabase-js.js?v=55"></script>
+  <link rel="stylesheet" href="./css/style.css?v=56" />
+  <script src="./vendor/supabase-js.js?v=56"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -533,7 +533,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v55</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v56</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -576,6 +576,28 @@
 </div>
 
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
+
+<!-- ===== v56: واجهة المكالمة الصوتية (واردة / صادرة / جارية) ===== -->
+<div id="call-overlay" class="call-overlay hidden" role="dialog" aria-modal="true" aria-label="مكالمة صوتية">
+  <div class="call-card">
+    <div class="call-avatar"><img id="call-avatar" src="" alt="" /></div>
+    <div class="call-name" id="call-name" dir="auto"></div>
+    <div class="call-status" id="call-status">جارٍ الاتصال…</div>
+    <div class="call-timer" id="call-timer">00:00</div>
+
+    <div class="call-actions">
+      <button id="call-accept" type="button" class="call-btn call-accept hidden">قبول</button>
+      <button id="call-decline" type="button" class="call-btn call-decline hidden">رفض</button>
+      <button id="call-mute" type="button" class="call-btn call-mute hidden">كتم</button>
+      <button id="call-hangup" type="button" class="call-btn call-hangup hidden">إنهاء</button>
+    </div>
+  </div>
+</div>
+
+<audio id="call-ringtone" src="./assets/ringtone.wav" loop preload="auto"></audio>
+<audio id="call-ringback" src="./assets/ringback.wav" loop preload="auto"></audio>
+<audio id="voice-call-audio" autoplay playsinline></audio>
+
 <div id="global-toast" class="global-toast hidden"></div>
 
 <!-- شريط «افتح في كروم» — يظهر تلقائياً في متصفحات التطبيقات على أندرويد -->
@@ -589,7 +611,7 @@
   <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
 </div>
 
-<script type="module" src="./js/app.js?v=55"></script>
+<script type="module" src="./js/app.js?v=56"></script>
 
   <!-- إعادة توجيه رسالة: اختر المحادثة -->
   <div id="forward-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="إعادة توجيه الرسالة">

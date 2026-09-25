@@ -1,4 +1,4 @@
-const CACHE_NAME = "wa-clone-shell-v55";
+const CACHE_NAME = "wa-clone-shell-v56";
 // هيكل التطبيق: كل ما يلزم للإقلاع بلا إنترنت (بما فيه المكتبات المحلية)
 const APP_SHELL = [
   "./",
@@ -33,6 +33,8 @@ const APP_SHELL = [
   "./icons/favicon-16.png",
   "./icons/org-logo-512.png",
   "./icons/notify.mp3",
+  "./assets/ringtone.wav",
+  "./assets/ringback.wav",
 ];
 
 // تثبيت: ننزّل الهيكل كاملاً. كل ملف على حدة (allSettled) حتى لا يُسقط ملفٌ

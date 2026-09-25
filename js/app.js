@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "55";
+const BUILD = "56";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -87,6 +87,7 @@ const state = {
   contactElements: {},
 
   activeConversation: null,
+  callChannel: null,         // v56: قناة المكالمات الواردة (Realtime)
   messages: [],
   reactions: {},
   selectedMessageId: null,   // التوافق مع الكود القديم
@@ -678,7 +679,9 @@ async function enterApp() {
   $("#auth-screen")?.classList.add("hidden");
   $("#app-shell")?.classList.remove("hidden");
 
-  maybePromptPassword();
+  // v56: الاشتراك في قناة المكالمات ⇒ رنين المكالمات الواردة في أي شاشة
+  initCallSignaling().catch(() => {});
+
 
   const moderationRoles = earlyUserId
     ? await rolesPromise
@@ -4450,49 +4453,462 @@ function wireMessageActions() {
   }
 }
 
-let voiceCall = { pc: null, channel: null, stream: null, active: false, remoteId: null };
-function callChannelName() { return state.activeConversation?.id ? `voice-call-${state.activeConversation.id}` : null; }
-async function startVoiceCall(asAnswer = false) {
-  if (!state.activeConversation || voiceCall.active) return;
-  if (!navigator.mediaDevices?.getUserMedia) { showAuthError("الاتصال الصوتي غير مدعوم في هذا المتصفح."); return; }
-  try {
-    const channelName = callChannelName();
-    const channel = supabase.channel(channelName, { config: { broadcast: { self: false } } });
-    voiceCall = { pc: new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }] }), channel, stream: null, active: true, remoteId: getActiveChatTargetId() };
-    await new Promise((resolve, reject) => { channel.on("broadcast", { event: "signal" }, ({ payload }) => handleVoiceSignal(payload)); channel.subscribe((status) => status === "SUBSCRIBED" ? resolve() : status === "CHANNEL_ERROR" ? reject(new Error("channel")) : null); });
-    voiceCall.stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    voiceCall.stream.getTracks().forEach((track) => voiceCall.pc.addTrack(track, voiceCall.stream));
-    voiceCall.pc.onicecandidate = (e) => e.candidate && voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "ice", candidate: e.candidate, from: state.me.id } });
-    voiceCall.pc.ontrack = (e) => { const audio = document.getElementById("voice-call-audio") || Object.assign(document.createElement("audio"), { id: "voice-call-audio", autoplay: true }); audio.srcObject = e.streams[0]; document.body.appendChild(audio); };
-    if (!asAnswer) {
-      const offer = await voiceCall.pc.createOffer(); await voiceCall.pc.setLocalDescription(offer);
-      await voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "offer", offer, from: state.me.id } });
-      showAuthError("جارٍ الاتصال صوتيًا…");
+// ===============================================================
+// v56: المكالمات الصوتية الحقيقية (WebRTC + Supabase Realtime)
+//   • كل مستخدم يشترك في قناة خاصة به: wa-calls-<معرّفه>  ⇒ يستقبل الرنين حتى لو
+//     كان يتصفح محادثة أخرى (أو التطبيق في الخلفية).
+//   • التراسل: invite → accept → offer/answer/ice → hangup
+// ===============================================================
+
+const CALL_TIMEOUT_MS = 45000;
+
+const ICE_SERVERS = [
+  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
+  // TURN اختياري: ضروري فقط للشبكات المقيّدة (جوال/CGNAT). يُضاف عند توفّر مفاتيح مجانية.
+];
+
+let activeCall = null;   // { id, role, peerId, peerName, peerAvatar, status, pc, stream, sendChannel, timer, timeout, ring, pendingIce, startedAt }
+
+function callState() {
+  if (!activeCall) return null;
+  return {
+    id: activeCall.id,
+    role: activeCall.role,
+    status: activeCall.status,
+    peerId: activeCall.peerId,
+    pcState: activeCall.pc?.connectionState || null,
+    iceState: activeCall.pc?.iceConnectionState || null,
+    mic: Boolean(activeCall.stream),
+  };
+}
+
+function callOverlayEl() { return document.getElementById("call-overlay"); }
+
+function callUuid() {
+  return (crypto?.randomUUID?.() || String(Date.now()) + "-" + Math.random().toString(16).slice(2));
+}
+
+function stopCallSounds() {
+  ["call-ringtone", "call-ringback"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) { try { el.pause(); el.currentTime = 0; } catch (_) {} }
+  });
+  try { navigator.vibrate?.(0); } catch (_) {}
+}
+
+function playCallSound(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  try { el.currentTime = 0; } catch (_) {}
+  el.play().catch(() => {});
+}
+
+function showCallOverlay({ name, avatar, status, mode }) {
+  const box = callOverlayEl();
+  if (!box) return;
+
+  const nameEl = document.getElementById("call-name");
+  const statusEl = document.getElementById("call-status");
+  const avatarEl = document.getElementById("call-avatar");
+  const timerEl = document.getElementById("call-timer");
+
+  if (nameEl) nameEl.textContent = name || "مستخدم";
+  if (statusEl) statusEl.textContent = status || "";
+  if (avatarEl) { avatarEl.src = avatar || DEFAULT_AVATAR; avatarEl.alt = name || ""; }
+  if (timerEl) { timerEl.textContent = "00:00"; timerEl.classList.toggle("hidden", mode !== "active"); }
+
+  document.getElementById("call-accept")?.classList.toggle("hidden", mode !== "incoming");
+  document.getElementById("call-decline")?.classList.toggle("hidden", !(mode === "incoming" || mode === "outgoing"));
+  document.getElementById("call-mute")?.classList.toggle("hidden", mode !== "active");
+  document.getElementById("call-hangup")?.classList.toggle("hidden", mode === "incoming");
+
+  const btn = document.getElementById("call-decline");
+  if (btn) btn.textContent = mode === "incoming" ? "رفض" : "إلغاء";
+
+  box.classList.remove("hidden");
+  document.body.classList.add("call-open");
+}
+
+function hideCallOverlay() {
+  callOverlayEl()?.classList.add("hidden");
+  document.body.classList.remove("call-open");
+}
+
+function setCallStatus(text) {
+  const el = document.getElementById("call-status");
+  if (el) el.textContent = text;
+}
+
+function startCallTimer() {
+  if (!activeCall) return;
+  activeCall.startedAt = Date.now();
+  const timerEl = document.getElementById("call-timer");
+  if (timerEl) timerEl.classList.remove("hidden");
+
+  activeCall.timer = setInterval(() => {
+    if (!activeCall?.startedAt) return;
+    const secs = Math.floor((Date.now() - activeCall.startedAt) / 1000);
+    const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+    const ss = String(secs % 60).padStart(2, "0");
+    const el = document.getElementById("call-timer");
+    if (el) el.textContent = `${mm}:${ss}`;
+  }, 1000);
+}
+
+/** الاشتراك الدائم في قناة هذا المستخدم ⇒ استقبال الرنين */
+async function initCallSignaling() {
+  if (!state.me?.id) return;
+  if (state.callChannel) { try { supabase.removeChannel(state.callChannel); } catch (_) {} }
+
+  const channel = supabase.channel(`wa-calls-${state.me.id}`, { config: { broadcast: { self: false } } });
+
+  channel.on("broadcast", { event: "call" }, ({ payload }) => handleCallEvent(payload));
+
+  channel.subscribe((status) => {
+    if (status === "SUBSCRIBED") console.log("[CALL] قناة المكالمات جاهزة");
+  });
+
+  state.callChannel = channel;
+}
+
+/** قناة مُوجّهة إلى مستخدم آخر (للإرسال) */
+function openCallChannelFor(userId) {
+  return new Promise((resolve, reject) => {
+    const ch = supabase.channel(`wa-calls-${userId}`, { config: { broadcast: { self: false } } });
+    const t = setTimeout(() => reject(new Error("call-channel-timeout")), 8000);
+    ch.subscribe((status) => {
+      if (status === "SUBSCRIBED") { clearTimeout(t); resolve(ch); }
+      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") { clearTimeout(t); reject(new Error("call-channel-error")); }
+    });
+  });
+}
+
+function sendCallEvent(kind, extra = {}) {
+  if (!activeCall?.sendChannel) return;
+  const payload = { kind, callId: activeCall.id, from: state.me?.id, to: activeCall.peerId, ...extra };
+  activeCall.sendChannel.send({ type: "broadcast", event: "call", payload }).catch(() => {});
+}
+
+function buildPeerConnection() {
+  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+  pc.onicecandidate = (e) => {
+    if (e.candidate && activeCall) sendCallEvent("ice", { candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate });
+  };
+
+  pc.ontrack = (e) => {
+    const audio = document.getElementById("voice-call-audio") || Object.assign(document.createElement("audio"), { id: "voice-call-audio", autoplay: true });
+    if (!audio.parentNode) document.body.appendChild(audio);
+    audio.srcObject = e.streams[0];
+    const p = audio.play();
+    if (p?.catch) p.catch(() => {});
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (!activeCall) return;
+    const st = pc.connectionState;
+    if (st === "connected") {
+      activeCall.status = "active";
+      stopCallSounds();
+      if (!activeCall.timer) startCallTimer();
+      setCallStatus("مكالمة جارية");
+      document.getElementById("voice-call-audio")?.play?.().catch(() => {});
+      showCallOverlay({
+        name: activeCall.peerName,
+        avatar: activeCall.peerAvatar,
+        status: "مكالمة جارية",
+        mode: "active",
+      });
+    } else if (["failed", "disconnected"].includes(st)) {
+      setCallStatus(st === "failed" ? "تعذّر الاتصال — الشبكة تمنع المسار المباشر" : "انقطع الاتصال…");
     }
-  } catch (error) { stopVoiceCall(); showAuthError("تعذّر بدء الاتصال الصوتي: " + error.message); }
+  };
+
+  return pc;
 }
-async function handleVoiceSignal(payload) {
-  if (!payload || payload.from === state.me?.id || !state.activeConversation) return;
-  if (payload.type === "offer") {
-    const accept = await showAppConfirm({ title: "اتصال صوتي", text: "يريد الطرف الآخر بدء اتصال صوتي.", icon: "☎" });
-    if (!accept) return;
-    await startVoiceCall(true);
-    await voiceCall.pc.setRemoteDescription(payload.offer);
-    const answer = await voiceCall.pc.createAnswer(); await voiceCall.pc.setLocalDescription(answer);
-    await voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "answer", answer, from: state.me.id } });
-  } else if (payload.type === "answer" && voiceCall.pc) await voiceCall.pc.setRemoteDescription(payload.answer);
-  else if (payload.type === "ice" && voiceCall.pc) { try { await voiceCall.pc.addIceCandidate(payload.candidate); } catch (_) {} }
-  else if (payload.type === "hangup") stopVoiceCall(false);
+
+async function getMicStream() {
+  return navigator.mediaDevices.getUserMedia({
+    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    video: false,
+  });
 }
-function stopVoiceCall(notify = true) {
-  if (!voiceCall.active) return;
-  if (notify && voiceCall.channel) voiceCall.channel.send({ type: "broadcast", event: "signal", payload: { type: "hangup", from: state.me?.id } }).catch(() => {});
-  voiceCall.stream?.getTracks().forEach((t) => t.stop()); voiceCall.pc?.close(); if (voiceCall.channel) supabase.removeChannel(voiceCall.channel);
-  document.getElementById("voice-call-audio")?.remove(); voiceCall = { pc: null, channel: null, stream: null, active: false, remoteId: null };
+
+async function flushPendingIce() {
+  if (!activeCall?.pc || !activeCall.pendingIce?.length) return;
+  const list = activeCall.pendingIce.splice(0);
+  for (const cand of list) { try { await activeCall.pc.addIceCandidate(cand); } catch (_) {} }
 }
+
+/** إنهاء المكالمة (مع إبلاغ الطرف الآخر) */
+function endCall(note = "", silent = false) {
+  const cur = activeCall;
+  if (!cur) { hideCallOverlay(); stopCallSounds(); return; }
+
+  if (!silent && cur.sendChannel) {
+    try { cur.sendChannel.send({ type: "broadcast", event: "call", payload: { kind: "hangup", callId: cur.id, from: state.me?.id, to: cur.peerId } }); } catch (_) {}
+  }
+
+  clearTimeout(cur.timeout);
+  clearInterval(cur.timer);
+  stopCallSounds();
+
+  try { cur.stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
+  try { cur.pc?.close(); } catch (_) {}
+  try { cur.pc?.getSenders?.().forEach((s) => s.track?.stop?.()); } catch (_) {}
+  if (cur.sendChannel) { try { supabase.removeChannel(cur.sendChannel); } catch (_) {} }
+
+  const audio = document.getElementById("voice-call-audio");
+  if (audio) audio.srcObject = null;
+
+  activeCall = null;
+  hideCallOverlay();
+  if (note) showChatToast(note);
+}
+
+/** بدء مكالمة صادرة */
+async function startOutgoingCall() {
+  if (activeCall) { showChatToast("هناك مكالمة جارية بالفعل"); return; }
+
+  const conv = state.activeConversation;
+  const peerId = getActiveChatTargetId();
+  if (!conv || !peerId) { showChatToast("لا يمكن بدء المكالمة الآن"); return; }
+
+  if (!navigator.mediaDevices?.getUserMedia) { showChatToast("المكالمات غير مدعومة في هذا المتصفح"); return; }
+  if (!state.callChannel) await initCallSignaling();
+
+  const peer = conv.otherProfile || {};
+  activeCall = {
+    id: callUuid(),
+    role: "caller",
+    peerId: String(peerId),
+    peerName: peer.display_name || conv.otherName || "مستخدم",
+    peerAvatar: peer.avatar_url || null,
+    status: "ringing",
+    pc: null,
+    stream: null,
+    sendChannel: null,
+    pendingIce: [],
+    timer: null,
+    timeout: null,
+  };
+
+  showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "جارٍ الرنين…", mode: "outgoing" });
+  playCallSound("call-ringback");
+
+  try {
+    activeCall.sendChannel = await openCallChannelFor(activeCall.peerId);
+  } catch (_) {
+    endCall("تعذّر الوصول إلى الطرف الآخر");
+    return;
+  }
+
+  sendCallEvent("invite", { name: state.me?.display_name || "", avatar: state.me?.avatar_url || null, conversationId: state.activeConversation?.id });
+
+  activeCall.timeout = setTimeout(() => {
+    if (activeCall?.status === "ringing" && activeCall.role === "caller") endCall("لا يوجد رد");
+  }, CALL_TIMEOUT_MS);
+}
+
+/** استقبال دعوة */
+async function onIncomingInvite(payload) {
+  if (activeCall) {
+    // مشغول: أبلِغ المتصل
+    try {
+      const ch = await openCallChannelFor(String(payload.from));
+      ch.send({ type: "broadcast", event: "call", payload: { kind: "busy", callId: payload.callId, from: state.me.id, to: payload.from } });
+      setTimeout(() => supabase.removeChannel(ch), 1500);
+    } catch (_) {}
+    return;
+  }
+
+  activeCall = {
+    id: payload.callId,
+    role: "callee",
+    peerId: String(payload.from),
+    peerName: payload.name || "مستخدم",
+    peerAvatar: payload.avatar || null,
+    status: "incoming",
+    pc: null,
+    stream: null,
+    sendChannel: null,
+    pendingIce: [],
+    timer: null,
+    timeout: null,
+  };
+
+  showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "مكالمة واردة…", mode: "incoming" });
+  playCallSound("call-ringtone");
+
+  // v56.1: نجهّز قناة الإرسال فورًا حتى يعمل «رفض» و«مشغول» قبل القبول
+  openCallChannelFor(activeCall.peerId)
+    .then((ch) => { if (activeCall?.id === payload.callId) activeCall.sendChannel = ch; else supabase.removeChannel(ch); })
+    .catch(() => {});
+  try { navigator.vibrate?.([400, 300, 400, 300, 600]); } catch (_) {}
+
+  activeCall.timeout = setTimeout(() => {
+    if (activeCall?.status === "incoming") endCall("مكالمة فائتة", true);
+  }, CALL_TIMEOUT_MS);
+}
+
+/** قبول المكالمة الواردة */
+async function acceptIncomingCall() {
+  if (!activeCall || activeCall.status !== "incoming") return;
+  stopCallSounds();
+  setCallStatus("جارٍ التوصيل…");
+
+  try {
+    activeCall.stream = await getMicStream();
+  } catch (_) {
+    endCall("لم يتم السماح باستخدام الميكروفون");
+    return;
+  }
+
+  if (!activeCall.sendChannel) {
+    try {
+      activeCall.sendChannel = await openCallChannelFor(activeCall.peerId);
+    } catch (_) {
+      endCall("تعذّر الاتصال");
+      return;
+    }
+  }
+
+  activeCall.status = "connecting";
+  sendCallEvent("accept");
+  showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "جارٍ التوصيل…", mode: "active" });
+  document.getElementById("call-mute")?.classList.remove("hidden");
+  document.getElementById("call-hangup")?.classList.remove("hidden");
+  document.getElementById("call-decline")?.classList.add("hidden");
+  clearTimeout(activeCall.timeout);
+}
+
+/** المتصل: بعد القبول ينشئ العرض */
+async function callerStartMedia() {
+  if (!activeCall || activeCall.role !== "caller") return;
+  clearTimeout(activeCall.timeout);
+  stopCallSounds();
+  setCallStatus("جارٍ التوصيل…");
+
+  try {
+    activeCall.stream = await getMicStream();
+  } catch (_) {
+    sendCallEvent("hangup");
+    endCall("لم يتم السماح باستخدام الميكروفون");
+    return;
+  }
+
+  activeCall.status = "connecting";
+  activeCall.pc = buildPeerConnection();
+  activeCall.stream.getTracks().forEach((t) => activeCall.pc.addTrack(t, activeCall.stream));
+
+  const offer = await activeCall.pc.createOffer({ offerToReceiveAudio: true });
+  await activeCall.pc.setLocalDescription(offer);
+  sendCallEvent("offer", { sdp: activeCall.pc.localDescription.sdp });
+  showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "جارٍ التوصيل…", mode: "active" });
+}
+
+/** المستقبِل: يجيب على العرض */
+async function calleeAnswer(sdp) {
+  if (!activeCall || activeCall.role !== "callee") return;
+  activeCall.pc = buildPeerConnection();
+  activeCall.stream.getTracks().forEach((t) => activeCall.pc.addTrack(t, activeCall.stream));
+
+  await activeCall.pc.setRemoteDescription({ type: "offer", sdp });
+  await flushPendingIce();
+  const answer = await activeCall.pc.createAnswer();
+  await activeCall.pc.setLocalDescription(answer);
+  sendCallEvent("answer", { sdp: activeCall.pc.localDescription.sdp });
+}
+
+function handleCallEvent(payload) {
+  if (!payload?.kind || !state.me?.id) return;
+  if (payload.to && String(payload.to) !== String(state.me.id)) return;   // ليست لي
+  if (payload.from && String(payload.from) === String(state.me.id)) return; // مني
+
+  switch (payload.kind) {
+    case "invite":
+      onIncomingInvite(payload);
+      break;
+
+    case "busy":
+      if (activeCall?.role === "caller") endCall("الطرف الآخر في مكالمة أخرى");
+      break;
+
+    case "accept":
+      if (activeCall?.role === "caller" && payload.callId === activeCall.id) callerStartMedia();
+      break;
+
+    case "decline":
+      if (activeCall?.role === "caller" && payload.callId === activeCall.id) endCall("تم رفض المكالمة");
+      break;
+
+    case "offer":
+      if (activeCall?.role === "callee" && payload.callId === activeCall.id) calleeAnswer(payload.sdp);
+      break;
+
+    case "answer":
+      if (activeCall?.role === "caller" && activeCall.pc && payload.callId === activeCall.id) {
+        activeCall.pc.setRemoteDescription({ type: "answer", sdp: payload.sdp })
+          .then(flushPendingIce)
+          .catch(() => {});
+      }
+      break;
+
+    case "ice":
+      if (activeCall && payload.callId === activeCall.id && payload.candidate) {
+        if (activeCall.pc?.remoteDescription) activeCall.pc.addIceCandidate(payload.candidate).catch(() => {});
+        else activeCall.pendingIce.push(payload.candidate);
+      }
+      break;
+
+    case "hangup":
+      if (activeCall && payload.callId === activeCall.id) {
+        endCall(activeCall.status === "active" ? "انتهت المكالمة" : "أُلغيت المكالمة");
+      }
+      break;
+  }
+}
+
+function muteCall() {
+  if (!activeCall?.stream) return;
+  const track = activeCall.stream.getAudioTracks()[0];
+  if (!track) return;
+  track.enabled = !track.enabled;
+  const btn = document.getElementById("call-mute");
+  if (btn) {
+    btn.textContent = track.enabled ? "كتم" : "إلغاء الكتم";
+    btn.classList.toggle("muted", !track.enabled);
+  }
+}
+
+function wireCallUi() {
+  document.getElementById("call-accept")?.addEventListener("click", acceptIncomingCall);
+  document.getElementById("call-decline")?.addEventListener("click", () => {
+    if (activeCall?.role === "callee") { sendCallEvent("decline"); endCall(""); }
+    else endCall("أُلغيت المكالمة");
+  });
+  document.getElementById("call-hangup")?.addEventListener("click", () => {
+    const wasActive = activeCall?.status === "active";
+    sendCallEvent("hangup");
+    endCall(wasActive ? "انتهت المكالمة" : "");
+  });
+  document.getElementById("call-mute")?.addEventListener("click", muteCall);
+
+  window.addEventListener("beforeunload", () => { if (activeCall) endCall("", true); });
+}
+
 function wireConversationOptions() {
   wireVoiceNotes();
-  $("#chat-call-btn")?.addEventListener("click", startVoiceCall);
+  $("#chat-call-btn")?.addEventListener("click", startOutgoingCall);
+  wireCallUi();
+
+  // v56: الضغط على اقتباس الرد ⇒ قفزة للرسالة الأصلية (زي واتساب)
+  $("#chat-messages")?.addEventListener("click", (event) => {
+    const quote = event.target?.closest?.(".js-jump-quote");
+    if (!quote) return;
+    event.stopPropagation();
+    jumpToQuotedMessage(quote.dataset.quoteId);
+  });
   wireMessageActions();
 
   // الضغط على رأس المحادثة يعرض بيانات المستخدم (مثل واتساب)
@@ -4524,6 +4940,20 @@ function wireConversationOptions() {
       trigger?.setAttribute("aria-expanded", "false");
     }
   });
+}
+
+/** v56: الضغط على اقتباس الرد ⇒ قفزة إلى الرسالة الأصلية مثل واتساب */
+function jumpToQuotedMessage(messageId) {
+  const list = $("#chat-messages");
+  if (!list || !messageId) return;
+
+  const target = list.querySelector(`[data-message-id="${CSS.escape(String(messageId))}"]`);
+
+  if (!target) { showChatToast("الرسالة الأصلية غير محمّلة على هذا الجهاز"); return; }
+
+  target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.classList.add("msg-flash");
+  setTimeout(() => target.classList.remove("msg-flash"), 1600);
 }
 
 function wireMediaViewer() {
@@ -6902,7 +7332,9 @@ function buildMessageBubble(m) {
 
   const quotedHtml =
     quoted
-      ? `<div class="quoted-reply">${escapeHtml(
+      ? `<div class="quoted-reply js-jump-quote" data-quote-id="${escapeHtml(
+          quoted.id
+        )}" role="button" tabindex="0" title="اذهب إلى الرسالة الأصلية">${escapeHtml(
           messagePreviewText(quoted)
         )}</div>`
       : "";
@@ -7585,7 +8017,7 @@ function wireMessageLongPress(row, m, canDelete) {
     if (event.button !== undefined && event.button !== 0) return;
 
     // الأزرار والوسائط والروابط تعمل طبيعياً
-    if (event.target.closest("button, a, input, textarea, audio, video")) return;
+    if (event.target.closest("button, a, input, textarea, audio, video, .js-jump-quote")) return;
 
     pressActive = true;
     pressAt = performance.now();
@@ -13580,63 +14012,6 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ===============================================================
-// تنبيه: حساب بلا كلمة مرور (أُنشئ قبل التحديث) ⇒ نطلب ضبطها
-// ===============================================================
-
-function maybePromptPassword() {
-  const me = state.me;
-
-  if (!me) return;
-
-  // حسابات الهاتف فقط (بلا بريد حقيقي)
-  // ملاحظة v55: البريد «التقني» للتطبيق (…@wa-walid.app) لا يُعدّ بريدًا للمستخدم،
-  // وإلا اختفى التنبيه خطأً وأصبح المستخدم غير قادر على الدخول من جهاز آخر.
-  if (!me.phone) return;
-
-  const realEmail = String(me.email || "").trim().toLowerCase();
-  if (realEmail && !realEmail.endsWith("@wa-walid.app")) return;
-
-  try {
-    if (localStorage.getItem("wa_password_set") === me.id) return;
-  } catch (e) {}
-
-  setTimeout(() => {
-    showAuthError("🔐 احمِ حسابك: اضبط كلمة مرور لتستطيع الدخول من أي جهاز — اضغط هنا");
-
-    const toast = document.getElementById("global-toast");
-
-    if (!toast) return;
-
-    // v55: التنبيه يبقى ظاهرًا حتى يضغطه المستخدم (كان يختفي بعد ٥ ثوانٍ فيفوته)
-    clearTimeout(toast._hideTimeout);
-    toast.classList.add("toast-clickable");
-    toast.onclick = () => {
-      toast.classList.add("hidden");
-      toast.onclick = null;
-
-      openPasswordSection();
-    };
-  }, 2600);
-}
-
-function openPasswordSection() {
-  // نفتح الإعدادات مع تسجيل الحالة (ليعمل زر الرجوع)
-  if (!isSettingsOpen()) openSettings({ focusSelector: "#my-password" });
-
-  const input = document.getElementById("my-password");
-  const details = input?.closest("details");
-
-  if (details) details.open = true;
-
-  setTimeout(() => {
-    details?.scrollIntoView({ block: "center", behavior: "smooth" });
-    input?.focus();
-    document.getElementById("my-password-status").textContent =
-      "اكتب كلمة مرور (٦ أحرف على الأقل) واحفظها — ستحتاجها للدخول من أي جهاز";
-  }, 250);
-}
-
-// ===============================================================
 // START
 // ===============================================================
 
@@ -13648,6 +14023,17 @@ document.addEventListener(
 // ===============================================================
 // v47: أدوات تشخيص (للفحص الآلي) — لا تؤثر على السلوك
 // ===============================================================
+window.__waCall = {
+  state: callState,
+  start: startOutgoingCall,
+  accept: acceptIncomingCall,
+  decline: () => { if (activeCall?.role === "callee") { sendCallEvent("decline"); endCall(""); } },
+  hangup: () => { sendCallEvent("hangup"); endCall(""); },
+  mute: muteCall,
+  overlayVisible: () => !callOverlayEl()?.classList.contains("hidden"),
+  ringtonePlaying: () => { const el = document.getElementById("call-ringtone"); return Boolean(el && !el.paused); },
+};
+
 window.__waDebug = {
   state,
   refreshConversationPreviewsFromServer,

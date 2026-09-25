@@ -8639,3 +8639,64 @@ body[data-theme="light"] .admin-users-controls select { background: #fff; }
   min-height: 16px;
   margin-bottom: 4px;
 }
+
+/* ================================================================
+   v56: واجهة المكالمة الصوتية + قفزة الرد
+   ================================================================ */
+.call-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: linear-gradient(160deg, #0b141a 0%, #111b21 55%, #0b141a 100%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.call-overlay.hidden { display: none; }
+
+.call-card {
+  width: 100%; max-width: 360px; text-align: center; color: #e9edef;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+
+.call-avatar {
+  width: 128px; height: 128px; border-radius: 50%; overflow: hidden;
+  background: #202c33; box-shadow: 0 0 0 5px rgba(37, 211, 102, .22);
+  animation: callPulse 2s ease-in-out infinite;
+}
+.call-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+@keyframes callPulse {
+  0%, 100% { box-shadow: 0 0 0 5px rgba(37, 211, 102, .18); }
+  50%      { box-shadow: 0 0 0 16px rgba(37, 211, 102, .05); }
+}
+
+.call-name { font-size: 22px; font-weight: 700; }
+.call-status { color: #8696a0; font-size: 15px; }
+.call-timer { font-size: 17px; color: #25d366; font-variant-numeric: tabular-nums; }
+.call-timer.hidden { display: none; }
+
+.call-actions { display: flex; gap: 22px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
+
+.call-btn {
+  border: 0; border-radius: 999px; min-width: 74px; height: 62px;
+  font-size: 15px; font-weight: 700; color: #fff; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform .12s ease, filter .12s ease;
+}
+.call-btn:hover { filter: brightness(1.08); }
+.call-btn:active { transform: scale(.95); }
+.call-btn.hidden { display: none; }
+
+.call-accept  { background: #25d366; }
+.call-decline { background: #ff4d4d; }
+.call-hangup  { background: #ff4d4d; }
+.call-mute    { background: #2a3942; min-width: 88px; }
+.call-mute.muted { background: #8696a0; color: #0b141a; }
+
+body.call-open { overflow: hidden; }
+
+/* قفزة الرد: وميض على الرسالة الأصلية */
+.quoted-reply { cursor: pointer; }
+.msg-flash { animation: msgFlash 1.6s ease; }
+@keyframes msgFlash {
+  0%   { background: rgba(37, 211, 102, .28); }
+  100% { background: transparent; }
+}
