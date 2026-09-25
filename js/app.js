@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "56";
+const BUILD = "57";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -681,6 +681,9 @@ async function enterApp() {
 
   // v56: الاشتراك في قناة المكالمات ⇒ رنين المكالمات الواردة في أي شاشة
   initCallSignaling().catch(() => {});
+
+  // v57: مكالمات لم يرد عليها (كان الجهاز مقفل النت) ⇒ تظهر عند الفتح
+  setTimeout(() => checkMissedCalls().catch(() => {}), 2500);
 
 
   const moderationRoles = earlyUserId
@@ -4522,8 +4525,13 @@ function showCallOverlay({ name, avatar, status, mode }) {
   document.getElementById("call-mute")?.classList.toggle("hidden", mode !== "active");
   document.getElementById("call-hangup")?.classList.toggle("hidden", mode === "incoming");
 
+  // v57: الزر أيقونة (سماعة) — النص كان يمسح الأيقونة، نكتفي بالعنوان
   const btn = document.getElementById("call-decline");
-  if (btn) btn.textContent = mode === "incoming" ? "رفض" : "إلغاء";
+  if (btn) {
+    const label = mode === "incoming" ? "رفض" : "إلغاء";
+    btn.title = label;
+    btn.setAttribute("aria-label", label);
+  }
 
   box.classList.remove("hidden");
   document.body.classList.add("call-open");
@@ -4649,6 +4657,13 @@ function endCall(note = "", silent = false) {
     try { cur.sendChannel.send({ type: "broadcast", event: "call", payload: { kind: "hangup", callId: cur.id, from: state.me?.id, to: cur.peerId } }); } catch (_) {}
   }
 
+  // v57: نُثبّت نتيجة المكالمة في السجل
+  try {
+    const duration = cur.startedAt ? Math.round((Date.now() - cur.startedAt) / 1000) : 0;
+    const outcome = cur.status === "active" || cur.status === "connecting" ? "answered" : "missed";
+    logCallUpdate(outcome, { duration_seconds: duration, dbId: cur.dbId });
+  } catch (_) {}
+
   clearTimeout(cur.timeout);
   clearInterval(cur.timer);
   stopCallSounds();
@@ -4702,6 +4717,9 @@ async function startOutgoingCall() {
     endCall("تعذّر الوصول إلى الطرف الآخر");
     return;
   }
+
+  // v57: نسجّل المكالمة في القاعدة كي يراها الطرف الآخر حتى لو كان «مقفل النت»
+  logCallStart(conv.id, activeCall.id).catch(() => {});
 
   sendCallEvent("invite", { name: state.me?.display_name || "", avatar: state.me?.avatar_url || null, conversationId: state.activeConversation?.id });
 
@@ -4775,6 +4793,7 @@ async function acceptIncomingCall() {
 
   activeCall.status = "connecting";
   sendCallEvent("accept");
+  logCallUpdate("answered", { answered_at: new Date().toISOString() });
   showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "جارٍ التوصيل…", mode: "active" });
   document.getElementById("call-mute")?.classList.remove("hidden");
   document.getElementById("call-hangup")?.classList.remove("hidden");
@@ -4786,6 +4805,7 @@ async function acceptIncomingCall() {
 async function callerStartMedia() {
   if (!activeCall || activeCall.role !== "caller") return;
   clearTimeout(activeCall.timeout);
+  logCallUpdate("answered", { answered_at: new Date().toISOString() });
   stopCallSounds();
   setCallStatus("جارٍ التوصيل…");
 
@@ -4831,7 +4851,7 @@ function handleCallEvent(payload) {
       break;
 
     case "busy":
-      if (activeCall?.role === "caller") endCall("الطرف الآخر في مكالمة أخرى");
+      if (activeCall?.role === "caller") { activeCall.status = "busy"; endCall("الطرف الآخر في مكالمة أخرى"); }
       break;
 
     case "accept":
@@ -4839,7 +4859,7 @@ function handleCallEvent(payload) {
       break;
 
     case "decline":
-      if (activeCall?.role === "caller" && payload.callId === activeCall.id) endCall("تم رفض المكالمة");
+      if (activeCall?.role === "caller" && payload.callId === activeCall.id) { activeCall.status = "declined"; endCall("تم رفض المكالمة"); }
       break;
 
     case "offer":
@@ -4881,11 +4901,127 @@ function muteCall() {
   }
 }
 
+// ===============================================================
+// v57: سجل المكالمات + «مكالمة لم يرد عليها» لمن كان مقفل النت
+// ===============================================================
+
+function missedCallIconSvg() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>';
+}
+
+/** يسجّل بداية مكالمة صادرة (يعمل حتى لو كان الطرف الآخر غير متصل) */
+async function logCallStart(conversationId, localCallId) {
+  if (!state.me?.id || !conversationId || !activeCall) return null;
+
+  const { data, error } = await supabase
+    .from("call_logs")
+    .insert({
+      conversation_id: conversationId,
+      caller_id: state.me.id,
+      callee_id: activeCall.peerId,
+      status: "ringing",
+    })
+    .select("id")
+    .single();
+
+  if (error) { console.warn("[CALL] تعذّر تسجيل المكالمة:", error.message); return null; }
+
+  if (activeCall && activeCall.id === localCallId) activeCall.dbId = data.id;
+  return data.id;
+}
+
+/** تحديث حالة المكالمة في السجل */
+async function logCallUpdate(status, extra = {}) {
+  const id = activeCall?.dbId || extra.dbId;
+  if (!id) return;
+
+  const patch = { status, ...extra };
+  delete patch.dbId;
+
+  const { error } = await supabase.from("call_logs").update(patch).eq("id", id);
+  if (error) console.warn("[CALL] تعذّر تحديث سجل المكالمة:", error.message);
+}
+
+/** يعرض شريط «مكالمة لم يرد عليها» أعلى قائمة المحادثات */
+function renderMissedCallBanner(call) {
+  const host = document.getElementById("missed-call-host");
+  if (!host || !call) return;
+
+  const who = call.caller?.display_name || "مستخدم";
+  const when = new Date(call.created_at);
+  const time = Number.isNaN(when.getTime())
+    ? ""
+    : when.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
+
+  const bar = document.createElement("div");
+  bar.className = "missed-call-banner";
+  bar.dataset.callId = call.id;
+  bar.innerHTML = `${missedCallIconSvg()}<span><b>مكالمة لم يرد عليها</b> من ${escapeHtml(who)}</span><span class="mcb-time">${escapeHtml(String(time))}</span>`;
+
+  bar.addEventListener("click", async () => {
+    const conversationId = call.conversation_id;
+
+    try {
+      await supabase.from("call_logs").update({ seen_by_callee: true }).eq("id", call.id);
+    } catch (_) {}
+
+    bar.remove();
+
+    if (conversationId) {
+      const contact = (state.contacts || []).find((c) => String(c._conversationId) === String(conversationId));
+      if (contact) await openConversation(contact);
+      else await openConversationById(conversationId);
+      markCallConversationRead(conversationId);
+    }
+  });
+
+  host.prepend(bar);
+}
+
+/** عند فتح المحادثة: نُخفي تنبيهات المكالمات الفائتة الخاصة بها */
+async function markCallConversationRead(conversationId) {
+  if (!conversationId || !state.me?.id) return;
+  try {
+    await supabase.from("call_logs").update({ seen_by_callee: true })
+      .eq("callee_id", state.me.id).eq("conversation_id", conversationId).eq("seen_by_callee", false);
+  } catch (_) {}
+  document.querySelectorAll(`.missed-call-banner[data-call-id]`).forEach((el) => el.remove());
+}
+
+/** عند الإقلاع/العودة: هل هناك مكالمات فائتة لم يعرف بها المستخدم؟ */
+async function checkMissedCalls() {
+  if (!state.me?.id) return [];
+
+  const since = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+
+  const { data, error } = await supabase
+    .from("call_logs")
+    .select("id, conversation_id, created_at, status, caller:caller_id (id, display_name, avatar_url)")
+    .eq("callee_id", state.me.id)
+    .in("status", ["missed", "declined", "busy", "canceled"])
+    .eq("seen_by_callee", false)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(6);
+
+  if (error || !data?.length) {
+    if (error) console.warn("[CALL] تعذّر جلب المكالمات الفائتة:", error.message);
+    return [];
+  }
+
+  data.forEach(renderMissedCallBanner);
+
+  const first = data[0];
+  showChatToast(`📞 مكالمة لم يرد عليها من ${first.caller?.display_name || "مستخدم"}`);
+
+  return data;
+}
+
 function wireCallUi() {
   document.getElementById("call-accept")?.addEventListener("click", acceptIncomingCall);
   document.getElementById("call-decline")?.addEventListener("click", () => {
     if (activeCall?.role === "callee") { sendCallEvent("decline"); endCall(""); }
-    else endCall("أُلغيت المكالمة");
+    else { logCallUpdate("canceled", { dbId: activeCall?.dbId }); endCall("أُلغيت المكالمة"); }
   });
   document.getElementById("call-hangup")?.addEventListener("click", () => {
     const wasActive = activeCall?.status === "active";
@@ -14032,6 +14168,8 @@ window.__waCall = {
   mute: muteCall,
   overlayVisible: () => !callOverlayEl()?.classList.contains("hidden"),
   ringtonePlaying: () => { const el = document.getElementById("call-ringtone"); return Boolean(el && !el.paused); },
+  checkMissed: () => checkMissedCalls(),
+  dbId: () => activeCall?.dbId || null,
 };
 
 window.__waDebug = {
