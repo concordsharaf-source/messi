@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "54";
+const BUILD = "55";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -3976,8 +3976,13 @@ function wireChrome() {
   document.addEventListener("click", (event) => {
     const panel = $("#settings-panel");
     const trigger = $("#btn-settings");
+
+    // v55: النقر على التنبيه (toast) يفتح الإعدادات ثم كان هذا المعالج يغلقها فورًا
+    // لأن التنبيه خارج اللوحة ⇒ كان الضغط على «اضغط هنا» يبدو بلا أثر.
+    const clickedToast = Boolean(event.target?.closest?.("#global-toast"));
+
     if (panel && !panel.classList.contains("hidden") &&
-        !panel.contains(event.target) && event.target !== trigger) {
+        !panel.contains(event.target) && event.target !== trigger && !clickedToast) {
       closeSettings();
     }
   });
@@ -13583,8 +13588,13 @@ function maybePromptPassword() {
 
   if (!me) return;
 
-  // حسابات الهاتف فقط (بلا بريد)
-  if (!me.phone || me.email) return;
+  // حسابات الهاتف فقط (بلا بريد حقيقي)
+  // ملاحظة v55: البريد «التقني» للتطبيق (…@wa-walid.app) لا يُعدّ بريدًا للمستخدم،
+  // وإلا اختفى التنبيه خطأً وأصبح المستخدم غير قادر على الدخول من جهاز آخر.
+  if (!me.phone) return;
+
+  const realEmail = String(me.email || "").trim().toLowerCase();
+  if (realEmail && !realEmail.endsWith("@wa-walid.app")) return;
 
   try {
     if (localStorage.getItem("wa_password_set") === me.id) return;
@@ -13597,6 +13607,8 @@ function maybePromptPassword() {
 
     if (!toast) return;
 
+    // v55: التنبيه يبقى ظاهرًا حتى يضغطه المستخدم (كان يختفي بعد ٥ ثوانٍ فيفوته)
+    clearTimeout(toast._hideTimeout);
     toast.classList.add("toast-clickable");
     toast.onclick = () => {
       toast.classList.add("hidden");
