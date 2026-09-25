@@ -128,36 +128,3 @@ export async function clearAllCache() {
     )
   );
 }
-
-// ===============================================================
-// v52: قراءة كل ما هو مخزَّن محلياً (لاستعادة المحادثات المفقودة)
-// ===============================================================
-export async function getAllCachedMessages() {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(STORES.messages, "readonly");
-    const req = t.objectStore(STORES.messages).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-export async function getAllCachedContacts() {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(STORES.contacts, "readonly");
-    const req = t.objectStore(STORES.contacts).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-export async function getAllCachedConversations() {
-  const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const t = db.transaction(STORES.conversations, "readonly");
-    const req = t.objectStore(STORES.conversations).getAll();
-    req.onsuccess = () => resolve(req.result || []);
-    req.onerror = () => reject(req.error);
-  });
-}

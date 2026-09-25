@@ -28,8 +28,6 @@ import {
   cacheMessages,
   deleteCachedMessage,
   getCachedMessages,
-  getAllCachedMessages,
-  getAllCachedContacts,
   cacheContacts,
   getCachedContacts,
   queueOutboxMessage,
@@ -45,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "52";
+const BUILD = "49";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -709,11 +707,6 @@ async function enterApp() {
   installAvatarFallback();
 
   await loadContacts();
-
-  // v51: مزامنة فورية للرئيسية من الرسائل نفسها (حالة آخر رسالة = الأزرق/الرمادي)
-  refreshConversationPreviewsFromServer()
-    .then(() => syncUnreadBadgesFromServer())
-    .catch(() => {});
 
   // v49: كل ما ليس ضرورياً لرؤية القائمة يُنفَّذ بعد أول رسم (إقلاع أسرع)
   scheduleAfterFirstPaint(() => {
@@ -1653,109 +1646,8 @@ async function loadAdminUsers() {
   if (adminsCount) adminsCount.textContent = String(admins.length);
   if (usersCount) usersCount.textContent = String(users.length);
 
-  // v50: الفرز كان قائمة شكلية لا تُطبَّق أبدًا — الآن يُطبَّق فعلاً + بحث
-  const mode = readAdminUsersSort();
-  const query = String($("#admin-users-search")?.value || "").trim().toLowerCase();
-
-  const filteredUsers = query
-    ? users.filter((p) => adminUserSearchText(p).includes(query))
-    : users;
-
-  state.adminAllUsers = users;
-  state.adminAllAdmins = admins;
-
-  renderAdminUsersGroup(
-    adminsHost,
-    sortAdminProfiles(admins, mode),
-    query ? "لا يوجد مشرف مطابق للبحث." : "لا يوجد مشرفون حتى الآن."
-  );
-
-  renderAdminUsersGroup(
-    usersHost,
-    sortAdminProfiles(filteredUsers, mode),
-    query ? "لا يوجد مستخدم مطابق للبحث." : "لا يوجد مستخدمون حتى الآن."
-  );
-
-  const result = $("#admin-users-result");
-  if (result) {
-    result.textContent = query || mode !== "newest"
-      ? `المعروض: ${filteredUsers.length} من ${users.length} مستخدم`
-      : "";
-  }
-
-  if (usersCount) {
-    usersCount.textContent = query
-      ? `${filteredUsers.length}/${users.length}`
-      : String(users.length);
-  }
-}
-
-// ===============================================================
-// v50: فرز/بحث المستخدمين
-// ===============================================================
-
-const ADMIN_USERS_SORT_KEY = "wa_admin_users_sort_v1";
-
-function readAdminUsersSort() {
-  return localStorage.getItem(ADMIN_USERS_SORT_KEY) || "newest";
-}
-
-function adminUserSearchText(profile) {
-  return [profile.display_name, profile.phone, profile.email]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-}
-
-/** نشاط المستخدم = وقت آخر رسالة في محادثاته (وإن لم توجد: وقت التسجيل) */
-function adminUserActivity(profile) {
-  const rows = state.conversationRows || [];
-  let newest = 0;
-
-  rows.forEach((row) => {
-    const sameUser =
-      String(row.id) === String(profile.id) ||
-      String(row._conversationUserId || "") === String(profile.id);
-
-    if (!sameUser) return;
-
-    const at = Date.parse(row._lastMessageAt || "") || 0;
-    if (at > newest) newest = at;
-  });
-
-  return newest || Date.parse(profile.created_at || "") || 0;
-}
-
-function sortAdminProfiles(list, mode) {
-  const rows = [...(list || [])];
-
-  const nameOf = (p) =>
-    String(p.display_name || p.phone || p.email || "").trim();
-
-  rows.sort((a, b) => {
-    switch (mode) {
-      case "oldest":
-        return (Date.parse(a.created_at || "") || 0) - (Date.parse(b.created_at || "") || 0);
-
-      case "az":
-        return nameOf(a).localeCompare(nameOf(b), "ar");
-
-      case "za":
-        return nameOf(b).localeCompare(nameOf(a), "ar");
-
-      case "activity":
-        return adminUserActivity(b) - adminUserActivity(a);
-
-      case "idle":
-        return adminUserActivity(a) - adminUserActivity(b);
-
-      case "newest":
-      default:
-        return (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0);
-    }
-  });
-
-  return rows;
+  renderAdminUsersGroup(adminsHost, admins, "لا يوجد مشرفون حتى الآن.");
+  renderAdminUsersGroup(usersHost, users, "لا يوجد مستخدمون حتى الآن.");
 }
 
 /** معرّفات البطاقات المفتوحة (تُحفظ حتى لا تُطوى عند تحديث القائمة) */
@@ -1920,47 +1812,6 @@ function buildAdminUserCard(p) {
   return row;
 }
 
-/** v50: إعادة رسم قائمة المستخدمين من البيانات المحمّلة (فرز/بحث بلا شبكة) */
-function renderAdminUsersFromState() {
-  const usersHost = $("#admin-users-list-users");
-  const adminsHost = $("#admin-users-list");
-  if (!usersHost || !state.adminAllUsers) return;
-
-  const mode = readAdminUsersSort();
-  const query = String($("#admin-users-search")?.value || "").trim().toLowerCase();
-
-  const users = query
-    ? (state.adminAllUsers || []).filter((p) => adminUserSearchText(p).includes(query))
-    : state.adminAllUsers || [];
-
-  renderAdminUsersGroup(
-    usersHost,
-    sortAdminProfiles(users, mode),
-    query ? "لا يوجد مستخدم مطابق للبحث." : "لا يوجد مستخدمون حتى الآن."
-  );
-
-  renderAdminUsersGroup(
-    adminsHost,
-    sortAdminProfiles(state.adminAllAdmins || [], mode),
-    "لا يوجد مشرفون حتى الآن."
-  );
-
-  const result = $("#admin-users-result");
-  if (result) {
-    result.textContent =
-      query || mode !== "newest"
-        ? `المعروض: ${users.length} من ${(state.adminAllUsers || []).length} مستخدم`
-        : "";
-  }
-
-  const usersCount = $("#admin-group-users-count");
-  if (usersCount) {
-    usersCount.textContent = query
-      ? `${users.length}/${(state.adminAllUsers || []).length}`
-      : String((state.adminAllUsers || []).length);
-  }
-}
-
 function renderAdminUsersGroup(host, profiles, emptyText) {
   if (!host) return;
 
@@ -2090,23 +1941,7 @@ async function renderAdminTools() {
 }
 
 function wireAdminTools() {
-  $("#btn-restore-cache")?.addEventListener("click", restoreFromLocalCache);
-
-  // v50: الفرز يُطبَّق فورًا على المعروض (بلا إعادة جلب) ويُحفظ للجلسات القادمة
-  const sortSelect = $("#admin-users-sort");
-  if (sortSelect) {
-    sortSelect.value = readAdminUsersSort();
-    sortSelect.addEventListener("change", () => {
-      localStorage.setItem(ADMIN_USERS_SORT_KEY, sortSelect.value);
-      renderAdminUsersFromState();
-    });
-  }
-
-  // v50: بحث فوري في المستخدمين (اسم/رقم/بريد)
-  $("#admin-users-search")?.addEventListener("input", () => {
-    clearTimeout(window.__adminUsersSearchTimer);
-    window.__adminUsersSearchTimer = setTimeout(renderAdminUsersFromState, 150);
-  });
+  $("#admin-users-sort")?.addEventListener("change", () => loadAdminUsers());
   $("#btn-add-reply-button")?.addEventListener("click", () => addReplyButtonRow());
   $("#btn-save-auto-reply")?.addEventListener("click", saveAutoReplySettings);
   $("#btn-preview-auto-reply")?.addEventListener("click", renderReplyPreview);
@@ -2229,14 +2064,12 @@ function applyChatBackground() {
   const preset =
     CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg) || CHAT_WALLPAPERS[0];
 
-  // v50: نُفرِّغ التنسيقات السطرية ونترك CSS يرسم نقشة «رسوم واتساب»
-  // باللون المناسب للثيم أو للخلفية الجاهزة المختارة.
+  // نُفرِّغ التنسيقات السطرية ليعود النمط الافتراضي من CSS (النقشة)
   box.style.backgroundImage = "";
   box.style.backgroundSize = "";
   box.style.backgroundPosition = "";
   box.style.backgroundRepeat = "";
-  box.style.backgroundColor = "";
-  box.dataset.bg = preset.id;
+  box.style.backgroundColor = preset.color || "";
 }
 
 function renderWallpaperGrid() {
@@ -5051,12 +4884,14 @@ function buildContactRow(c, opts = {}) {
 
   const lastStatus = c._lastMessageStatus || "";
 
-  // v51: العنصر يُبنى دائماً ثم يُخفى/يُظهر — أي تحديث لاحق يحتاجه موجوداً
-  const ticks = `<span class="contact-ticks${
-    lastStatus === "read" ? " read" : ""
-  }${lastMine ? "" : " hidden"}">${
-    lastStatus === "sent" ? "✓" : "✓✓"
-  }</span>`;
+  const ticks =
+    lastMine
+      ? lastStatus === "read"
+        ? '<span class="contact-ticks read">✓✓</span>'
+        : lastStatus === "delivered"
+        ? '<span class="contact-ticks">✓✓</span>'
+        : '<span class="contact-ticks">✓</span>'
+      : "";
 
   row.innerHTML = `
     <div class="avatar">
@@ -5205,7 +5040,7 @@ async function refreshConversationPreviewsFromServer() {
       const timeEl = row.querySelector(".contact-time");
       if (timeEl) timeEl.textContent = formatContactTime(message.created_at);
 
-      const ticksEl = ensureContactTicks(row);
+      const ticksEl = row.querySelector(".contact-ticks");
       if (ticksEl) {
         const mine = String(message.sender_id) === String(state.me.id);
         const status = message.status || "sent";
@@ -5215,11 +5050,7 @@ async function refreshConversationPreviewsFromServer() {
       }
     });
 
-    if (changed) {
-      renderConversationSection();
-      // v51: نُحدّث الكاش فوراً — الإقلاع التالي يرسم الصح الصحيحة بلا انتظار شبكة
-      cacheContacts(homeContacts()).catch(() => {});
-    }
+    if (changed) renderConversationSection();
   } catch (err) {
     // غير حرج
   }
@@ -5293,21 +5124,6 @@ function ensureContactPreview(row) {
   return preview;
 }
 
-/** v51: يضمن وجود عنصر التكّات في صف القائمة (قد لا يكون موجوداً في صفوف قديمة) */
-function ensureContactTicks(row) {
-  const sub = row.querySelector(".contact-sub");
-  if (!sub) return null;
-
-  let ticks = sub.querySelector(".contact-ticks");
-
-  if (!ticks) {
-    sub.insertAdjacentHTML("afterbegin", '<span class="contact-ticks hidden">✓</span>');
-    ticks = sub.querySelector(".contact-ticks");
-  }
-
-  return ticks;
-}
-
 async function patchContactUIOnNewMessage(
   message,
   options = {}
@@ -5367,7 +5183,7 @@ async function patchContactUIOnNewMessage(
 
     // التكات كما في واتساب (للرسائل الصادرة فقط)
     const ticksEl =
-      ensureContactTicks(row);
+      row.querySelector(".contact-ticks");
 
     if (ticksEl) {
       const status = message.status || "sent";
@@ -5486,7 +5302,7 @@ function patchContactUIOnConversationUpdate(
     const preview = ensureContactPreview(row);
     if (preview) preview.textContent = conversation.last_message || "";
 
-    const ticksEl = ensureContactTicks(row);
+    const ticksEl = row.querySelector(".contact-ticks");
 
     if (ticksEl) {
       const mine =
@@ -5561,48 +5377,6 @@ function bumpUnreadBadge(conversationId) {
     String(current);
 
   moveContactRowToTop(row);
-}
-
-/**
- * v51: مزامنة تكّات الشاشة الرئيسية مع حالة الرسالة الحقيقية.
- * (كانت الرئيسية تُقرأ من ملخّص المحادثة فقط، فيبقى الرمادي بعد إعادة الفتح
- *  بينما المحادثة تُظهر الأزرق.)
- */
-function syncContactRowStatus(conversationId, status, senderId = null, createdAt = null) {
-  const row = state.contactElements?.[conversationId];
-  const value = status || "sent";
-
-  const mine =
-    senderId === null ||
-    String(senderId) === String(state.me?.id);
-
-  if (row) {
-    // لا نلمس الصف إن كانت هذه الرسالة أقدم من المعروض عليه
-    const rowAt = row.dataset.lastMessageAt ? new Date(row.dataset.lastMessageAt).getTime() : 0;
-    const at = createdAt ? new Date(createdAt).getTime() : 0;
-    const stale = Boolean(rowAt) && at && at < rowAt;
-
-    if (!stale) {
-      const ticksEl = ensureContactTicks(row);
-
-      if (ticksEl) {
-        ticksEl.classList.toggle("hidden", !mine);
-        ticksEl.classList.toggle("read", value === "read");
-        ticksEl.textContent = value === "sent" ? "✓" : "✓✓";
-      }
-    }
-  }
-
-  // نُحدّث نسخة البيانات أيضاً حتى لا ترجع قيمة قديمة عند أي إعادة رسم أو كاش
-  homeContacts().forEach((c) => {
-    if (c._conversationId !== conversationId) return;
-    c._lastMessageStatus = value;
-    if (senderId) c._lastSenderId = senderId;
-    if (createdAt) {
-      c._lastMessageAt = createdAt;
-      c._lastSenderAt = createdAt;
-    }
-  });
 }
 
 function clearUnreadBadge(conversationId) {
@@ -10833,27 +10607,16 @@ function subscribeToConversation(
             `conversation_id=eq.${conversationId}`,
         },
         (payload) => {
-          const updated = payload.new;
-
           const idx =
             state.messages.findIndex(
               (m) =>
                 m.id ===
-                updated.id
+                payload.new.id
             );
 
           if (idx > -1) {
-            state.messages[idx] = updated;
-          }
-
-          // v51: «الرئيسية = المحادثة» — نُزامن التكّات في القائمة فوراً
-          if (updated?.status) {
-            syncContactRowStatus(
-              updated.conversation_id || conversationId,
-              updated.status,
-              updated.sender_id,
-              updated.created_at
-            );
+            state.messages[idx] =
+              payload.new;
           }
 
           renderMessages();
@@ -11001,12 +10764,6 @@ async function reconcileMessageStatuses(conversationId = statusReconcileConvId) 
     }
 
     if (changed) renderMessages();
-
-    // v51: أهم تغيير = تكّات آخر رسالة في الشاشة الرئيسية
-    const last = data[0];
-    if (last && changed) {
-      syncContactRowStatus(conversationId, last.status);
-    }
   } catch (err) {
     // غير حرج: المزامنة تعمل في الخلفية
   }
@@ -13322,105 +13079,6 @@ function renderPushStatus(message) {
 }
 
 /** v47: كم جهازاً مسجَّلاً لهذا الحساب؟ (ليتأكد المستخدم بنفسه) */
-/**
- * v52: استعادة المحادثات/الرسائل المفقودة من النسخة المحلية لهذا الجهاز.
- * الجهاز يحتفظ بنسخة كاملة من كل رسالة قرأها ⇒ يمكن إعادتها إلى القاعدة.
- * تعمل للمشرفين فقط (تُتحقَّق أيضاً في دالة الخادم).
- */
-async function restoreFromLocalCache() {
-  const status = $("#restore-cache-status");
-  const setStatus = (text) => { if (status) status.textContent = text; };
-
-  if (!state.me?.is_admin && !state.me?.is_super_admin) {
-    setStatus("هذه الميزة للمشرفين فقط.");
-    return;
-  }
-
-  setStatus("جارٍ قراءة النسخة المحلية…");
-
-  try {
-    const [cachedMessages, cachedContacts] = await Promise.all([
-      getAllCachedMessages(),
-      getAllCachedContacts(),
-    ]);
-
-    if (!cachedMessages.length && !cachedContacts.length) {
-      setStatus("لا توجد نسخة محلية على هذا الجهاز.");
-      return;
-    }
-
-    // المحادثات: من قائمة جهات الاتصال المخزَّنة (تحمل معرّف المحادثة وطرفيها)
-    const meId = String(state.me.id);
-    const conversations = [];
-
-    (cachedContacts || []).forEach((c) => {
-      if (!c?._conversationId || !c?.id) return;
-
-      const adminId = String(c._adminId || (state.me.is_admin ? meId : c.id));
-      const userId = String(c._adminId ? (meId === adminId ? c.id : meId) : c.id);
-
-      conversations.push({
-        id: c._conversationId,
-        user_id: userId,
-        admin_id: adminId,
-        status: "new",
-        last_message: c._lastMessage || null,
-        last_message_at: c._lastMessageAt || null,
-        last_sender_id: c._lastSenderId || null,
-        last_message_status: c._lastMessageStatus || null,
-        created_at: c._lastMessageAt || c.created_at || new Date().toISOString(),
-      });
-    });
-
-    const conversationIds = new Set(conversations.map((c) => c.id));
-
-    // الرسائل المخزَّنة لمحادثات نعرف طرفيها
-    const messages = (cachedMessages || [])
-      .filter((m) => m?.conversation_id && m?.sender_id && conversationIds.has(m.conversation_id))
-      .map((m) => ({
-        id: m.id,
-        conversation_id: m.conversation_id,
-        sender_id: m.sender_id,
-        content: m.content ?? null,
-        attachment_url: m.attachment_url ?? null,
-        attachment_type: m.attachment_type ?? null,
-        reply_to_id: m.reply_to_id ?? null,
-        buttons: m.buttons ?? null,
-        played_at: m.played_at ?? null,
-        status: m.status || "read",
-        created_at: m.created_at,
-      }));
-
-    setStatus(`جارٍ الإرسال (${conversations.length} محادثة، ${messages.length} رسالة)…`);
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData?.session?.access_token;
-
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/restore-cache`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ conversations, messages }),
-    });
-
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setStatus(`تعذّرت الاستعادة: ${result?.error || response.status}`);
-      return;
-    }
-
-    setStatus(
-      `تمت الاستعادة ✅ محادثات: ${result.conversationsAdded || 0} · رسائل: ${result.messagesAdded || 0}` +
-        (result.skipped ? ` · تُخطّي: ${result.skipped}` : "")
-    );
-
-    await loadContacts();
-    refreshConversationPreviewsFromServer();
-  } catch (err) {
-    setStatus(`تعذّرت الاستعادة: ${err?.message || err}`);
-  }
-}
-
 async function refreshPushDeviceCount() {
   const el = $("#push-device-count");
   if (!el || !state.me) return;
