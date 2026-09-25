@@ -8865,3 +8865,56 @@ body.call-open { overflow: hidden; }
   opacity: .85;
 }
 .auth-build b { color: var(--accent, #00a884); font-weight: 700; }
+
+/* =============================================================
+   v65: خانة المكالمة غير المُجاب عنها داخل المحادثة (زي واتساب)
+   ============================================================= */
+.call-row .bubble.call-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  max-width: min(80%, 400px);
+  cursor: pointer;
+  transition: filter .15s ease;
+}
+.call-row .bubble.call-entry:active { filter: brightness(.96); }
+
+.call-entry-icon {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 168, 132, .14);
+  color: #00a884;
+}
+.call-entry-icon svg { width: 19px; height: 19px; fill: currentColor; }
+
+.call-entry.missed .call-entry-icon {
+  background: rgba(229, 66, 79, .15);
+  color: #e5424f;
+}
+
+.call-entry-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.call-entry-label { font-size: 13.5px; font-weight: 600; }
+.call-entry.missed .call-entry-label { color: #e5424f; }
+.call-entry-meta { font-size: 11px; opacity: .72; }
+.call-entry-meta .bubble-time { margin: 0; }
+
+.call-entry-back {
+  flex: 0 0 auto;
+  margin-inline-start: auto;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 168, 132, .12);
+  color: #00a884;
+}
+.call-entry-back svg { width: 15px; height: 15px; fill: currentColor; }
+
+/* المعاينة في الرئيسية: المكالمة الفائتة بالأحمر */
+.contact-preview.missed-call { color: #e5424f; }

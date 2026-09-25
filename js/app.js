@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "64";
+const BUILD = "65";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -4895,13 +4895,21 @@ function endCall(note = "", silent = false) {
   }
 
   // v57/v61: نُثبّت نتيجة المكالمة في السجل — المتصل وحده يملك صف السجل (dbId)
+  let outcome = "missed";
   try {
-    const outcome =
+    outcome =
       cur.status === "declined" ? "declined" :
       cur.status === "busy" ? "busy" :
       cur.status === "canceled" ? "canceled" :
       "missed";
     logCallUpdate(outcome, { dbId: cur.dbId });
+  } catch (_) {}
+
+  // v65: المكالمة التي لم يُرَد عليها تظهر خانةً في المحادثة بوقتها (زي واتساب)
+  try {
+    if (cur.role === "caller" && cur.conversationId) {
+      logCallMessage(cur.conversationId, outcome).catch(() => {});
+    }
   } catch (_) {}
 
   clearTimeout(cur.timeout);
@@ -5934,7 +5942,9 @@ function buildContactRow(c, opts = {}) {
 
       <div class="contact-sub">
         ${ticks}
-        <span class="contact-preview">${escapeHtml(c._lastMessage || "")}</span>
+        <span class="contact-preview${
+          c._lastMessageKind === "call" && !lastMine ? " missed-call" : ""
+        }">${escapeHtml(c._lastMessage || "")}</span>
       </div>
     </div>
 
@@ -6005,7 +6015,7 @@ async function refreshConversationPreviewsFromServer() {
   try {
     const { data, error } = await supabase
       .from("messages")
-      .select("conversation_id, content, attachment_type, status, created_at, sender_id")
+      .select("conversation_id, content, attachment_type, status, created_at, sender_id, kind, call_status")
       .in("conversation_id", ids)
       .order("created_at", { ascending: false })
       .limit(200);
@@ -6037,6 +6047,8 @@ async function refreshConversationPreviewsFromServer() {
       contact._lastMessageAt = message.created_at;
       contact._lastSenderId = message.sender_id;
       contact._lastMessageStatus = message.status || null;
+      contact._lastMessageKind = message.kind || "text";
+      contact._lastCallStatus = message.call_status || null;
 
       const row = state.contactElements[contact._conversationId];
       if (!row) return;
@@ -6045,6 +6057,11 @@ async function refreshConversationPreviewsFromServer() {
       if (previewEl && previewEl.textContent !== text) {
         previewEl.textContent = text;
         changed = true;
+      }
+      if (previewEl) {
+        const missedPreview =
+          message.kind === "call" && String(message.sender_id) !== String(state.me?.id);
+        previewEl.classList.toggle("missed-call", Boolean(missedPreview));
       }
 
       const timeEl = row.querySelector(".contact-time");
@@ -6196,6 +6213,9 @@ async function patchContactUIOnNewMessage(
 
     if (previewEl && !stale) {
       previewEl.textContent = preview;
+      // v65: المكالمة الفائتة حمراء في المعاينة (زي واتساب)
+      const missedPreview = message.kind === "call" && !isMine;
+      previewEl.classList.toggle("missed-call", Boolean(missedPreview));
     }
 
     if (!stale) {
@@ -6207,6 +6227,8 @@ async function patchContactUIOnNewMessage(
         contact._lastMessageAt = message.created_at || new Date().toISOString();
         contact._lastSenderId = message.sender_id;
         contact._lastMessageStatus = message.status || null;
+        contact._lastMessageKind = message.kind || "text";
+        contact._lastCallStatus = message.call_status || null;
       }
     }
 
@@ -7664,6 +7686,9 @@ function findMessageById(id) {
 function messagePreviewText(m) {
   if (!m) return "";
 
+  // v65: خانة المكالمة — نص خاص بكل طرف
+  if (m.kind === "call") return callEntryLabel(m);
+
   if (m.content) {
     return m.content;
   }
@@ -7707,7 +7732,100 @@ function isMessageFromUser(message) {
 // MESSAGE BUBBLE
 // ===============================================================
 
+// ===============================================================
+// v65: خانة المكالمة غير المُجاب عنها داخل المحادثة — «زي واتساب»
+// ---------------------------------------------------------------
+// المتصل هو من يكتب الصف (لأنه يملك سجل المكالمة)، والمستقبِل يراه
+// لحظياً عبر الريلتايم. النص يختلف حسب الطرف: المتصل يرى «لم يتم الرد»
+// والمستقبِل يرى «مكالمة صوتية فائتة» بالأحمر — مع وقتها.
+// ===============================================================
+const CALL_ENTRY_STATUS = { missed: 1, declined: 1, canceled: 1, busy: 1, unanswered: 1 };
+
+function callEntryLabel(m) {
+  const t = state.t || {};
+  return isMessageMine(m)
+    ? (t.call_no_answer || "لم يتم الرد")
+    : (t.call_missed || "مكالمة صوتية فائتة");
+}
+
+/** خانة المكالمة داخل المحادثة (فقاعة مبنيّة يدوياً — بلا أدوات رد/تفاعل) */
+function buildCallEntryBubble(m) {
+  const mine = isMessageMine(m);
+  const userSide = isMessageFromUser(m);
+  const missed = !mine;            // وصلتني ولم أردّ ⇒ فائتة (حمراء)
+  const label = callEntryLabel(m);
+  const time = formatBubbleTime(m);
+  const backTitle = (state.t && state.t.call_back) || "اتصال";
+
+  const div = document.createElement("div");
+  div.className = `bubble-row ${userSide ? "user-side" : "admin-side"} ${mine ? "mine" : "theirs"} call-row`;
+  div.dataset.messageId = m.id;
+  div.dataset.callEntry = "1";
+
+  div.innerHTML = `
+    <div class="bubble call-entry${missed ? " missed" : ""}" role="button" tabindex="0" title="${escapeHtml(backTitle)}">
+      <span class="call-entry-icon">${missedCallIconSvg()}</span>
+      <span class="call-entry-body">
+        <span class="call-entry-label">${escapeHtml(label)}</span>
+        <span class="call-entry-meta"><span class="bubble-time">${time}</span></span>
+      </span>
+      <span class="call-entry-back" aria-hidden="true">${missedCallIconSvg()}</span>
+    </div>
+  `;
+
+  // الضغط على الخانة = إعادة الاتصال (كما في واتساب)
+  const entry = div.querySelector(".call-entry");
+  const callBack = () => { try { startOutgoingCall(); } catch (_) {} };
+  entry?.addEventListener("click", (event) => { event.stopPropagation(); callBack(); });
+  entry?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") { event.preventDefault(); callBack(); }
+  });
+
+  return div;
+}
+
+/** يسجّل خانة «لم يتم الرد / مكالمة فائتة» في المحادثة */
+async function logCallMessage(conversationId, status) {
+  if (!state.me?.id || !conversationId) return null;
+  const safeStatus = CALL_ENTRY_STATUS[status] ? status : "unanswered";
+
+  try {
+    const { data, error } = await supabase
+      .from("messages")
+      .insert({
+        conversation_id: conversationId,
+        sender_id: state.me.id,
+        content: "مكالمة صوتية",     // نص محايد لملخّص الرئيسية (العرض داخل المحادثة خاص بكل طرف)
+        kind: "call",
+        call_status: safeStatus,
+        status: "sent",
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.warn("[CALL] تعذّر تسجيل خانة المكالمة:", error.message);
+      return null;
+    }
+
+    const exists = state.messages.some((item) => item.id === data.id);
+    if (!exists && state.activeConversation?.id === conversationId) {
+      state.messages.push(data);
+      renderMessages();
+      await cacheMessages(conversationId, [data]);
+    }
+
+    await patchContactUIOnNewMessage(data, { incrementUnread: false });
+    return data;
+  } catch (_) {
+    return null;
+  }
+}
+
 function buildMessageBubble(m) {
+  // v65: خانة مكالمة (غير مُجاب عنها) لها شكلها الخاص
+  if (m && m.kind === "call") return buildCallEntryBubble(m);
+
   const mine = isMessageMine(m);
   const userSide = isMessageFromUser(m);
 
