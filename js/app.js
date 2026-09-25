@@ -28,8 +28,6 @@ import {
   cacheMessages,
   deleteCachedMessage,
   getCachedMessages,
-  getAllCachedMessages,
-  getAllCachedContacts,
   cacheContacts,
   getCachedContacts,
   queueOutboxMessage,
@@ -45,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "53";
+const BUILD = "54";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -2109,8 +2107,6 @@ async function renderAdminTools() {
 }
 
 function wireAdminTools() {
-  $("#btn-restore-cache")?.addEventListener("click", restoreFromLocalCache);
-
   // v50: الفرز يُطبَّق فورًا على المعروض (بلا إعادة جلب) ويُحفظ للجلسات القادمة
   const sortSelect = $("#admin-users-sort");
   if (sortSelect) {
@@ -13341,105 +13337,6 @@ function renderPushStatus(message) {
 }
 
 /** v47: كم جهازاً مسجَّلاً لهذا الحساب؟ (ليتأكد المستخدم بنفسه) */
-/**
- * v52: استعادة المحادثات/الرسائل المفقودة من النسخة المحلية لهذا الجهاز.
- * الجهاز يحتفظ بنسخة كاملة من كل رسالة قرأها ⇒ يمكن إعادتها إلى القاعدة.
- * تعمل للمشرفين فقط (تُتحقَّق أيضاً في دالة الخادم).
- */
-async function restoreFromLocalCache() {
-  const status = $("#restore-cache-status");
-  const setStatus = (text) => { if (status) status.textContent = text; };
-
-  if (!state.me?.is_admin && !state.me?.is_super_admin) {
-    setStatus("هذه الميزة للمشرفين فقط.");
-    return;
-  }
-
-  setStatus("جارٍ قراءة النسخة المحلية…");
-
-  try {
-    const [cachedMessages, cachedContacts] = await Promise.all([
-      getAllCachedMessages(),
-      getAllCachedContacts(),
-    ]);
-
-    if (!cachedMessages.length && !cachedContacts.length) {
-      setStatus("لا توجد نسخة محلية على هذا الجهاز.");
-      return;
-    }
-
-    // المحادثات: من قائمة جهات الاتصال المخزَّنة (تحمل معرّف المحادثة وطرفيها)
-    const meId = String(state.me.id);
-    const conversations = [];
-
-    (cachedContacts || []).forEach((c) => {
-      if (!c?._conversationId || !c?.id) return;
-
-      const adminId = String(c._adminId || (state.me.is_admin ? meId : c.id));
-      const userId = String(c._adminId ? (meId === adminId ? c.id : meId) : c.id);
-
-      conversations.push({
-        id: c._conversationId,
-        user_id: userId,
-        admin_id: adminId,
-        status: "new",
-        last_message: c._lastMessage || null,
-        last_message_at: c._lastMessageAt || null,
-        last_sender_id: c._lastSenderId || null,
-        last_message_status: c._lastMessageStatus || null,
-        created_at: c._lastMessageAt || c.created_at || new Date().toISOString(),
-      });
-    });
-
-    const conversationIds = new Set(conversations.map((c) => c.id));
-
-    // الرسائل المخزَّنة لمحادثات نعرف طرفيها
-    const messages = (cachedMessages || [])
-      .filter((m) => m?.conversation_id && m?.sender_id && conversationIds.has(m.conversation_id))
-      .map((m) => ({
-        id: m.id,
-        conversation_id: m.conversation_id,
-        sender_id: m.sender_id,
-        content: m.content ?? null,
-        attachment_url: m.attachment_url ?? null,
-        attachment_type: m.attachment_type ?? null,
-        reply_to_id: m.reply_to_id ?? null,
-        buttons: m.buttons ?? null,
-        played_at: m.played_at ?? null,
-        status: m.status || "read",
-        created_at: m.created_at,
-      }));
-
-    setStatus(`جارٍ الإرسال (${conversations.length} محادثة، ${messages.length} رسالة)…`);
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData?.session?.access_token;
-
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/restore-cache`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ conversations, messages }),
-    });
-
-    const result = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      setStatus(`تعذّرت الاستعادة: ${result?.error || response.status}`);
-      return;
-    }
-
-    setStatus(
-      `تمت الاستعادة ✅ محادثات: ${result.conversationsAdded || 0} · رسائل: ${result.messagesAdded || 0}` +
-        (result.skipped ? ` · تُخطّي: ${result.skipped}` : "")
-    );
-
-    await loadContacts();
-    refreshConversationPreviewsFromServer();
-  } catch (err) {
-    setStatus(`تعذّرت الاستعادة: ${err?.message || err}`);
-  }
-}
-
 async function refreshPushDeviceCount() {
   const el = $("#push-device-count");
   if (!el || !state.me) return;
