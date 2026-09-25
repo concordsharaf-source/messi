@@ -26,7 +26,7 @@
   <!-- v49: اتصال مبكر بخادم البيانات + تحميل مسبق لكود التطبيق (إقلاع أسرع) -->
   <link rel="preconnect" href="https://jjamwoidjxrdovsoftbq.supabase.co" crossorigin />
   <link rel="dns-prefetch" href="https://jjamwoidjxrdovsoftbq.supabase.co" />
-  <link rel="modulepreload" href="./js/app.js?v=58" />
+  <link rel="modulepreload" href="./js/app.js?v=59" />
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
@@ -35,7 +35,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "58";
+  window.WA_BUILD = "59";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -94,8 +94,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=58" />
-  <script src="./vendor/supabase-js.js?v=58"></script>
+  <link rel="stylesheet" href="./css/style.css?v=59" />
+  <script src="./vendor/supabase-js.js?v=59"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -292,12 +292,23 @@
     </header>
 
     <div id="conversation-selection-bar" class="conversation-selection-bar hidden" role="toolbar" aria-label="خيارات المحادثة المحددة">
-      <button id="conversation-selection-close" type="button" aria-label="إلغاء التحديد">✕</button>
+      <button id="conversation-selection-close" type="button" aria-label="إلغاء التحديد">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
       <span id="conversation-selection-title">محادثة محددة</span>
-      <button id="conversation-action-delete" type="button" title="حذف">🗑️</button>
-      <button id="conversation-action-archive" type="button" title="أرشفة">📦</button>
-      <button id="conversation-action-mute" type="button" title="كتم">🔇</button>
-      <button id="conversation-action-pin" type="button" title="تثبيت">📌</button>
+
+      <button id="conversation-action-delete" type="button" title="حذف" aria-label="حذف">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+      </button>
+      <button id="conversation-action-pin" type="button" title="تثبيت" aria-label="تثبيت">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+      </button>
+      <button id="conversation-action-archive" type="button" title="أرشفة" aria-label="أرشفة">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.54 5.23l-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27zM12 17.5 6.5 12H10v-2h4v2h3.5L12 17.5zM5.12 5l.81-1h12l.94 1H5.12z"/></svg>
+      </button>
+      <button id="conversation-action-mute" type="button" title="كتم" aria-label="كتم">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 18.69 7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12l7.92 7.88z"/></svg>
+      </button>
     </div>
 
     <div id="settings-backdrop" class="settings-backdrop hidden"></div>
@@ -533,7 +544,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v58</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v59</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -620,7 +631,7 @@
   <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
 </div>
 
-<script type="module" src="./js/app.js?v=58"></script>
+<script type="module" src="./js/app.js?v=59"></script>
 
   <!-- إعادة توجيه رسالة: اختر المحادثة -->
   <div id="forward-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="إعادة توجيه الرسالة">

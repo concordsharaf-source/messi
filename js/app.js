@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "58";
+const BUILD = "59";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -2815,6 +2815,8 @@ async function loadAdminMeta() {
         note: row.note || "",
         muted: Boolean(row.muted),
         archived: Boolean(row.archived),
+        pinned: Boolean(row.pinned),          // v59
+        pinned_at: row.pinned_at || null,     // v59
       };
     });
 
@@ -2822,8 +2824,31 @@ async function loadAdminMeta() {
 
     Object.keys(map).forEach(paintContactMeta);
     applyContactFilters();
+
+    // v59.1: القائمة تُرسم قبل وصول بيانات التثبيت ⇒ نُعيد الترتيب بعد وصولها
+    // (كانت المحادثة المثبّتة لا تصعد لأول القائمة بعد إعادة تشغيل التطبيق)
+    refreshPinnedOrder();
   } catch (err) {
     console.warn("loadAdminMeta failed:", err);
+  }
+}
+
+/** v59.1: يُعيد ترتيب القوائم بحيث تكون المثبّتة أولًا (يُنادى بعد وصول بيانات التثبيت) */
+function refreshPinnedOrder() {
+  try {
+    const hasPins = Object.values(state.adminMeta || {}).some((m) => m && m.pinned);
+
+    if (!hasPins) return;
+
+    state.contacts = (state.contacts || []).slice().sort(compareContactsByActivity);
+    state.conversationRows = (state.conversationRows || []).slice().sort(compareContactsByActivity);
+
+    if (state.me?.is_admin) renderConversationSection();
+    else renderContactsFromCache(state.contacts);
+
+    applyContactFilters();
+  } catch (err) {
+    console.warn("[pins] refreshPinnedOrder:", err);
   }
 }
 
@@ -2835,6 +2860,8 @@ function metaFor(conversationId) {
       note: "",
       muted: false,
       archived: false,
+      pinned: false,      // v59
+      pinned_at: null,    // v59
     }
   );
 }
@@ -3691,58 +3718,168 @@ function updateAdminConversationOptions() {
 }
 
 // ---------------------------------------------------------------
-// الربط الشامل
+// v59: الضغط المستمر على أي محادثة (قائمة المستخدم أو قائمة المشرف)
+//      ⇒ شريط خيارات أعلى القائمة: حذف · تثبيت · أرشفة (وكتم)
 // ---------------------------------------------------------------
+
+const CONV_SELECT_ICONS = {
+  close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>',
+  unpin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2V4zm1.5-2H20v16H16v4l-4-4-4 4v-4H4V2h11.5z"/></svg>',
+};
 
 let selectedConversationActionId = null;
 let conversationPressTimer = null;
+let suppressConversationClickUntil = 0;
+let conversationSelectionOpenedAt = 0;   // v59.1: مهلة سماح حتى لا تُغلق بنقرة الضغط نفسه
+
 function closeConversationSelection() {
   selectedConversationActionId = null;
   $("#conversation-selection-bar")?.classList.add("hidden");
   document.querySelectorAll(".contact-row.conversation-selected").forEach((el) => el.classList.remove("conversation-selected"));
 }
+
 function selectedConversationMeta() { return selectedConversationActionId ? metaFor(selectedConversationActionId) : null; }
+
+/** يفتح شريط الخيارات لصف محادثة معيّن */
+function openConversationSelection(row) {
+  const id = row?.dataset?.conversationId;
+  if (!id) return;
+
+  selectedConversationActionId = id;
+  conversationSelectionOpenedAt = performance.now();
+
+  document.querySelectorAll(".contact-row.conversation-selected").forEach((el) => el.classList.remove("conversation-selected"));
+  row.classList.add("conversation-selected");
+
+  const isAdmin = Boolean(state.me?.is_admin);
+  const meta = metaFor(id);
+
+  // الأرشفة/الكتم/الحذف: للمشرفين فقط (القاعدة نفسها تفرضه) — التثبيت متاح للجميع
+  $("#conversation-action-archive")?.classList.toggle("hidden", !isAdmin);
+  $("#conversation-action-mute")?.classList.toggle("hidden", !isAdmin);
+  $("#conversation-action-delete")?.classList.toggle("hidden", !isAdmin);
+
+  const pinBtn = $("#conversation-action-pin");
+  if (pinBtn) {
+    const pinned = isContactPinned(id);
+    pinBtn.classList.toggle("on", pinned);
+    pinBtn.title = pinned ? "إلغاء التثبيت" : "تثبيت";
+    pinBtn.innerHTML = pinned ? CONV_SELECT_ICONS.unpin : CONV_SELECT_ICONS.pin;
+  }
+
+  const title = $("#conversation-selection-title");
+  if (title) title.textContent = "محادثة محددة";
+
+  $("#conversation-selection-bar")?.classList.remove("hidden");
+}
+
 async function runConversationAction(action) {
   const id = selectedConversationActionId;
   if (!id) return;
-  const meta = selectedConversationMeta() || {};
-  if (action === "archive") await toggleConversationArchive(id);
-  if (action === "mute") await toggleConversationMute(id);
-  if (action === "pin") {
-    const pins = JSON.parse(localStorage.getItem("wa_pinned_conversations") || "[]");
-    const next = pins.includes(String(id)) ? pins.filter((x) => x !== String(id)) : [String(id), ...pins];
-    localStorage.setItem("wa_pinned_conversations", JSON.stringify(next));
-    showAuthError(next.includes(String(id)) ? "📌 تم تثبيت المحادثة." : "تم إلغاء تثبيت المحادثة.");
-    await loadContacts();
-  }
+
+  if (action === "pin") { closeConversationSelection(); await toggleConversationPin(id); return; }
+  if (action === "archive") { closeConversationSelection(); await toggleConversationArchive(id); return; }
+  if (action === "mute") { closeConversationSelection(); await toggleConversationMute(id); return; }
+
   if (action === "delete") {
     const ok = await showAppConfirm({ title: "حذف المحادثة؟", text: "سيتم حذف المحادثة ورسائلها إذا سمحت صلاحيات الحساب.", icon: "🗑️", danger: true });
-    if (!ok) return;
+    if (!ok) { closeConversationSelection(); return; }
+
     const { error } = await supabase.from("conversations").delete().eq("id", id);
-    if (error) showAuthError("تعذّر حذف المحادثة: " + error.message); else { closeConversationSelection(); await loadContacts(); showAuthError("تم حذف المحادثة."); }
+    closeConversationSelection();
+
+    if (error) showAuthError("تعذّر حذف المحادثة: " + error.message);
+    else { await loadContacts(); showAuthError("تم حذف المحادثة."); }
   }
-  closeConversationSelection();
 }
+
 function wireConversationListActions() {
-  const list = $("#contact-list");
-  if (!list || list.dataset.actionsWired === "1") return;
-  list.dataset.actionsWired = "1";
-  list.addEventListener("pointerdown", (event) => {
-    const row = event.target.closest(".contact-row");
-    if (!row || event.target.closest("button, input, a")) return;
-    clearTimeout(conversationPressTimer);
+  // v59: نربط على الشريط الجانبي كامل ⇒ يعمل في «محادثاتي» و«المشرفين» وأي قائمة
+  const host = $("#sidebar") || $("#contact-list");
+  if (!host || host.dataset.convActionsWired === "1") return;
+  host.dataset.convActionsWired = "1";
+
+  const rowFromEvent = (event) => event.target?.closest?.(".contact-row");
+
+  const cancelPress = () => { clearTimeout(conversationPressTimer); conversationPressTimer = null; };
+
+  host.addEventListener("pointerdown", (event) => {
+    const row = rowFromEvent(event);
+    if (!row || event.target.closest("button, input, a, textarea")) return;
+    if (event.button !== undefined && event.button !== 0 && event.pointerType === "mouse") return;
+
+    cancelPress();
+    const y = event.clientY;
+
     conversationPressTimer = setTimeout(() => {
-      selectedConversationActionId = row.dataset.conversationId;
-      document.querySelectorAll(".contact-row.conversation-selected").forEach((el) => el.classList.remove("conversation-selected"));
-      row.classList.add("conversation-selected");
-      $("#conversation-selection-title").textContent = "محادثة محددة";
-      $("#conversation-selection-bar")?.classList.remove("hidden");
-    }, 520);
+      conversationPressTimer = null;
+      suppressConversationClickUntil = performance.now() + 700;   // لا تفتح المحادثة بعد التحديد
+      try { navigator.vibrate?.(15); } catch (_) {}
+      openConversationSelection(row);
+    }, 480);
+
+    // تمرير ⇒ إلغاء
+    row.__pressY = y;
   });
-  ["pointerup", "pointercancel", "pointerleave"].forEach((name) => list.addEventListener(name, () => clearTimeout(conversationPressTimer)));
+
+  host.addEventListener("pointermove", (event) => {
+    if (!conversationPressTimer) return;
+    const row = rowFromEvent(event);
+    if (!row || Math.abs(event.clientY - (row.__pressY ?? event.clientY)) > 18) cancelPress();
+  });
+
+  ["pointerup", "pointercancel", "pointerleave", "scroll"].forEach((name) =>
+    host.addEventListener(name, cancelPress, true)
+  );
+
+  // سطح المكتب: النقر الأيمن يفتح نفس الخيارات (زي واتساب وِب)
+  host.addEventListener("contextmenu", (event) => {
+    const row = rowFromEvent(event);
+    if (!row) return;
+    event.preventDefault();
+    suppressConversationClickUntil = performance.now() + 700;
+    openConversationSelection(row);
+  });
+
+  // الإغلاق: زر ✕ أو النقر في أي مكان آخر
   $("#conversation-selection-close")?.addEventListener("click", closeConversationSelection);
-  [["delete", "conversation-action-delete"], ["archive", "conversation-action-archive"], ["mute", "conversation-action-mute"], ["pin", "conversation-action-pin"]].forEach(([action, id]) => $("#" + id)?.addEventListener("click", () => runConversationAction(action)));
+
+  document.addEventListener("click", (event) => {
+    const bar = $("#conversation-selection-bar");
+    if (!bar || bar.classList.contains("hidden")) return;
+
+    // v59.1: نقرة إنهاء نفس الضغط المستمر (أو انزياح القائمة بعد ظهور الشريط) لا تُغلقه فورًا
+    if (performance.now() - conversationSelectionOpenedAt < 700) return;
+
+    if (bar.contains(event.target)) return;
+
+    // نقرة على محادثة أخرى = إلغاء التحديد بلا فتح المحادثة
+    const otherRow = event.target.closest?.(".contact-row");
+    if (otherRow) {
+      suppressConversationClickUntil = performance.now() + 400;
+      closeConversationSelection();
+      return;
+    }
+
+    closeConversationSelection();
+  });
+
+  // زر الهروب (سطح المكتب)
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") closeConversationSelection();
+  });
+
+  [["delete", "conversation-action-delete"], ["pin", "conversation-action-pin"],
+   ["archive", "conversation-action-archive"], ["mute", "conversation-action-mute"]]
+    .forEach(([action, id]) => $("#" + id)?.addEventListener("click", () => runConversationAction(action)));
 }
+
+/** v59: هل نمنع فتح المحادثة؟ (بعد ضغط مستمر/نقر أيمن) */
+function shouldSuppressConversationOpen() {
+  return performance.now() < suppressConversationClickUntil;
+}
+
 function wireAdminFeatures() {
   wireConversationListActions();
   wireContactFilters();
@@ -5202,7 +5339,73 @@ function renderContactsFromCache(cached) {
     });
 }
 
+const PIN_KEY = "wa_pinned_conversations";
+
+function localPins() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PIN_KEY) || "[]");
+    return Array.isArray(raw) ? raw.map(String) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+/** v59: هل المحادثة مثبّتة؟ (للمشرف: من القاعدة · لغيره: على هذا الجهاز) */
+function isContactPinned(contact) {
+  const id = contact?._conversationId || contact;
+  if (!id) return false;
+  if (state.me?.is_admin) return Boolean(metaFor(id).pinned);
+  return localPins().includes(String(id));
+}
+
+function pinnedAtOf(contact) {
+  const id = contact?._conversationId;
+  if (!id || !state.me?.is_admin) return 0;
+  const at = metaFor(id).pinned_at;
+  return at ? Date.parse(at) || 0 : 0;
+}
+
+/** تثبيت/إلغاء تثبيت محادثة (فعليًا: تظهر أول القائمة) */
+async function toggleConversationPin(conversationId) {
+  if (!conversationId) return;
+
+  if (!state.me?.is_admin) {
+    const pins = localPins();
+    const nowPinned = !pins.includes(String(conversationId));
+    const next = nowPinned ? [String(conversationId), ...pins] : pins.filter((x) => x !== String(conversationId));
+    try { localStorage.setItem(PIN_KEY, JSON.stringify(next)); } catch (_) {}
+    showAuthError(nowPinned ? "📌 تم تثبيت المحادثة أعلى القائمة." : "تم إلغاء تثبيت المحادثة.");
+    await loadContacts();
+    return;
+  }
+
+  const meta = metaFor(conversationId);
+  const next = !meta.pinned;
+
+  const { error } = await supabase.rpc("set_conversation_prefs", {
+    p_conversation_id: conversationId,
+    p_pinned: next,
+  });
+
+  if (error) { showAuthError("تعذّر التثبيت: " + error.message); return; }
+
+  state.adminMeta[conversationId] = { ...meta, pinned: next, pinned_at: next ? new Date().toISOString() : null };
+  showAuthError(next ? "📌 تم تثبيت المحادثة أعلى القائمة." : "تم إلغاء تثبيت المحادثة.");
+  await loadContacts();
+}
+
+/** v59: المثبّتة أولًا (الأحدث تثبيتًا أولًا) ثم البقية بالأحدث رسالة */
 function compareContactsByActivity(first, second) {
+  const firstPin = isContactPinned(first);
+  const secondPin = isContactPinned(second);
+
+  if (firstPin !== secondPin) return firstPin ? -1 : 1;
+
+  if (firstPin && secondPin) {
+    const diff = pinnedAtOf(second) - pinnedAtOf(first);
+    if (diff !== 0) return diff;
+  }
+
   const firstTime = Date.parse(
     first?._lastMessageAt || first?.last_message_at || ""
   ) || 0;
@@ -5693,6 +5896,9 @@ function buildContactRow(c, opts = {}) {
     </div>
 
     <div class="contact-meta">
+      <span class="contact-pin${
+        isContactPinned(c) ? "" : " hidden"
+      }" title="محادثة مثبّتة"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg></span>
       <span class="contact-time">${formatContactTime(lastAt)}</span>
 
       ${
@@ -5705,27 +5911,18 @@ function buildContactRow(c, opts = {}) {
 
 
   row.addEventListener("click", () => {
+    if (shouldSuppressConversationOpen()) return;   // v59: جاءت من ضغط مستمر ⇒ لا تفتح
     openConversation(c);
   });
 
-  if (state.me?.is_admin && !c.is_admin && c.id) {
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "contact-delete-btn";
-    deleteButton.title = "حذف المستخدم";
-    deleteButton.textContent = "🗑️";
-    deleteButton.addEventListener("click", async (event) => {
-      event.stopPropagation();
-      await deleteUser(c);
-    });
-    row.appendChild(deleteButton);
-  }
 
   if (c._conversationId) {
     indexContactElement(
       c._conversationId,
       row
     );
+
+    c._pinned = isContactPinned(c);
 
     row.dataset.unread =
       String(c._unread || 0);
