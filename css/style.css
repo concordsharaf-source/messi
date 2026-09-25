@@ -3671,6 +3671,7 @@ body[data-theme="dark"] .chat-messages {
   background-size: min(68%, 540px) auto;   /* v66: مقاس واتساب الحقيقي */
   background-repeat: repeat;
   background-position: top left;
+  background-blend-mode: soft-light;
 }
 
 body[data-theme="light"] .chat-messages {
@@ -3680,6 +3681,7 @@ body[data-theme="light"] .chat-messages {
   background-size: min(68%, 540px) auto;   /* v66: مقاس واتساب الحقيقي */
   background-repeat: repeat;
   background-position: top left;
+  background-blend-mode: soft-light;
 }
 
 /* =============================================================
