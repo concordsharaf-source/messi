@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "57";
+const BUILD = "58";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -379,8 +379,20 @@ function openConversationUIState(conversationId) {
   }
 }
 
+/** v58: توافق مع الكود القديم — كانت تُستدعى عند الخروج من المحادثة.
+    سبب عطل «زر الرجوع لا يعمل»: الدالة اختفت في v56 وبقيت مُستدعاة هنا،
+    فيتوقف closeChatView بخطأ ReferenceError قبل إغلاق الشاشة.
+    المكالمة الآن عامة (شاشة كاملة فوق كل الشاشات) فلا نُنهيها بمجرد الرجوع —
+    نُنظّف فقط أي بقايا صوتية إن لم تكن هناك مكالمة جارية. */
+function stopVoiceCall() {
+  if (activeCall) return;
+  const audio = document.getElementById("voice-call-audio");
+  if (audio && audio.srcObject) audio.srcObject = null;
+}
+
 function closeChatView() {
-  stopVoiceCall();
+  try {
+    stopVoiceCall();
   stopStatusReconcile();
 
   // v47: أوقف قنوات المحادثة — كانت تبقى مفتوحة بعد الخروج فتعتبر كل رسالة
@@ -419,6 +431,13 @@ function closeChatView() {
   // إذا تعذّر فتح المحادثة (بلا إنترنت مثلاً).
   $("#chat-active")?.classList.add("hidden");
   $("#chat-empty-state")?.classList.remove("hidden");
+  } catch (err) {
+    // شبكة أمان: أي خطأ داخلي لا يمنع الرجوع للقائمة (كان الرجوع يتعطل بالكامل)
+    console.warn("[chat] closeChatView:", err);
+    document.body.classList.remove("viewing-chat");
+    $("#chat-active")?.classList.add("hidden");
+    $("#chat-empty-state")?.classList.remove("hidden");
+  }
 }
 
 // ===============================================================
