@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "59";
+const BUILD = "60";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -700,6 +700,9 @@ async function enterApp() {
 
   // v56: الاشتراك في قناة المكالمات ⇒ رنين المكالمات الواردة في أي شاشة
   initCallSignaling().catch(() => {});
+
+  // v60: تحديث «آخر ظهور» دوريًا (نافذة الـ٦ ساعات تنقضي أثناء الاستعمال)
+  startPresenceTicker();
 
   // v57: مكالمات لم يرد عليها (كان الجهاز مقفل النت) ⇒ تظهر عند الفتح
   setTimeout(() => checkMissedCalls().catch(() => {}), 2500);
@@ -12166,123 +12169,118 @@ function subscribeGlobalPresence() {
 // ===============================================================
 
 // =================================================================
-// «آخر ظهور» كما يراه المستخدم
+// «آخر ظهور» كما يراه المستخدم  — v60 (إصلاح)
 // -----------------------------------------------------------------
-//  القاعدة (بطلب المستخدم):
-//   • إن كان آخر ظهور للمشرف أقل من ٦ ساعات → يُعرض كما هو بالضبط.
-//   • إن كان أكثر من ٦ ساعات (أو قبل أيام) → يُعرض «وقت دخول المستخدم − ٦ ساعات»
-//     محسوباً وبتوقيت الساعة نفسه — فلا يرى المستخدم مدة أطول من ذلك أبداً.
-//   • المشرفون (من يرون لوحة الإدارة) يرون الحقيقة كاملة كما هي.
+//  القاعدة (بطلب المستخدم): المستخدم العادي **لا يرى** آخر ظهور لمشرف
+//  أقدم من ٦ ساعات إطلاقًا.
+//
+//  الخلل السابق (v34): كان يُعرض «وقت الدخول − ٦ ساعات» كوقت وهمي، فإذا
+//  فُتح التطبيق في الصباح الباكر كان الناتج **تاريخ اليوم السابق**
+//  (مثال: فتح ٠٢:١٥ ص ⇒ يُعرض «٢٤/٩ ٠٨:١٥ م») — وهذا ما رآه المستخدم.
+//
+//  الصواب الآن:
+//   • متصل الآن ⇒ «متصل الآن».
+//   • آخر ظهور حقيقي خلال ٦ ساعات الأخيرة ⇒ يُعرض كما هو بالضبط.
+//   • أقدم من ٦ ساعات ⇒ تُعرض عبارة بلا أي تاريخ أو وقت:
+//     «آخر ظهور قبل أكثر من ٦ ساعات» — فلا يرى المستخدم تاريخًا قديمًا أبدًا.
+//   • المشرفون يرون الحقيقة كاملة (كما كان).
 // =================================================================
 
 const LAST_SEEN_MAX_MS = 6 * 60 * 60 * 1000; // ٦ ساعات
 
-/** متجه آخر ظهور محسوب للمستخدم (ms) أو null إن لا قيمة */
-function viewedLastSeenMs(iso, viewedIsAdmin) {
-  const real = new Date(iso).getTime();
+const LAST_SEEN_OLD_TEXT = "آخر ظهور قبل أكثر من ٦ ساعات";
 
-  if (!Number.isFinite(real)) return null;
+/** تنسيق وقت/تاريخ حسب اللغة */
+function formatPresenceTime(ms) {
+  const d = new Date(ms);
+  const locale = state.lang === "ar" ? "ar-EG" : "en-US";
+  const time = d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
 
-  // أصحاب الصلاحية الإدارية يرون الحقيقة
-  if (state.me?.is_admin || state.me?.can_moderate) return real;
+  const sameDay =
+    d.getFullYear() === new Date().getFullYear() &&
+    d.getMonth() === new Date().getMonth() &&
+    d.getDate() === new Date().getDate();
 
-  // القاعدة تخصّ ظهور المشرفين أمام المستخدمين
-  if (!viewedIsAdmin) return real;
-
-  const entry = state.entryAt || Date.now();
-  const cap = entry - LAST_SEEN_MAX_MS;
-
-  return real >= cap ? real : cap;
+  return sameDay ? time : `${d.toLocaleDateString(locale)} ${time}`;
 }
 
-async function refreshPresenceLabel(
-  otherId
-) {
-  const label =
-    $("#chat-header-status");
+/**
+ * نص «آخر ظهور» لمن يفتح المحادثة.
+ * @returns {string} النص المعروض (أو "" إن لا معلومة)
+ */
+function presenceTextFor(profile) {
+  const iso = profile?.last_seen;
+  if (!iso) return "";
 
+  const real = new Date(iso).getTime();
+  if (!Number.isFinite(real)) return "";
+
+  const iAmStaff = Boolean(state.me?.is_admin || state.me?.can_moderate);
+  const viewedIsAdmin = Boolean(profile?.is_admin || profile?.is_super_admin);
+
+  // المشرفون يرون الحقيقة كما هي
+  if (iAmStaff || !viewedIsAdmin) {
+    return `${state.t.last_seen} ${formatPresenceTime(real)}`;
+  }
+
+  // المستخدم العادي أمامه مشرف: لا يتجاوز ٦ ساعات أبدًا
+  const age = Date.now() - real;
+
+  if (age <= LAST_SEEN_MAX_MS) {
+    return `${state.t.last_seen} ${formatPresenceTime(real)}`;
+  }
+
+  return LAST_SEEN_OLD_TEXT;
+}
+
+async function refreshPresenceLabel(otherId) {
+  const label = $("#chat-header-status");
   if (!label) return;
 
-  // بلا إنترنت: لا نعرف آخر ظهور من الشبكة — لا نُظهر معلومة قديمة مضلِّلة
+  // بلا إنترنت: لا نُظهر معلومة قديمة مضلِّلة
   if (!state.isOnline) {
     label.textContent = "";
     return;
   }
 
-  if (
-    state.onlineMap[otherId]
-  ) {
-    label.textContent =
-      state.t.online;
-
+  if (state.onlineMap[otherId]) {
+    label.textContent = state.t.online;
     return;
   }
 
   let profile = null;
 
   try {
-    const {
-      data,
-      error,
-    } = await supabase
+    const { data, error } = await supabase
       .from("profiles")
-      .select("last_seen, is_admin")
+      .select("last_seen, is_admin, is_super_admin")
       .eq("id", otherId)
       .single();
 
-    if (error) {
-      console.error(
-        "refreshPresenceLabel failed:",
-        error
-      );
-    } else {
-      profile = data;
-    }
+    if (error) console.error("refreshPresenceLabel failed:", error);
+    else profile = data;
   } catch (err) {
-    console.error(
-      "refreshPresenceLabel network error:",
-      err
-    );
+    console.error("refreshPresenceLabel network error:", err);
   }
 
-  const shownMs = profile?.last_seen
-    ? viewedLastSeenMs(profile.last_seen, Boolean(profile.is_admin))
-    : null;
+  // المحادثة قد تُغلق قبل وصول الرد
+  if (String(state.activeConversation?.otherProfile?.id || "") !== String(otherId)) return;
 
-  if (shownMs !== null) {
-    const d =
-      new Date(
-        shownMs
-      );
+  label.textContent = presenceTextFor(profile || {});
+}
 
-    const time =
-      d.toLocaleTimeString(
-        state.lang === "ar"
-          ? "ar-SA"
-          : "en-US",
-        {
-          hour: "2-digit",
-          minute: "2-digit",
-        }
-      );
+/** v60: تحديث «آخر ظهور» دوريًا + عند العودة للتطبيق (حتى تنقضي نافذة الـ٦ ساعات فعليًا) */
+let presenceTickTimer = null;
 
-    const dateLabel =
-      d.toDateString() ===
-      new Date().toDateString()
-        ? time
-        : d.toLocaleDateString(
-            state.lang === "ar"
-              ? "ar-SA"
-              : "en-US"
-          ) +
-          " " +
-          time;
+function startPresenceTicker() {
+  if (presenceTickTimer) return;
 
-    label.textContent =
-      `${state.t.last_seen} ${dateLabel}`;
-  } else {
-    label.textContent = "";
-  }
+  presenceTickTimer = setInterval(() => {
+    const otherId = state.activeConversation?.otherProfile?.id;
+    if (!otherId) return;
+    if (state.onlineMap[otherId]) return;      // «متصل الآن» لا تحتاج تحديثًا
+    refreshPresenceLabel(otherId).catch(() => {});
+  }, 60000);
 }
 
 // ===============================================================
@@ -14390,6 +14388,8 @@ window.__waCall = {
 
 window.__waDebug = {
   state,
+  presenceTextFor,          // v60: للفحص الآلي
+  lastSeenOldText: LAST_SEEN_OLD_TEXT,
   refreshConversationPreviewsFromServer,
   syncUnreadBadgesFromServer,
   getConversationUnreadCounts,
