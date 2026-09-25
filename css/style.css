@@ -3661,18 +3661,21 @@ body[data-theme="light"] .in-app-notification { background: #fff; }
    1) خلفية الدردشة
    ============================================================= */
 
+/* v62: الخلفية الافتراضية = خلفية واتساب الأصلية تمامًا:
+   نفس نقشة واتساب الرسمية (bg-chat-tile) بنفس لون واتساب (‎#0b141a داكن / #efeae2 فاتح)،
+   تُكرَّر بحجمها الطبيعي كما في واتساب ويب. */
 body[data-theme="dark"] .chat-messages {
   background-color: #0b141a;
-  background-image: var(--wa-doodle-dark);
-  background-size: 462px 462px;
+  background-image: var(--wa-tile-dark);
+  background-size: auto;
   background-repeat: repeat;
   background-position: top left;
 }
 
 body[data-theme="light"] .chat-messages {
   background-color: #efeae2;
-  background-image: var(--wa-doodle-light);
-  background-size: 462px 462px;
+  background-image: var(--wa-tile-light);
+  background-size: auto;
   background-repeat: repeat;
   background-position: top left;
 }
@@ -4444,42 +4447,97 @@ body[data-theme="light"] .settings-head { background: var(--wa-pane-light); }
   font-weight: 700;
 }
 
-/* شبكة الخلفيات */
-.wallpaper-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin: 8px 0 6px;
+/* ===== v62: منتقي خلفية الدردشة — تصميم مطابق لباقي الإعدادات ===== */
+/* حقل الملف لا يظهر: بطاقة «رفع صورة» هي التي تفتحه */
+#wallpaper-input { display: none !important; }
+
+.wp-hint {
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--wa-text-secondary);
+  margin: 2px 2px 10px;
 }
 
-.wallpaper-swatch {
+.wp-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 0 0 10px;
+}
+
+.wp-tile {
   position: relative;
   aspect-ratio: 1 / 1;
-  border-radius: 10px;
-  border: 2px solid transparent;
   padding: 0;
-  cursor: pointer;
+  border: 1.5px solid rgba(134, 150, 160, 0.28);
+  border-radius: 12px;
   overflow: hidden;
-  background: var(--wa-panel-dark);
+  cursor: pointer;
+  background: var(--wa-bg-chat-dark);
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 
-.wallpaper-swatch.active { border-color: var(--wa-accent); }
+.wp-tile:hover { transform: translateY(-1px); }
+.wp-tile:focus-visible { outline: 2px solid var(--wa-accent); outline-offset: 2px; }
 
-.wallpaper-swatch span {
+.wp-tile.active {
+  border-color: var(--wa-accent);
+  box-shadow: 0 0 0 2px rgba(0, 168, 132, 0.35);
+}
+
+/* معاينة حقيقية داخل كل مربّع (نفس ما سيظهر في الدردشة) */
+.wp-preview {
   position: absolute;
-  inset-inline: 0;
-  bottom: 0;
-  font-size: 9.5px;
-  padding: 3px 2px;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  text-align: center;
+  inset: 0;
+  background-repeat: repeat;
+  background-position: center;
 }
 
-.wallpaper-swatch.wp-default {
-  background-color: #0b141a;
-  background-image: var(--wa-doodle-dark);
-  background-size: 72px 72px;
+.wp-tile.wp-custom .wp-preview { background-size: cover; background-repeat: no-repeat; }
+
+/* علامة الاختيار */
+.wp-check {
+  position: absolute;
+  inset-inline-end: 6px;
+  top: 6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--wa-accent);
+  color: #fff;
+  font-size: 12px;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .45);
+  display: none;
+}
+.wp-tile.active .wp-check { display: block; }
+
+/* بطاقة الرفع */
+.wp-tile.wp-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-style: dashed;
+  border-color: rgba(134, 150, 160, 0.45);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--wa-text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+.wp-tile.wp-upload svg { width: 22px; height: 22px; fill: currentColor; }
+.wp-tile.wp-upload:hover { border-color: var(--wa-accent); color: var(--wa-accent); }
+
+.wp-remove {
+  width: 100%;
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 12px;
 }
 
 /* قائمة النغمات */
@@ -8573,36 +8631,38 @@ body[data-theme="light"] #emoji-panel.emoji-panel { background: #ffffff; }
    — بلاطة مربّعة تتكرّر، ألوان مخصّصة للثيمين، وتُبنى محليًا بلا أي ملف خارجي.
    ============================================================= */
 :root {
-  --wa-doodle-dark: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22462%22%20height%3D%22462%22%20viewBox%3D%220%200%20462%20462%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22rgba%28233%2C237%2C239%2C0.085%29%22%20stroke-width%3D%223.0%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cg%20transform%3D%22translate%2812%2037%29%20rotate%28-15%2018.5%2018.5%29%20scale%280.37%29%22%3E%3Cpath%20d%3D%22M28%2046h44l-6%2034H34z%22%2F%3E%3Cpath%20d%3D%22M28%2046a22%2022%200%200%201%2044%200%22%2F%3E%3Cpath%20d%3D%22M50%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2874%207%29%20rotate%28-12%2020.2%2020.2%29%20scale%280.40%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2272%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2268%22%20cy%3D%2264%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M44%2072V32l34-8v40%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28157%209%29%20rotate%283%2016.9%2016.9%29%20scale%280.34%29%22%3E%3Cpath%20d%3D%22M22%2060V50a28%2028%200%200%201%2056%200v10%22%2F%3E%3Crect%20x%3D%2214%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3Crect%20x%3D%2270%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28209%2021%29%20rotate%28-14%2018.8%2018.8%29%20scale%280.38%29%22%3E%3Cpath%20d%3D%22M50%2034c-16%200-24%2012-24%2026s12%2026%2024%2026%2024-12%2024-26-8-26-24-26z%22%2F%3E%3Cpath%20d%3D%22M50%2034c0-8%206-14%2014-16%200%2010-6%2014-14%2016z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28272%2031%29%20rotate%28-2%2015.4%2015.4%29%20scale%280.31%29%22%3E%3Crect%20x%3D%2218%22%20y%3D%2242%22%20width%3D%2264%22%20height%3D%2240%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M14%2030h72v12H14zM50%2030v52%22%2F%3E%3Cpath%20d%3D%22M50%2030c-8%200-16-4-16-10s10-6%2016%2010c6-16%2016-16%2016-10s-8%2010-16%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28349%2020%29%20rotate%28-6%2016.9%2016.9%29%20scale%280.34%29%22%3E%3Cpath%20d%3D%22M24%2040h52l-6%2036H30z%22%2F%3E%3Cpath%20d%3D%22M34%2040a16%2016%200%200%201%2032%200%22%2F%3E%3Cpath%20d%3D%22M40%2050v22M50%2050v22M60%2050v22%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28414%2010%29%20rotate%282%2019.8%2019.8%29%20scale%280.40%29%22%3E%3Cpath%20d%3D%22M50%2062c-14%200-24-10-24-24S36%2012%2050%2012s24%2012%2024%2026-10%2024-24%2024z%22%2F%3E%3Cpath%20d%3D%22M50%2062l-4%208%208%204-8%204%208%204%22%2F%3E%3Cpath%20d%3D%22M50%2014c6%206%206%2018%200%2028%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2824%20106%29%20rotate%28-7%2018.2%2018.2%29%20scale%280.36%29%22%3E%3Cpath%20d%3D%22M22%2034h40v22a16%2016%200%200%201-16%2016H38a16%2016%200%200%201-16-16V34z%22%2F%3E%3Cpath%20d%3D%22M62%2040h8a9%209%200%200%201%200%2018h-8%22%2F%3E%3Cpath%20d%3D%22M34%2022c0%205%206%205%206%2010M48%2020c0%205%206%205%206%2010%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2870%2092%29%20rotate%288%2020.9%2020.9%29%20scale%280.42%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2232%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Cpath%20d%3D%22M52%2052c12%200%2020%2010%2020%2018s-10%2012-20%2012-20-4-20-12%208-18%2020-18z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28149%2081%29%20rotate%285%2015.9%2015.9%29%20scale%280.32%29%22%3E%3Cpath%20d%3D%22M24%2060c0-8%206-10%206-15s-4-8%200-13%208%200%208%206%205%206%205%206%204-8%208-8%205%206%205%206%205-4%208-4%204%205%204%2011v11z%22%2F%3E%3Cpath%20d%3D%22M18%2064h64v16H18z%22%2F%3E%3Cpath%20d%3D%22M34%2022v-6M50%2020v-6M66%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28213%20109%29%20rotate%28-6%2019.6%2019.6%29%20scale%280.39%29%22%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2272%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M26%2070l16-30h12l8%2022h10M54%2040h14%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28280%2099%29%20rotate%28-1%2019.2%2019.2%29%20scale%280.38%29%22%3E%3Crect%20x%3D%2230%22%20y%3D%2212%22%20width%3D%2240%22%20height%3D%2276%22%20rx%3D%228%22%2F%3E%3Cpath%20d%3D%22M42%2020h16M44%2080h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28353%2095%29%20rotate%285%2020.0%2020.0%29%20scale%280.40%29%22%3E%3Ccircle%20cx%3D%2228%22%20cy%3D%2266%22%20r%3D%2214%22%2F%3E%3Ccircle%20cx%3D%2274%22%20cy%3D%2266%22%20r%3D%2214%22%2F%3E%3Cpath%20d%3D%22M28%2066l14-28h14l10%2028M42%2038h16%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28420%20106%29%20rotate%2816%2015.4%2015.4%29%20scale%280.31%29%22%3E%3Cpath%20d%3D%22M14%2052a36%2036%200%200%201%2072%200z%22%2F%3E%3Cpath%20d%3D%22M50%2052v22a10%2010%200%200%201-20%200M50%2016v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%288%20169%29%20rotate%285%2019.9%2019.9%29%20scale%280.40%29%22%3E%3Cpath%20d%3D%22M28%2070a14%2014%200%200%201%200-28%2018%2018%200%200%201%2034-6%2012%2012%200%200%201%202%2034z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2883%20163%29%20rotate%28-12%2015.1%2015.1%29%20scale%280.30%29%22%3E%3Cpath%20d%3D%22M62%2016a36%2036%200%201%200%2022%2060A30%2030%200%200%201%2062%2016z%22%2F%3E%3Cpath%20d%3D%22M74%2026l2%206%206%202-6%202-2%206-2-6-6-2%206-2z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28158%20161%29%20rotate%28-8%2015.4%2015.4%29%20scale%280.31%29%22%3E%3Cpath%20d%3D%22M78%2022C46%2022%2022%2040%2022%2066c0%208%204%2012%208%2012%2026%200%2048-24%2048-56z%22%2F%3E%3Cpath%20d%3D%22M30%2078C42%2060%2056%2048%2074%2040%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28224%20159%29%20rotate%28-2%2017.3%2017.3%29%20scale%280.35%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M50%2040c0-12%208-18%208-18s8%206%208%2018-16%2010-16%2010zM60%2050c12%200%2018%208%2018%208s-6%208-18%208-10-16-10-16zM50%2060c0%2012-8%2018-8%2018s-8-6-8-18%2016-10%2016-10zM40%2050c-12%200-18-8-18-8s6-8%2018-8%2010%2016%2010%2016z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28288%20186%29%20rotate%2812%2018.3%2018.3%29%20scale%280.37%29%22%3E%3Cpath%20d%3D%22M30%2044h40l-20%2042z%22%2F%3E%3Cpath%20d%3D%22M30%2044a20%2020%200%200%201%2040%200%22%2F%3E%3Cpath%20d%3D%22M42%2030c0-6%206-6%206-11M58%2030c0-6%206-6%206-11%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28344%20170%29%20rotate%2812%2016.7%2016.7%29%20scale%280.33%29%22%3E%3Cpath%20d%3D%22M22%2078l6-18%2040-40%2012%2012-40%2040-18%206z%22%2F%3E%3Cpath%20d%3D%22M60%2028l12%2012%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28401%20162%29%20rotate%28-9%2020.7%2020.7%29%20scale%280.41%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2232%22%2F%3E%3Cpath%20d%3D%22M38%2042h.01M62%2042h.01M34%2060c8%2010%2024%2010%2032%200%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2816%20257%29%20rotate%28-8%2016.4%2016.4%29%20scale%280.33%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2222%22%2F%3E%3Cpath%20d%3D%22M16%2062c22%2012%2046%206%2062-14M84%2038c-22-12-46-6-62%2014%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2881%20249%29%20rotate%282%2015.0%2015.0%29%20scale%280.30%29%22%3E%3Cpath%20d%3D%22M14%2056l72-34-24%2062-14-24-34-4z%22%2F%3E%3Cpath%20d%3D%22M48%2060l38-38%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28148%20249%29%20rotate%284%2020.7%2020.7%29%20scale%280.41%29%22%3E%3Cpath%20d%3D%22M50%2014a22%2022%200%200%201%2012%2040v8H38v-8A22%2022%200%200%201%2050%2014z%22%2F%3E%3Cpath%20d%3D%22M40%2070h20M44%2078h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28201%20264%29%20rotate%289%2019.1%2019.1%29%20scale%280.38%29%22%3E%3Crect%20x%3D%2216%22%20y%3D%2232%22%20width%3D%2268%22%20height%3D%2244%22%20rx%3D%228%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2254%22%20r%3D%2213%22%2F%3E%3Cpath%20d%3D%22M34%2032l6-9h20l6%209M74%2044h4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28283%20246%29%20rotate%28-3%2020.2%2020.2%29%20scale%280.40%29%22%3E%3Cpath%20d%3D%22M50%2076S20%2057%2020%2038a16%2016%200%200%201%2030-8%2016%2016%200%200%201%2030%208c0%2019-30%2038-30%2038z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28352%20236%29%20rotate%28-14%2015.6%2015.6%29%20scale%280.31%29%22%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2256%22%20r%3D%2215%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2256%22%20r%3D%2215%22%2F%3E%3Cpath%20d%3D%22M47%2054h6M17%2048l-4-8h12M83%2048l4-8H75%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28403%20247%29%20rotate%28-14%2016.3%2016.3%29%20scale%280.33%29%22%3E%3Crect%20x%3D%2216%22%20y%3D%2230%22%20width%3D%2268%22%20height%3D%2244%22%20rx%3D%226%22%2F%3E%3Cpath%20d%3D%22M18%2036l32%2024%2032-24%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%287%20314%29%20rotate%28-4%2015.0%2015.0%29%20scale%280.30%29%22%3E%3Cpath%20d%3D%22M50%2016l10%2021%2023%203-17%2016%204%2023-20-11-20%2011%204-23-17-16%2023-3%2010-21z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2896%20336%29%20rotate%28-11%2015.2%2015.2%29%20scale%280.30%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2254%22%20r%3D%2230%22%2F%3E%3Cpath%20d%3D%22M50%2034v20l14%2010M36%2016h28M50%2016v8%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28144%20325%29%20rotate%28-12%2016.5%2016.5%29%20scale%280.33%29%22%3E%3Cpath%20d%3D%22M28%2046h44l-6%2034H34z%22%2F%3E%3Cpath%20d%3D%22M28%2046a22%2022%200%200%201%2044%200%22%2F%3E%3Cpath%20d%3D%22M50%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28222%20325%29%20rotate%28-1%2020.1%2020.1%29%20scale%280.40%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2272%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2268%22%20cy%3D%2264%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M44%2072V32l34-8v40%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28269%20324%29%20rotate%28-8%2015.5%2015.5%29%20scale%280.31%29%22%3E%3Cpath%20d%3D%22M22%2060V50a28%2028%200%200%201%2056%200v10%22%2F%3E%3Crect%20x%3D%2214%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3Crect%20x%3D%2270%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28336%20311%29%20rotate%2814%2020.0%2020.0%29%20scale%280.40%29%22%3E%3Cpath%20d%3D%22M50%2034c-16%200-24%2012-24%2026s12%2026%2024%2026%2024-12%2024-26-8-26-24-26z%22%2F%3E%3Cpath%20d%3D%22M50%2034c0-8%206-14%2014-16%200%2010-6%2014-14%2016z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28402%20330%29%20rotate%28-15%2018.2%2018.2%29%20scale%280.36%29%22%3E%3Crect%20x%3D%2218%22%20y%3D%2242%22%20width%3D%2264%22%20height%3D%2240%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M14%2030h72v12H14zM50%2030v52%22%2F%3E%3Cpath%20d%3D%22M50%2030c-8%200-16-4-16-10s10-6%2016%2010c6-16%2016-16%2016-10s-8%2010-16%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2827%20419%29%20rotate%286%2018.2%2018.2%29%20scale%280.36%29%22%3E%3Cpath%20d%3D%22M24%2040h52l-6%2036H30z%22%2F%3E%3Cpath%20d%3D%22M34%2040a16%2016%200%200%201%2032%200%22%2F%3E%3Cpath%20d%3D%22M40%2050v22M50%2050v22M60%2050v22%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2879%20394%29%20rotate%289%2016.6%2016.6%29%20scale%280.33%29%22%3E%3Cpath%20d%3D%22M50%2062c-14%200-24-10-24-24S36%2012%2050%2012s24%2012%2024%2026-10%2024-24%2024z%22%2F%3E%3Cpath%20d%3D%22M50%2062l-4%208%208%204-8%204%208%204%22%2F%3E%3Cpath%20d%3D%22M50%2014c6%206%206%2018%200%2028%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28154%20399%29%20rotate%28-9%2018.2%2018.2%29%20scale%280.36%29%22%3E%3Cpath%20d%3D%22M22%2034h40v22a16%2016%200%200%201-16%2016H38a16%2016%200%200%201-16-16V34z%22%2F%3E%3Cpath%20d%3D%22M62%2040h8a9%209%200%200%201%200%2018h-8%22%2F%3E%3Cpath%20d%3D%22M34%2022c0%205%206%205%206%2010M48%2020c0%205%206%205%206%2010%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28222%20415%29%20rotate%2810%2019.9%2019.9%29%20scale%280.40%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2232%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Cpath%20d%3D%22M52%2052c12%200%2020%2010%2020%2018s-10%2012-20%2012-20-4-20-12%208-18%2020-18z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28282%20395%29%20rotate%281%2019.9%2019.9%29%20scale%280.40%29%22%3E%3Cpath%20d%3D%22M24%2060c0-8%206-10%206-15s-4-8%200-13%208%200%208%206%205%206%205%206%204-8%208-8%205%206%205%206%205-4%208-4%204%205%204%2011v11z%22%2F%3E%3Cpath%20d%3D%22M18%2064h64v16H18z%22%2F%3E%3Cpath%20d%3D%22M34%2022v-6M50%2020v-6M66%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28333%20388%29%20rotate%28-7%2017.1%2017.1%29%20scale%280.34%29%22%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2272%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M26%2070l16-30h12l8%2022h10M54%2040h14%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28418%20425%29%20rotate%28-2%2016.6%2016.6%29%20scale%280.33%29%22%3E%3Crect%20x%3D%2230%22%20y%3D%2212%22%20width%3D%2240%22%20height%3D%2276%22%20rx%3D%228%22%2F%3E%3Cpath%20d%3D%22M42%2020h16M44%2080h12%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
-  --wa-doodle-light: url("data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22462%22%20height%3D%22462%22%20viewBox%3D%220%200%20462%20462%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22rgba%2811%2C20%2C26%2C0.075%29%22%20stroke-width%3D%223.0%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cg%20transform%3D%22translate%2823%2032%29%20rotate%28-4%2020.6%2020.6%29%20scale%280.41%29%22%3E%3Cpath%20d%3D%22M28%2046h44l-6%2034H34z%22%2F%3E%3Cpath%20d%3D%22M28%2046a22%2022%200%200%201%2044%200%22%2F%3E%3Cpath%20d%3D%22M50%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2875%2010%29%20rotate%28-9%2016.3%2016.3%29%20scale%280.33%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2272%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2268%22%20cy%3D%2264%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M44%2072V32l34-8v40%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28156%2032%29%20rotate%28-1%2018.7%2018.7%29%20scale%280.37%29%22%3E%3Cpath%20d%3D%22M22%2060V50a28%2028%200%200%201%2056%200v10%22%2F%3E%3Crect%20x%3D%2214%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3Crect%20x%3D%2270%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28219%205%29%20rotate%285%2018.9%2018.9%29%20scale%280.38%29%22%3E%3Cpath%20d%3D%22M50%2034c-16%200-24%2012-24%2026s12%2026%2024%2026%2024-12%2024-26-8-26-24-26z%22%2F%3E%3Cpath%20d%3D%22M50%2034c0-8%206-14%2014-16%200%2010-6%2014-14%2016z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28282%2026%29%20rotate%28-1%2020.5%2020.5%29%20scale%280.41%29%22%3E%3Crect%20x%3D%2218%22%20y%3D%2242%22%20width%3D%2264%22%20height%3D%2240%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M14%2030h72v12H14zM50%2030v52%22%2F%3E%3Cpath%20d%3D%22M50%2030c-8%200-16-4-16-10s10-6%2016%2010c6-16%2016-16%2016-10s-8%2010-16%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28356%2016%29%20rotate%2810%2016.1%2016.1%29%20scale%280.32%29%22%3E%3Cpath%20d%3D%22M24%2040h52l-6%2036H30z%22%2F%3E%3Cpath%20d%3D%22M34%2040a16%2016%200%200%201%2032%200%22%2F%3E%3Cpath%20d%3D%22M40%2050v22M50%2050v22M60%2050v22%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28406%2015%29%20rotate%2814%2020.8%2020.8%29%20scale%280.42%29%22%3E%3Cpath%20d%3D%22M50%2062c-14%200-24-10-24-24S36%2012%2050%2012s24%2012%2024%2026-10%2024-24%2024z%22%2F%3E%3Cpath%20d%3D%22M50%2062l-4%208%208%204-8%204%208%204%22%2F%3E%3Cpath%20d%3D%22M50%2014c6%206%206%2018%200%2028%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%286%2083%29%20rotate%28-11%2019.3%2019.3%29%20scale%280.39%29%22%3E%3Cpath%20d%3D%22M22%2034h40v22a16%2016%200%200%201-16%2016H38a16%2016%200%200%201-16-16V34z%22%2F%3E%3Cpath%20d%3D%22M62%2040h8a9%209%200%200%201%200%2018h-8%22%2F%3E%3Cpath%20d%3D%22M34%2022c0%205%206%205%206%2010M48%2020c0%205%206%205%206%2010%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2885%2084%29%20rotate%2810%2020.4%2020.4%29%20scale%280.41%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2232%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Cpath%20d%3D%22M52%2052c12%200%2020%2010%2020%2018s-10%2012-20%2012-20-4-20-12%208-18%2020-18z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28147%2090%29%20rotate%282%2020.9%2020.9%29%20scale%280.42%29%22%3E%3Cpath%20d%3D%22M24%2060c0-8%206-10%206-15s-4-8%200-13%208%200%208%206%205%206%205%206%204-8%208-8%205%206%205%206%205-4%208-4%204%205%204%2011v11z%22%2F%3E%3Cpath%20d%3D%22M18%2064h64v16H18z%22%2F%3E%3Cpath%20d%3D%22M34%2022v-6M50%2020v-6M66%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28200%20119%29%20rotate%285%2015.8%2015.8%29%20scale%280.32%29%22%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2272%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M26%2070l16-30h12l8%2022h10M54%2040h14%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28290%2095%29%20rotate%2812%2018.2%2018.2%29%20scale%280.36%29%22%3E%3Crect%20x%3D%2230%22%20y%3D%2212%22%20width%3D%2240%22%20height%3D%2276%22%20rx%3D%228%22%2F%3E%3Cpath%20d%3D%22M42%2020h16M44%2080h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28337%2087%29%20rotate%28-7%2020.0%2020.0%29%20scale%280.40%29%22%3E%3Ccircle%20cx%3D%2228%22%20cy%3D%2266%22%20r%3D%2214%22%2F%3E%3Ccircle%20cx%3D%2274%22%20cy%3D%2266%22%20r%3D%2214%22%2F%3E%3Cpath%20d%3D%22M28%2066l14-28h14l10%2028M42%2038h16%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28415%2089%29%20rotate%28-3%2016.4%2016.4%29%20scale%280.33%29%22%3E%3Cpath%20d%3D%22M14%2052a36%2036%200%200%201%2072%200z%22%2F%3E%3Cpath%20d%3D%22M50%2052v22a10%2010%200%200%201-20%200M50%2016v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2830%20171%29%20rotate%28-1%2015.8%2015.8%29%20scale%280.32%29%22%3E%3Cpath%20d%3D%22M28%2070a14%2014%200%200%201%200-28%2018%2018%200%200%201%2034-6%2012%2012%200%200%201%202%2034z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2891%20171%29%20rotate%2813%2018.5%2018.5%29%20scale%280.37%29%22%3E%3Cpath%20d%3D%22M62%2016a36%2036%200%201%200%2022%2060A30%2030%200%200%201%2062%2016z%22%2F%3E%3Cpath%20d%3D%22M74%2026l2%206%206%202-6%202-2%206-2-6-6-2%206-2z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28148%20175%29%20rotate%28-15%2018.0%2018.0%29%20scale%280.36%29%22%3E%3Cpath%20d%3D%22M78%2022C46%2022%2022%2040%2022%2066c0%208%204%2012%208%2012%2026%200%2048-24%2048-56z%22%2F%3E%3Cpath%20d%3D%22M30%2078C42%2060%2056%2048%2074%2040%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28205%20156%29%20rotate%2810%2017.6%2017.6%29%20scale%280.35%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M50%2040c0-12%208-18%208-18s8%206%208%2018-16%2010-16%2010zM60%2050c12%200%2018%208%2018%208s-6%208-18%208-10-16-10-16zM50%2060c0%2012-8%2018-8%2018s-8-6-8-18%2016-10%2016-10zM40%2050c-12%200-18-8-18-8s6-8%2018-8%2010%2016%2010%2016z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28280%20186%29%20rotate%282%2016.0%2016.0%29%20scale%280.32%29%22%3E%3Cpath%20d%3D%22M30%2044h40l-20%2042z%22%2F%3E%3Cpath%20d%3D%22M30%2044a20%2020%200%200%201%2040%200%22%2F%3E%3Cpath%20d%3D%22M42%2030c0-6%206-6%206-11M58%2030c0-6%206-6%206-11%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28347%20178%29%20rotate%289%2017.0%2017.0%29%20scale%280.34%29%22%3E%3Cpath%20d%3D%22M22%2078l6-18%2040-40%2012%2012-40%2040-18%206z%22%2F%3E%3Cpath%20d%3D%22M60%2028l12%2012%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28415%20166%29%20rotate%28-7%2015.6%2015.6%29%20scale%280.31%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2232%22%2F%3E%3Cpath%20d%3D%22M38%2042h.01M62%2042h.01M34%2060c8%2010%2024%2010%2032%200%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2814%20252%29%20rotate%288%2019.6%2019.6%29%20scale%280.39%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2222%22%2F%3E%3Cpath%20d%3D%22M16%2062c22%2012%2046%206%2062-14M84%2038c-22-12-46-6-62%2014%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2877%20253%29%20rotate%280%2020.5%2020.5%29%20scale%280.41%29%22%3E%3Cpath%20d%3D%22M14%2056l72-34-24%2062-14-24-34-4z%22%2F%3E%3Cpath%20d%3D%22M48%2060l38-38%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28152%20250%29%20rotate%281%2018.1%2018.1%29%20scale%280.36%29%22%3E%3Cpath%20d%3D%22M50%2014a22%2022%200%200%201%2012%2040v8H38v-8A22%2022%200%200%201%2050%2014z%22%2F%3E%3Cpath%20d%3D%22M40%2070h20M44%2078h12%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28225%20259%29%20rotate%2812%2017.9%2017.9%29%20scale%280.36%29%22%3E%3Crect%20x%3D%2216%22%20y%3D%2232%22%20width%3D%2268%22%20height%3D%2244%22%20rx%3D%228%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2254%22%20r%3D%2213%22%2F%3E%3Cpath%20d%3D%22M34%2032l6-9h20l6%209M74%2044h4%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28271%20251%29%20rotate%2814%2020.7%2020.7%29%20scale%280.41%29%22%3E%3Cpath%20d%3D%22M50%2076S20%2057%2020%2038a16%2016%200%200%201%2030-8%2016%2016%200%200%201%2030%208c0%2019-30%2038-30%2038z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28335%20237%29%20rotate%28-2%2020.0%2020.0%29%20scale%280.40%29%22%3E%3Ccircle%20cx%3D%2232%22%20cy%3D%2256%22%20r%3D%2215%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2256%22%20r%3D%2215%22%2F%3E%3Cpath%20d%3D%22M47%2054h6M17%2048l-4-8h12M83%2048l4-8H75%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28405%20236%29%20rotate%285%2015.4%2015.4%29%20scale%280.31%29%22%3E%3Crect%20x%3D%2216%22%20y%3D%2230%22%20width%3D%2268%22%20height%3D%2244%22%20rx%3D%226%22%2F%3E%3Cpath%20d%3D%22M18%2036l32%2024%2032-24%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2822%20315%29%20rotate%287%2019.7%2019.7%29%20scale%280.39%29%22%3E%3Cpath%20d%3D%22M50%2016l10%2021%2023%203-17%2016%204%2023-20-11-20%2011%204-23-17-16%2023-3%2010-21z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2871%20341%29%20rotate%2815%2019.0%2019.0%29%20scale%280.38%29%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2254%22%20r%3D%2230%22%2F%3E%3Cpath%20d%3D%22M50%2034v20l14%2010M36%2016h28M50%2016v8%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28162%20326%29%20rotate%28-0%2016.3%2016.3%29%20scale%280.33%29%22%3E%3Cpath%20d%3D%22M28%2046h44l-6%2034H34z%22%2F%3E%3Cpath%20d%3D%22M28%2046a22%2022%200%200%201%2044%200%22%2F%3E%3Cpath%20d%3D%22M50%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28217%20315%29%20rotate%28-2%2020.9%2020.9%29%20scale%280.42%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2272%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2268%22%20cy%3D%2264%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M44%2072V32l34-8v40%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28275%20317%29%20rotate%28-6%2018.1%2018.1%29%20scale%280.36%29%22%3E%3Cpath%20d%3D%22M22%2060V50a28%2028%200%200%201%2056%200v10%22%2F%3E%3Crect%20x%3D%2214%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3Crect%20x%3D%2270%22%20y%3D%2256%22%20width%3D%2216%22%20height%3D%2224%22%20rx%3D%227%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28332%20329%29%20rotate%28-2%2019.3%2019.3%29%20scale%280.39%29%22%3E%3Cpath%20d%3D%22M50%2034c-16%200-24%2012-24%2026s12%2026%2024%2026%2024-12%2024-26-8-26-24-26z%22%2F%3E%3Cpath%20d%3D%22M50%2034c0-8%206-14%2014-16%200%2010-6%2014-14%2016z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28409%20337%29%20rotate%280%2015.1%2015.1%29%20scale%280.30%29%22%3E%3Crect%20x%3D%2218%22%20y%3D%2242%22%20width%3D%2264%22%20height%3D%2240%22%20rx%3D%224%22%2F%3E%3Cpath%20d%3D%22M14%2030h72v12H14zM50%2030v52%22%2F%3E%3Cpath%20d%3D%22M50%2030c-8%200-16-4-16-10s10-6%2016%2010c6-16%2016-16%2016-10s-8%2010-16%2010z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2833%20420%29%20rotate%2815%2015.4%2015.4%29%20scale%280.31%29%22%3E%3Cpath%20d%3D%22M24%2040h52l-6%2036H30z%22%2F%3E%3Cpath%20d%3D%22M34%2040a16%2016%200%200%201%2032%200%22%2F%3E%3Cpath%20d%3D%22M40%2050v22M50%2050v22M60%2050v22%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%2876%20389%29%20rotate%289%2015.6%2015.6%29%20scale%280.31%29%22%3E%3Cpath%20d%3D%22M50%2062c-14%200-24-10-24-24S36%2012%2050%2012s24%2012%2024%2026-10%2024-24%2024z%22%2F%3E%3Cpath%20d%3D%22M50%2062l-4%208%208%204-8%204%208%204%22%2F%3E%3Cpath%20d%3D%22M50%2014c6%206%206%2018%200%2028%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28138%20404%29%20rotate%2813%2016.6%2016.6%29%20scale%280.33%29%22%3E%3Cpath%20d%3D%22M22%2034h40v22a16%2016%200%200%201-16%2016H38a16%2016%200%200%201-16-16V34z%22%2F%3E%3Cpath%20d%3D%22M62%2040h8a9%209%200%200%201%200%2018h-8%22%2F%3E%3Cpath%20d%3D%22M34%2022c0%205%206%205%206%2010M48%2020c0%205%206%205%206%2010%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28206%20392%29%20rotate%2813%2019.9%2019.9%29%20scale%280.40%29%22%3E%3Ccircle%20cx%3D%2234%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2252%22%20cy%3D%2232%22%20r%3D%229%22%2F%3E%3Ccircle%20cx%3D%2270%22%20cy%3D%2240%22%20r%3D%229%22%2F%3E%3Cpath%20d%3D%22M52%2052c12%200%2020%2010%2020%2018s-10%2012-20%2012-20-4-20-12%208-18%2020-18z%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28284%20390%29%20rotate%28-14%2018.4%2018.4%29%20scale%280.37%29%22%3E%3Cpath%20d%3D%22M24%2060c0-8%206-10%206-15s-4-8%200-13%208%200%208%206%205%206%205%206%204-8%208-8%205%206%205%206%205-4%208-4%204%205%204%2011v11z%22%2F%3E%3Cpath%20d%3D%22M18%2064h64v16H18z%22%2F%3E%3Cpath%20d%3D%22M34%2022v-6M50%2020v-6M66%2022v-6%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28342%20390%29%20rotate%2814%2019.1%2019.1%29%20scale%280.38%29%22%3E%3Ccircle%20cx%3D%2226%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2272%22%20cy%3D%2270%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M26%2070l16-30h12l8%2022h10M54%2040h14%22%2F%3E%3C%2Fg%3E%3Cg%20transform%3D%22translate%28418%20390%29%20rotate%2811%2018.8%2018.8%29%20scale%280.38%29%22%3E%3Crect%20x%3D%2230%22%20y%3D%2212%22%20width%3D%2240%22%20height%3D%2276%22%20rx%3D%228%22%2F%3E%3Cpath%20d%3D%22M42%2020h16M44%2080h12%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E");
   --wa-chatbg-dark: #0b141a;
   --wa-chatbg-light: #efeae2;
+
+  /* v62: نقشة واتساب الأصلية (ملفَّان شفّافان: داكن/فاتح) */
+  --wa-tile-dark: url("../assets/wa-bg-tile-dark.png");
+  --wa-tile-light: url("../assets/wa-bg-tile-light.png");
 }
 
 .chat-messages {
   background-color: var(--wa-chatbg-dark);
-  background-image: var(--wa-doodle-dark);
-  background-size: 462px 462px;
+  background-image: var(--wa-tile-dark);
+  background-size: auto;
   background-repeat: repeat;
   background-position: top left;
 }
 
 body[data-theme="light"] .chat-messages {
   background-color: var(--wa-chatbg-light);
-  background-image: var(--wa-doodle-light);
+  background-image: var(--wa-tile-light);
 }
 
 /* خلفيات جاهزة مختارة: نحافظ على النقشة بلون خطوط مناسب */
-.chat-messages[data-bg="mint"]      { background-color: #d8f0e6 !important; background-image: var(--wa-doodle-light) !important; }
-.chat-messages[data-bg="sky"]       { background-color: #cfe4f5 !important; background-image: var(--wa-doodle-light) !important; }
-.chat-messages[data-bg="rose"]      { background-color: #f7dde1 !important; background-image: var(--wa-doodle-light) !important; }
-.chat-messages[data-bg="sand"]      { background-color: #efe3cf !important; background-image: var(--wa-doodle-light) !important; }
-.chat-messages[data-bg="grape"]     { background-color: #e2dbf2 !important; background-image: var(--wa-doodle-light) !important; }
-.chat-messages[data-bg="graphite"]  { background-color: #222e35 !important; background-image: var(--wa-doodle-dark) !important; }
-.chat-messages[data-bg="night"]     { background-color: #0d1f26 !important; background-image: var(--wa-doodle-dark) !important; }
-.chat-messages[data-bg="default"]   { background-image: var(--wa-doodle-dark) !important; }
+.chat-messages[data-bg="mint"]      { background-color: #d8f0e6 !important; background-image: var(--wa-tile-light) !important; }
+.chat-messages[data-bg="sky"]       { background-color: #cfe4f5 !important; background-image: var(--wa-tile-light) !important; }
+.chat-messages[data-bg="rose"]      { background-color: #f7dde1 !important; background-image: var(--wa-tile-light) !important; }
+.chat-messages[data-bg="sand"]      { background-color: #efe3cf !important; background-image: var(--wa-tile-light) !important; }
+.chat-messages[data-bg="grape"]     { background-color: #e2dbf2 !important; background-image: var(--wa-tile-light) !important; }
+.chat-messages[data-bg="graphite"]  { background-color: #222e35 !important; background-image: var(--wa-tile-dark) !important; }
+.chat-messages[data-bg="night"]     { background-color: #0d1f26 !important; background-image: var(--wa-tile-dark) !important; }
+.chat-messages[data-bg="default"]   { background-image: var(--wa-tile-dark) !important; }
 
-body[data-theme="light"] .chat-messages[data-bg="default"] { background-image: var(--wa-doodle-light) !important; }
+body[data-theme="light"] .chat-messages[data-bg="default"] { background-image: var(--wa-tile-light) !important; }
 
 /* تباين فقاعات الرسائل مع النقشة (مثل واتساب) */
 .chat-messages .bubble { box-shadow: 0 1px 1px rgba(0, 0, 0, .18); }

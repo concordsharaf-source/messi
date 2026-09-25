@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "61";
+const BUILD = "62";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -705,6 +705,11 @@ async function enterApp() {
 
   // v57: مكالمات لم يرد عليها (كان الجهاز مقفل النت) ⇒ تظهر عند الفتح
   setTimeout(() => checkMissedCalls().catch(() => {}), 2500);
+
+  // v62: بعد جهوزية الملف الشخصي نُطبّق الخلفية ونحدّث ملخّصات الإعدادات
+  // (كان اسم الخلفية يبقى فارغًا حتى أول فتح للإعدادات).
+  applyThemeVars();
+  syncSettingsValues();
 
 
   const moderationRoles = earlyUserId
@@ -2182,16 +2187,41 @@ const FONT_SIZES = [
 ];
 
 // خلفيات جاهزة: نُبقي نقشة واتساب ونغيّر لونها فقط.
+// v62: كل خيار يحمل معه نقشة واتساب الرسمية المناسبة (داكنة/فاتحة).
+// «default» = خلفية واتساب الأصلية تمامًا: نقشة واتساب الرسمية + لون واتساب (يتغيّر مع الثيم).
 const CHAT_WALLPAPERS = [
-  { id: "default", label: "افتراضي", color: "" },
-  { id: "mint", label: "نعناعي", color: "#d8f0e6" },
-  { id: "sky", label: "سماوي", color: "#cfe4f5" },
-  { id: "rose", label: "وردي", color: "#f7dde1" },
-  { id: "sand", label: "رملي", color: "#efe3cf" },
-  { id: "grape", label: "بنفسجي", color: "#e2dbf2" },
-  { id: "graphite", label: "رمادي", color: "#222e35" },
-  { id: "night", label: "ليلي", color: "#0d1f26" },
+  { id: "default", label: "واتساب", color: "", tile: "theme", wa: true },
+  { id: "mint", label: "نعناعي", color: "#d8f0e6", tile: "light" },
+  { id: "sky", label: "سماوي", color: "#cfe4f5", tile: "light" },
+  { id: "rose", label: "وردي", color: "#f7dde1", tile: "light" },
+  { id: "sand", label: "رملي", color: "#efe3cf", tile: "light" },
+  { id: "grape", label: "بنفسجي", color: "#e2dbf2", tile: "light" },
+  { id: "graphite", label: "رمادي", color: "#222e35", tile: "dark" },
+  { id: "night", label: "ليلي", color: "#0d1f26", tile: "dark" },
 ];
+
+// نقشة واتساب الرسمية (نفس ملفَّي واتساب: bg-chat-tile)
+const WA_TILE = {
+  light: "./assets/wa-bg-tile-light.png",
+  dark: "./assets/wa-bg-tile-dark.png",
+};
+
+/** لون خلفية واتساب الأصلي حسب الثيم الحالي */
+function waDefaultColor() {
+  return document.body?.dataset?.theme === "light" ? "#efeae2" : "#0b141a";
+}
+
+/** هل الخلفية النشطة هي «خلفيتي» المرفوعة؟ */
+function customWallpaperActive() {
+  return Boolean(state.me?.wallpaper_url) && (prefs.chatBg === "custom" || !prefs.chatBg);
+}
+
+/** نص الخلفية الحالية (يظهر بجانب عنوان القسم) */
+function wallpaperLabel() {
+  if (customWallpaperActive()) return "خلفيتي";
+  const preset = CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg) || CHAT_WALLPAPERS[0];
+  return preset.label;
+}
 
 const NOTIF_TONES = [
   { id: "default", label: "الافتراضية", url: "./icons/notify.mp3" },
@@ -2258,8 +2288,9 @@ function applyChatBackground() {
   const box = $("#chat-messages");
   if (!box) return;
 
-  // الخلفية المرفوعة من المستخدم لها الأولوية
-  if (state.me?.wallpaper_url) {
+  // الخلفية المرفوعة من المستخدم لها الأولوية عندما تكون هي المختارة
+  if (customWallpaperActive()) {
+    box.dataset.bg = "custom";
     box.style.backgroundImage = `url("${state.me.wallpaper_url}")`;
     box.style.backgroundSize = "cover";
     box.style.backgroundPosition = "center";
@@ -2271,14 +2302,78 @@ function applyChatBackground() {
   const preset =
     CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg) || CHAT_WALLPAPERS[0];
 
-  // v50: نُفرِّغ التنسيقات السطرية ونترك CSS يرسم نقشة «رسوم واتساب»
-  // باللون المناسب للثيم أو للخلفية الجاهزة المختارة.
+  // v62: نُفرِّغ التنسيقات السطرية ونترك CSS يرسم خلفية واتساب الرسمية
+  // (النقشة الأصلية bg-chat-tile + لون واتساب) أو اللون الجاهز المختار.
   box.style.backgroundImage = "";
   box.style.backgroundSize = "";
   box.style.backgroundPosition = "";
   box.style.backgroundRepeat = "";
   box.style.backgroundColor = "";
   box.dataset.bg = preset.id;
+  syncWallpaperValue();
+}
+
+/** v62: اسم الخلفية الحالية بجانب عنوان القسم في الإعدادات */
+function syncWallpaperValue() {
+  const el = $("#value-wallpaper");
+  if (el) el.textContent = wallpaperLabel();
+}
+
+const WP_UPLOAD_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 16h6v-6h4l-7-7-7 7h4v6zm-4 2h14v2H5v-2z"/></svg>';
+
+/** مربّع خلفية واحد بمعاينة حقيقية (v62) */
+function buildWallpaperTile({ id, label, custom = false, preset = null }) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "wp-tile" + (custom ? " wp-custom" : "");
+  btn.dataset.wp = id;
+  btn.title = label;
+  btn.setAttribute("role", "radio");
+  btn.setAttribute("aria-label", label);
+
+  const active = custom ? customWallpaperActive() : !customWallpaperActive() && prefs.chatBg === id;
+  btn.classList.toggle("active", active);
+  btn.setAttribute("aria-checked", String(active));
+
+  const prev = document.createElement("span");
+  prev.className = "wp-preview";
+
+  if (custom) {
+    prev.style.backgroundImage = `url("${state.me.wallpaper_url}")`;
+  } else {
+    const wanted = preset.tile === "theme" ? (document.body?.dataset?.theme === "light" ? "light" : "dark") : preset.tile;
+    prev.style.backgroundColor = preset.color || waDefaultColor();
+    prev.style.backgroundImage = `url("${wanted === "dark" ? WA_TILE.dark : WA_TILE.light}")`;
+    // نقشة مصغّرة داخل المعاينة (نفس مظهر الدردشة لكن بمقاس يناسب مربّعًا صغيرًا)
+    prev.style.backgroundSize = "190px auto";
+  }
+
+  const check = document.createElement("span");
+  check.className = "wp-check";
+  check.textContent = "✓";
+
+  btn.append(prev, check);
+  return btn;
+}
+
+/** اختيار خلفية جاهزة (أو خلفية واتساب الأصلية) */
+function selectWallpaperPreset(preset) {
+  prefs.chatBg = preset.id;
+  localStorage.setItem("wa_chatbg", preset.id);
+  applyChatBackground();
+  renderWallpaperGrid();
+  syncWallpaperValue();
+}
+
+/** اختيار «خلفيتي» المرفوعة (تبقى الصورة محفوظة حتى لو جرّب خلفية أخرى) */
+function selectCustomWallpaper() {
+  if (!state.me?.wallpaper_url) return;
+  prefs.chatBg = "custom";
+  localStorage.setItem("wa_chatbg", "custom");
+  applyChatBackground();
+  renderWallpaperGrid();
+  syncWallpaperValue();
 }
 
 function renderWallpaperGrid() {
@@ -2287,49 +2382,30 @@ function renderWallpaperGrid() {
 
   grid.innerHTML = "";
 
-  const active = state.me?.wallpaper_url ? "custom" : prefs.chatBg;
-
   CHAT_WALLPAPERS.forEach((w) => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "wallpaper-swatch" + (active === w.id ? " active" : "");
-    btn.title = w.label;
-    btn.dataset.wp = w.id;
-
-    if (w.color) {
-      btn.style.backgroundColor = w.color;
-    } else {
-      btn.classList.add("wp-default");
-    }
-
-    btn.addEventListener("click", async () => {
-      // اختيار خلفية جاهزة يُلغي الخلفية المرفوعة
-      if (state.me?.wallpaper_url) {
-        const previous = state.me.wallpaper_url;
-
-        const { error } = await supabase
-          .from("profiles")
-          .update({ wallpaper_url: null })
-          .eq("id", state.me.id);
-
-        if (!error) {
-          state.me.wallpaper_url = null;
-          await removeStorageFile("wallpapers", previous);
-        }
-      }
-
-      prefs.chatBg = w.id;
-      localStorage.setItem("wa_chatbg", w.id);
-      applyChatBackground();
-      renderWallpaperGrid();
-    });
-
-    const label = document.createElement("span");
-    label.textContent = w.label;
-    btn.appendChild(label);
-
+    const btn = buildWallpaperTile({ id: w.id, label: w.label, preset: w });
+    btn.addEventListener("click", () => selectWallpaperPreset(w));
     grid.appendChild(btn);
   });
+
+  if (state.me?.wallpaper_url) {
+    const mine = buildWallpaperTile({ id: "custom", label: "خلفيتي", custom: true });
+    mine.addEventListener("click", selectCustomWallpaper);
+    grid.appendChild(mine);
+  }
+
+  // بطاقة رفع صورة من الجهاز (بدل سطر الملف القديم)
+  const upload = document.createElement("button");
+  upload.type = "button";
+  upload.id = "wp-upload-tile";
+  upload.className = "wp-tile wp-upload";
+  upload.title = "رفع صورة من جهازك";
+  upload.innerHTML = `${WP_UPLOAD_ICON}<span>رفع صورة</span>`;
+  upload.addEventListener("click", () => $("#wallpaper-input")?.click());
+  grid.appendChild(upload);
+
+  // زر الإزالة يظهر فقط عند وجود خلفية مرفوعة
+  $("#btn-remove-wallpaper")?.classList.toggle("hidden", !state.me?.wallpaper_url);
 }
 
 // ---------------------------------------------------------------
@@ -4343,14 +4419,7 @@ function syncSettingsValues() {
   const font = FONT_SIZES.find((f) => String(f.value) === String(prefs.fontSize));
   put("#value-theme", font ? `${modeLabel} · ${font.label}` : modeLabel);
 
-  put(
-    "#value-wallpaper",
-    state.me?.wallpaper_url
-      ? "مخصّصة"
-      : prefs.chatBg === "default"
-      ? "افتراضية"
-      : CHAT_WALLPAPERS.find((w) => w.id === prefs.chatBg)?.label || "جاهزة"
-  );
+  put("#value-wallpaper", wallpaperLabel());
 
   const tone = NOTIF_TONES.find((t) => t.id === prefs.tone);
   put("#value-tone", tone ? tone.label : "الافتراضية");
@@ -5205,6 +5274,8 @@ function wireMediaViewer() {
 function applyThemeVars() {
   // الخلفية تتبع تفضيل المستخدم (جاهزة أو مرفوعة) — التفاصيل في applyChatBackground
   applyChatBackground();
+  // v62: معاينات الخلفيات في الإعدادات تتبع الثيم أيضًا (خلفية واتساب داكنة/فاتحة)
+  if ($("#wallpaper-grid")) renderWallpaperGrid();
 }
 
 // ===============================================================
@@ -9412,8 +9483,15 @@ async function removeWallpaper() {
     if (error) throw error;
     state.me.wallpaper_url = null;
     await removeStorageFile("wallpapers", previousUrl);
+
+    // v62: بعد الحذف نرجع تلقائيًا إلى خلفية واتساب الأصلية
+    prefs.chatBg = "default";
+    localStorage.setItem("wa_chatbg", "default");
+
     applyThemeVars();
-    showAuthError("تم حذف خلفية الدردشة.");
+    renderWallpaperGrid();
+    syncWallpaperValue();
+    showAuthError("تم حذف خلفيتك — رجعنا إلى خلفية واتساب.");
   } catch (error) {
     showAuthError("تعذّر حذف خلفية الدردشة: " + (error?.message || "خطأ غير معروف"));
   }
@@ -10170,7 +10248,13 @@ async function handleWallpaperUpload(e) {
     state.me.wallpaper_url =
       uploaded.publicUrl;
 
+    // v62: الصورة المرفوعة تصبح الخلفية المختارة مباشرة
+    prefs.chatBg = "custom";
+    localStorage.setItem("wa_chatbg", "custom");
+
     applyThemeVars();
+    renderWallpaperGrid();
+    syncWallpaperValue();
   } catch (error) {
     console.error(
       "Wallpaper upload failed:",
