@@ -45,7 +45,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "52";
+const BUILD = "53";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -1625,7 +1625,11 @@ async function loadAdminUsers() {
   const usersHost = $("#admin-users-list-users");
   const block = $("#admin-manage-block");
 
-  if (!adminsHost || !state.me?.is_super_admin) return;
+  const isSuper = Boolean(state.me?.is_super_admin);
+
+  // v53: المشرف العادي أيضاً يرى هذه القائمة (كانت فارغة لديه: «المشرفون 0 / المستخدمون 0»
+  // فبدت كأن صلاحيته أُزيلت). القاعدة نفسها تحدد ما يُعرض له عبر سياسات RLS.
+  if (!adminsHost || !(state.me?.is_admin || isSuper)) return;
 
   block?.classList.remove("hidden");
 
@@ -1663,6 +1667,14 @@ async function loadAdminUsers() {
 
   state.adminAllUsers = users;
   state.adminAllAdmins = admins;
+
+  if (!isSuper) {
+    setAdminStatusText(
+      $("#admin-manage-status"),
+      "صلاحياتك كمشرف تعرض لك: المشرفين + الحسابات التي لديك محادثات معها. إدارة الصلاحيات وكلمات المرور للمشرف العام.",
+      "ok"
+    );
+  }
 
   renderAdminUsersGroup(
     adminsHost,
@@ -1843,6 +1855,9 @@ function buildAdminUserCard(p) {
         </div>
       </div>
   `;
+
+  // v53: أزرار الإدارة (الصلاحيات/كلمات المرور/الحذف) للمشرف العام فقط — تُخفى لمن سواه
+  if (!state.me?.is_super_admin) row.querySelector(".admin-user-actions")?.remove();
 
   // فتح/طي البطاقة — بطاقة واحدة مفتوحة في القسم نفسه
   const head = row.querySelector(".admin-user-head");
@@ -2084,8 +2099,12 @@ async function renderAdminTools() {
     await Promise.all([loadAdminStats(), loadAdminUsers(), renderActivityFeed()]);
   } else {
     $("#admin-stats")?.classList.add("hidden");
-    $("#admin-manage-block")?.classList.add("hidden");
     $("#activity-block")?.classList.add("hidden");
+
+    // v53: المشرف العادي كان يرى «المشرفون 0 / المستخدمون 0» فيبدو كأن صلاحيته أُزيلت.
+    // الآن تُحمَّل القائمة له أيضًا (وسياسات RLS هي التي تحدد ما يراه)، بلا أزرار إدارة.
+    if (state.me.is_admin) await loadAdminUsers();
+    else $("#admin-manage-block")?.classList.add("hidden");
   }
 }
 
