@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "63";
+const BUILD = "64";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -4153,6 +4153,9 @@ function openSettings(options = {}) {
 
     history.pushState({ waSettings: true }, "", "#settings");
   }
+
+  // v64: عند فتح الإعدادات نتحقق فوراً من وجود نسخة أحدث
+  if (typeof waCheckForUpdate === "function") waCheckForUpdate();
 
   // v40: كل الأقسام مطوية عند كل فتح — إلا ما يُفتح تلقائياً بسبب تركيز حقل
   collapseSettingsSections();
@@ -14415,12 +14418,111 @@ async function forceAppUpdate() {
   setTimeout(() => location.reload(), 350);
 }
 
+// ===============================================================
+// v64: التحديثات تصل تلقائياً — فعلياً هذه المرة
+// ---------------------------------------------------------------
+// كان التطبيق يعتمد فقط على reg.update() عند تحميل صفحة جديدة. فإن بقي
+// التطبيق مفتوحاً (أو مثبّتاً على الجوال في الخلفية) لم يُحمَّل index.html
+// جديد أصلاً، فظلّ المستخدم على واجهة قديمة إلى الأبد — ولهذا كانت تُرى
+// «خيارات خلفية قديمة» بعد كل تحديث. الآن نستطلع version.json بأنفسنا.
+// ===============================================================
+function waBuildNum(value) {
+  const n = parseInt(String(value === undefined || value === null ? "" : value).replace(/\D/g, ""), 10);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function waShowUpdatingNotice(remote) {
+  try {
+    const old = document.getElementById("wa-update-notice");
+    if (old) old.remove();
+    const box = document.createElement("div");
+    box.id = "wa-update-notice";
+    box.setAttribute("dir", "rtl");
+    box.textContent = `⬆️ نسخة جديدة (v${remote}) — جارٍ تحديث التطبيق…`;
+    box.style.cssText = [
+      "position:fixed", "z-index:99999", "inset-inline:12px", "top:12px",
+      "background:#00a884", "color:#fff", "padding:12px 16px", "border-radius:14px",
+      "font:600 14px/1.5 system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif",
+      "text-align:center", "box-shadow:0 8px 24px rgba(0,0,0,.28)", "pointer-events:none",
+    ].join(";");
+    document.body.appendChild(box);
+  } catch (_) {}
+}
+
+let waUpdateBusy = false;
+
+async function waCheckForUpdate() {
+  if (waUpdateBusy) return false;
+  waUpdateBusy = true;
+  try {
+    const res = await fetch(`./version.json?ts=${Date.now()}`, { cache: "no-store" });
+    if (!res || !res.ok) return false;
+    const info = await res.json();
+    const remote = waBuildNum(info && (info.build !== undefined ? info.build : info.version));
+    const local = waBuildNum(BUILD);
+    if (!remote || remote <= local) return false;
+
+    // حماية من الحلقة: محاولة واحدة لكل بناء داخل الجلسة
+    if (sessionStorage.getItem("wa_update_reloaded") === String(remote)) return false;
+    sessionStorage.setItem("wa_update_reloaded", String(remote));
+
+    waShowUpdatingNotice(remote);
+
+    try {
+      if ("caches" in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch (_) {}
+
+    try {
+      if ("serviceWorker" in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map((r) => r.update().catch(() => {})));
+      }
+    } catch (_) {}
+
+    setTimeout(() => location.reload(), 700);
+    return true;
+  } catch (_) {
+    return false;
+  } finally {
+    waUpdateBusy = false;
+  }
+}
+
+function waStartUpdateWatcher() {
+  // تحقّق فوري ثم دوري، وعند كل عودة للتطبيق للمقدمة (مهم في آيفون المثبّت)
+  setTimeout(() => waCheckForUpdate(), 2500);
+  setInterval(() => waCheckForUpdate(), 45000);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") waCheckForUpdate();
+  });
+  window.addEventListener("focus", () => waCheckForUpdate());
+  window.addEventListener("online", () => waCheckForUpdate());
+}
+
+if ("serviceWorker" in navigator || "caches" in window) {
+  window.addEventListener("load", () => waStartUpdateWatcher());
+}
+
+// أدوات تشخيص/فحص آلي
+window.WA_UPDATE = {
+  localBuild: BUILD,
+  num: waBuildNum,
+  isNewer: (remote, local) => waBuildNum(remote) > waBuildNum(local === undefined ? BUILD : local),
+  check: waCheckForUpdate,
+};
+
 // زر «تحديث التطبيق الآن» + رقم الإصدار: يُربطان دائماً (حتى قبل تسجيل الدخول)
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-force-update")?.addEventListener("click", () => forceAppUpdate());
 
   const buildLabel = document.getElementById("value-build");
   if (buildLabel) buildLabel.textContent = `v${BUILD}`;
+
+  const authBuild = document.getElementById("value-build-auth");
+  if (authBuild) authBuild.textContent = `v${BUILD}`;
 });
 
 // ===============================================================

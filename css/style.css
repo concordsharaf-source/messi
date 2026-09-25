@@ -8854,3 +8854,14 @@ body.call-open { overflow: hidden; }
 
 /* v59.1: مرجع تموضع لشريط خيارات المحادثة */
 .sidebar { position: relative; }
+
+/* v64: شارة الإصدار على شاشة الدخول — للتحقق من أن النسخة حديثة */
+.auth-build {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 12px;
+  letter-spacing: .02em;
+  color: var(--muted, #8696a0);
+  opacity: .85;
+}
+.auth-build b { color: var(--accent, #00a884); font-weight: 700; }
