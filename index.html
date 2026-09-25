@@ -26,7 +26,7 @@
   <!-- v49: اتصال مبكر بخادم البيانات + تحميل مسبق لكود التطبيق (إقلاع أسرع) -->
   <link rel="preconnect" href="https://jjamwoidjxrdovsoftbq.supabase.co" crossorigin />
   <link rel="dns-prefetch" href="https://jjamwoidjxrdovsoftbq.supabase.co" />
-  <link rel="modulepreload" href="./js/app.js?v=60" />
+  <link rel="modulepreload" href="./js/app.js?v=61" />
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
@@ -35,7 +35,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "60";
+  window.WA_BUILD = "61";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -94,8 +94,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=60" />
-  <script src="./vendor/supabase-js.js?v=60"></script>
+  <link rel="stylesheet" href="./css/style.css?v=61" />
+  <script src="./vendor/supabase-js.js?v=61"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -544,7 +544,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v60</span></summary>
+        <summary>🔄 التحديثات<span class="block-value" id="value-build">v61</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
@@ -592,7 +592,7 @@
 <audio id="notification-sound" src="./icons/notify.mp3" preload="auto"></audio>
 
 <!-- ===== v56: واجهة المكالمة الصوتية (واردة / صادرة / جارية) ===== -->
-<div id="call-overlay" class="call-overlay hidden" role="dialog" aria-modal="true" aria-label="مكالمة صوتية">
+<div id="call-overlay" class="call-overlay hidden" role="dialog" aria-modal="true" aria-label="مكالمة">
   <div class="call-card">
     <div class="call-avatar"><img id="call-avatar" src="" alt="" /></div>
     <div class="call-name" id="call-name" dir="auto"></div>
@@ -600,13 +600,9 @@
     <div class="call-timer" id="call-timer">00:00</div>
 
     <div class="call-actions">
-      <button id="call-accept" type="button" class="call-btn call-round call-accept hidden" title="قبول" aria-label="قبول">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
-      </button>
       <button id="call-decline" type="button" class="call-btn call-round call-decline hidden" title="رفض" aria-label="رفض">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
       </button>
-      <button id="call-mute" type="button" class="call-btn call-mute hidden">كتم</button>
       <button id="call-hangup" type="button" class="call-btn call-round call-hangup hidden" title="إنهاء" aria-label="إنهاء">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>
       </button>
@@ -616,7 +612,6 @@
 
 <audio id="call-ringtone" src="./assets/ringtone.wav" loop preload="auto"></audio>
 <audio id="call-ringback" src="./assets/ringback.wav" loop preload="auto"></audio>
-<audio id="voice-call-audio" autoplay playsinline></audio>
 
 <div id="global-toast" class="global-toast hidden"></div>
 
@@ -631,7 +626,7 @@
   <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
 </div>
 
-<script type="module" src="./js/app.js?v=60"></script>
+<script type="module" src="./js/app.js?v=61"></script>
 
   <!-- إعادة توجيه رسالة: اختر المحادثة -->
   <div id="forward-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="إعادة توجيه الرسالة">

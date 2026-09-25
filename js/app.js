@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "60";
+const BUILD = "61";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -60,7 +60,7 @@ const DEFAULT_AVATAR =
 
 /** يعيد رابط الصورة أو الصورة الافتراضية (واتساب) */
 function avatarUrl(person) {
-  return (person && person.avatar_url) || DEFAULT_AVATAR;
+  return safeUrl(person && person.avatar_url) || DEFAULT_AVATAR;
 }
 
 const state = {
@@ -386,8 +386,7 @@ function openConversationUIState(conversationId) {
     نُنظّف فقط أي بقايا صوتية إن لم تكن هناك مكالمة جارية. */
 function stopVoiceCall() {
   if (activeCall) return;
-  const audio = document.getElementById("voice-call-audio");
-  if (audio && audio.srcObject) audio.srcObject = null;
+  stopCallSounds();   // v61: لا يوجد مسار صوتي — نوقف أي نغمة رنين باقية فقط
 }
 
 function closeChatView() {
@@ -1827,7 +1826,7 @@ function buildAdminUserCard(p) {
   row.innerHTML = `
       <button class="admin-user-head" type="button" aria-expanded="${isOpen ? "true" : "false"}">
         <span class="admin-user-avatar" id="avatar-thumb-${p.id}">
-          ${p.avatar_url ? `<img src="${escapeHtml(p.avatar_url)}" alt="">` : escapeHtml(initial)}
+          ${safeUrl(p.avatar_url) ? `<img src="${escapeHtml(safeUrl(p.avatar_url))}" alt="">` : escapeHtml(initial)}
         </span>
 
         <span class="admin-user-name">
@@ -4616,20 +4615,20 @@ function wireMessageActions() {
 }
 
 // ===============================================================
-// v56: المكالمات الصوتية الحقيقية (WebRTC + Supabase Realtime)
-//   • كل مستخدم يشترك في قناة خاصة به: wa-calls-<معرّفه>  ⇒ يستقبل الرنين حتى لو
-//     كان يتصفح محادثة أخرى (أو التطبيق في الخلفية).
-//   • التراسل: invite → accept → offer/answer/ice → hangup
+// v61: المكالمات — بلا توصيل صوتي إطلاقًا (لا WebRTC ولا ميكروفون)
+//   • المتصل: «جارٍ الرنين…» مع نغمة رنين وهمية لمدة CALL_RING_MS ثم تنتهي المكالمة
+//     («لا يوجد رد») وتُسجَّل في القاعدة «مكالمة لم يرد عليها».
+//   • المستقبِل: إشعار فوري (نغمة + اهتزاز + «📞 مكالمة واردة») وزر «رفض».
+//     وإن لم يرد تظهر له «مكالمة لم يرد عليها» في شريط أعلى القائمة،
+//     ويصله إشعار على الهاتف (FCM) حتى لو كان التطبيق مغلقًا.
+//   • لا يُطلب إذن الميكروفون إطلاقًا، ولا يُفتح أي مسار صوتي بين الطرفين.
 // ===============================================================
 
-const CALL_TIMEOUT_MS = 45000;
+// مدة الرنين قبل أن تنتهي المكالمة تلقائيًا (٣٠ ثانية).
+// window.__waRingOverrideMs — للفحوص الآلية فقط، لتفادي انتظار ٣٠ ثانية.
+const CALL_RING_MS = Math.max(3000, Number(window.__waRingOverrideMs) || 30000);
 
-const ICE_SERVERS = [
-  { urls: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun2.l.google.com:19302"] },
-  // TURN اختياري: ضروري فقط للشبكات المقيّدة (جوال/CGNAT). يُضاف عند توفّر مفاتيح مجانية.
-];
-
-let activeCall = null;   // { id, role, peerId, peerName, peerAvatar, status, pc, stream, sendChannel, timer, timeout, ring, pendingIce, startedAt }
+let activeCall = null;   // { id, role, peerId, peerName, peerAvatar, conversationId, status, dbId, sendChannel, timer, timeout, startedAt }
 
 function callState() {
   if (!activeCall) return null;
@@ -4638,9 +4637,9 @@ function callState() {
     role: activeCall.role,
     status: activeCall.status,
     peerId: activeCall.peerId,
-    pcState: activeCall.pc?.connectionState || null,
-    iceState: activeCall.pc?.iceConnectionState || null,
-    mic: Boolean(activeCall.stream),
+    dbId: activeCall.dbId || null,
+    media: false,
+    ringMs: CALL_RING_MS,
   };
 }
 
@@ -4665,6 +4664,7 @@ function playCallSound(id) {
   el.play().catch(() => {});
 }
 
+/** شاشة المكالمة — زر واحد فقط: «إلغاء» للمتصل و«رفض» للمستقبِل (لا قبول: لا يوجد صوت يُوصل) */
 function showCallOverlay({ name, avatar, status, mode }) {
   const box = callOverlayEl();
   if (!box) return;
@@ -4677,16 +4677,16 @@ function showCallOverlay({ name, avatar, status, mode }) {
   if (nameEl) nameEl.textContent = name || "مستخدم";
   if (statusEl) statusEl.textContent = status || "";
   if (avatarEl) { avatarEl.src = avatar || DEFAULT_AVATAR; avatarEl.alt = name || ""; }
-  if (timerEl) { timerEl.textContent = "00:00"; timerEl.classList.toggle("hidden", mode !== "active"); }
+  // v61: العدّاد يظهر للمتصل فقط ليرى مدة الرنين قبل انتهاء المكالمة
+  if (timerEl) { timerEl.textContent = "00:00"; timerEl.classList.toggle("hidden", mode !== "outgoing"); }
 
-  document.getElementById("call-accept")?.classList.toggle("hidden", mode !== "incoming");
-  document.getElementById("call-decline")?.classList.toggle("hidden", !(mode === "incoming" || mode === "outgoing"));
-  document.getElementById("call-mute")?.classList.toggle("hidden", mode !== "active");
-  document.getElementById("call-hangup")?.classList.toggle("hidden", mode === "incoming");
+  ["call-accept", "call-mute", "call-hangup"].forEach((id) =>
+    document.getElementById(id)?.classList.add("hidden")
+  );
 
-  // v57: الزر أيقونة (سماعة) — النص كان يمسح الأيقونة، نكتفي بالعنوان
   const btn = document.getElementById("call-decline");
   if (btn) {
+    btn.classList.remove("hidden");
     const label = mode === "incoming" ? "رفض" : "إلغاء";
     btn.title = label;
     btn.setAttribute("aria-label", label);
@@ -4756,55 +4756,32 @@ function sendCallEvent(kind, extra = {}) {
   activeCall.sendChannel.send({ type: "broadcast", event: "call", payload }).catch(() => {});
 }
 
-function buildPeerConnection() {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-
-  pc.onicecandidate = (e) => {
-    if (e.candidate && activeCall) sendCallEvent("ice", { candidate: e.candidate.toJSON ? e.candidate.toJSON() : e.candidate });
-  };
-
-  pc.ontrack = (e) => {
-    const audio = document.getElementById("voice-call-audio") || Object.assign(document.createElement("audio"), { id: "voice-call-audio", autoplay: true });
-    if (!audio.parentNode) document.body.appendChild(audio);
-    audio.srcObject = e.streams[0];
-    const p = audio.play();
-    if (p?.catch) p.catch(() => {});
-  };
-
-  pc.onconnectionstatechange = () => {
-    if (!activeCall) return;
-    const st = pc.connectionState;
-    if (st === "connected") {
-      activeCall.status = "active";
-      stopCallSounds();
-      if (!activeCall.timer) startCallTimer();
-      setCallStatus("مكالمة جارية");
-      document.getElementById("voice-call-audio")?.play?.().catch(() => {});
-      showCallOverlay({
-        name: activeCall.peerName,
-        avatar: activeCall.peerAvatar,
-        status: "مكالمة جارية",
-        mode: "active",
-      });
-    } else if (["failed", "disconnected"].includes(st)) {
-      setCallStatus(st === "failed" ? "تعذّر الاتصال — الشبكة تمنع المسار المباشر" : "انقطع الاتصال…");
-    }
-  };
-
-  return pc;
+/** v61: إشعار الهاتف للطرف الآخر (يصل حتى لو كان التطبيق مغلقًا)
+    event = "incoming" ⇒ «مكالمة واردة…»   |   event = "missed" ⇒ «مكالمة لم يرد عليها» */
+function notifyCallPush(event) {
+  if (!activeCall) return;
+  const conversationId = activeCall.conversationId;
+  if (!conversationId) return;
+  try {
+    supabase.functions
+      .invoke("send-push", { body: { call: { conversationId, callId: activeCall.id, event } } })
+      .catch(() => {});
+  } catch (_) {}
 }
 
-async function getMicStream() {
-  return navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    video: false,
-  });
-}
-
-async function flushPendingIce() {
-  if (!activeCall?.pc || !activeCall.pendingIce?.length) return;
-  const list = activeCall.pendingIce.splice(0);
-  for (const cand of list) { try { await activeCall.pc.addIceCandidate(cand); } catch (_) {} }
+/** إخفاء «مكالمة لم يرد عليها» التي رفضها المستخدم بنفسه (لا داعي لتنبيهه بما رفضه) */
+async function markRecentCallSeen(conversationId) {
+  if (!state.me?.id || !conversationId) return;
+  const since = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  try {
+    await supabase
+      .from("call_logs")
+      .update({ seen_by_callee: true })
+      .eq("callee_id", state.me.id)
+      .eq("conversation_id", conversationId)
+      .eq("seen_by_callee", false)
+      .gte("created_at", since);
+  } catch (_) {}
 }
 
 /** إنهاء المكالمة (مع إبلاغ الطرف الآخر) */
@@ -4816,40 +4793,34 @@ function endCall(note = "", silent = false) {
     try { cur.sendChannel.send({ type: "broadcast", event: "call", payload: { kind: "hangup", callId: cur.id, from: state.me?.id, to: cur.peerId } }); } catch (_) {}
   }
 
-  // v57: نُثبّت نتيجة المكالمة في السجل
+  // v57/v61: نُثبّت نتيجة المكالمة في السجل — المتصل وحده يملك صف السجل (dbId)
   try {
-    const duration = cur.startedAt ? Math.round((Date.now() - cur.startedAt) / 1000) : 0;
-    const outcome = cur.status === "active" || cur.status === "connecting" ? "answered" : "missed";
-    logCallUpdate(outcome, { duration_seconds: duration, dbId: cur.dbId });
+    const outcome =
+      cur.status === "declined" ? "declined" :
+      cur.status === "busy" ? "busy" :
+      cur.status === "canceled" ? "canceled" :
+      "missed";
+    logCallUpdate(outcome, { dbId: cur.dbId });
   } catch (_) {}
 
   clearTimeout(cur.timeout);
   clearInterval(cur.timer);
   stopCallSounds();
 
-  try { cur.stream?.getTracks().forEach((t) => t.stop()); } catch (_) {}
-  try { cur.pc?.close(); } catch (_) {}
-  try { cur.pc?.getSenders?.().forEach((s) => s.track?.stop?.()); } catch (_) {}
   if (cur.sendChannel) { try { supabase.removeChannel(cur.sendChannel); } catch (_) {} }
-
-  const audio = document.getElementById("voice-call-audio");
-  if (audio) audio.srcObject = null;
 
   activeCall = null;
   hideCallOverlay();
   if (note) showChatToast(note);
 }
 
-/** بدء مكالمة صادرة */
+/** بدء مكالمة صادرة: رنين وهمي لفترة ثم تنتهي المكالمة */
 async function startOutgoingCall() {
   if (activeCall) { showChatToast("هناك مكالمة جارية بالفعل"); return; }
 
   const conv = state.activeConversation;
   const peerId = getActiveChatTargetId();
   if (!conv || !peerId) { showChatToast("لا يمكن بدء المكالمة الآن"); return; }
-
-  if (!navigator.mediaDevices?.getUserMedia) { showChatToast("المكالمات غير مدعومة في هذا المتصفح"); return; }
-  if (!state.callChannel) await initCallSignaling();
 
   const peer = conv.otherProfile || {};
   activeCall = {
@@ -4858,44 +4829,94 @@ async function startOutgoingCall() {
     peerId: String(peerId),
     peerName: peer.display_name || conv.otherName || "مستخدم",
     peerAvatar: peer.avatar_url || null,
+    conversationId: conv.id,
     status: "ringing",
-    pc: null,
-    stream: null,
+    dbId: null,
     sendChannel: null,
-    pendingIce: [],
     timer: null,
     timeout: null,
+    startedAt: Date.now(),
   };
 
   showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "جارٍ الرنين…", mode: "outgoing" });
   playCallSound("call-ringback");
+  startCallTimer();
 
+  // نسجّل المكالمة في القاعدة كي يراها الطرف الآخر حتى لو كان مقفل النت
+  logCallStart(conv.id, activeCall.id).catch(() => {});
+  // v61: إشعار الهاتف فورًا
+  notifyCallPush("incoming");
+
+  // قناة الإرسال اختيارية: إن تعذّر فتحها يكفي سجل القاعدة + الإشعار
+  openCallChannelFor(activeCall.peerId)
+    .then((ch) => {
+      if (!activeCall) { supabase.removeChannel(ch); return; }
+      activeCall.sendChannel = ch;
+      sendCallEvent("invite", {
+        name: state.me?.display_name || "",
+        avatar: state.me?.avatar_url || null,
+        conversationId: conv.id,
+      });
+    })
+    .catch(() => {});
+
+  // انتهاء الرنين بلا رد
+  activeCall.timeout = setTimeout(() => {
+    if (activeCall?.role === "caller" && activeCall.status === "ringing") {
+      activeCall.status = "missed";
+      notifyCallPush("missed");
+      endCall("لا يوجد رد");
+    }
+  }, CALL_RING_MS);
+}
+
+/** v61: انتهاء مكالمة واردة بلا رد ⇒ إغلاق الشاشة + تنبيه «مكالمة لم يرد عليها»
+    تُنادى من مؤقّت الرنين ومن وصول «hangup» (المتصل ملّ من الانتظار). */
+function finishIncomingAsMissed() {
+  if (!activeCall || activeCall.role !== "callee") return;
+  const name = activeCall.peerName;
+  activeCall.status = "missed";
+  endCall("", true);
+  showChatToast(`📞 مكالمة لم يرد عليها من ${name}`);
+  // ننتظر لحظة حتى يُثبّت المتصل حالة الصف في القاعدة ثم نجلب التنبيه
+  setTimeout(() => { checkMissedCalls().catch(() => {}); }, 2500);
+}
+
+/** v61 (أمان): لا نُرنّ إلا لمن تربطنا به محادثة فعلية — قناة الرنين عامة،
+    فيمكن لطرف غريب إرسال دعوة مزيفة؛ نتحقق من القاعدة قبل أي رنين. */
+async function isLegitCallerPeer(peerId) {
+  const me = state.me?.id;
+  if (!me || !peerId) return false;
   try {
-    activeCall.sendChannel = await openCallChannelFor(activeCall.peerId);
+    const [asUser, asAdmin] = await Promise.all([
+      supabase.from("conversations").select("id").eq("user_id", me).eq("admin_id", peerId).limit(1),
+      supabase.from("conversations").select("id").eq("user_id", peerId).eq("admin_id", me).limit(1),
+    ]);
+    return Boolean(asUser?.data?.length || asAdmin?.data?.length);
   } catch (_) {
-    endCall("تعذّر الوصول إلى الطرف الآخر");
+    return false;
+  }
+}
+
+/** استقبال دعوة: تنبيه ورنين فقط — بلا أي اتصال صوتي */
+async function onIncomingInvite(payload) {
+  const name = payload.name || "مستخدم";
+
+  if (!(await isLegitCallerPeer(String(payload.from)))) {
+    console.warn("[CALL] دعوة من طرف لا تربطنا به محادثة — تم تجاهلها");
     return;
   }
 
-  // v57: نسجّل المكالمة في القاعدة كي يراها الطرف الآخر حتى لو كان «مقفل النت»
-  logCallStart(conv.id, activeCall.id).catch(() => {});
+  showChatToast(`📞 مكالمة واردة من ${name}`);
 
-  sendCallEvent("invite", { name: state.me?.display_name || "", avatar: state.me?.avatar_url || null, conversationId: state.activeConversation?.id });
-
-  activeCall.timeout = setTimeout(() => {
-    if (activeCall?.status === "ringing" && activeCall.role === "caller") endCall("لا يوجد رد");
-  }, CALL_TIMEOUT_MS);
-}
-
-/** استقبال دعوة */
-async function onIncomingInvite(payload) {
   if (activeCall) {
     // مشغول: أبلِغ المتصل
-    try {
-      const ch = await openCallChannelFor(String(payload.from));
-      ch.send({ type: "broadcast", event: "call", payload: { kind: "busy", callId: payload.callId, from: state.me.id, to: payload.from } });
-      setTimeout(() => supabase.removeChannel(ch), 1500);
-    } catch (_) {}
+    openCallChannelFor(String(payload.from))
+      .then((ch) => {
+        ch.send({ type: "broadcast", event: "call", payload: { kind: "busy", callId: payload.callId, from: state.me.id, to: payload.from } });
+        setTimeout(() => supabase.removeChannel(ch), 1500);
+      })
+      .catch(() => {});
     return;
   }
 
@@ -4903,100 +4924,29 @@ async function onIncomingInvite(payload) {
     id: payload.callId,
     role: "callee",
     peerId: String(payload.from),
-    peerName: payload.name || "مستخدم",
+    peerName: name,
     peerAvatar: payload.avatar || null,
+    conversationId: payload.conversationId || state.activeConversation?.id || null,
     status: "incoming",
-    pc: null,
-    stream: null,
+    dbId: null,
     sendChannel: null,
-    pendingIce: [],
     timer: null,
     timeout: null,
+    startedAt: null,
   };
 
   showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "مكالمة واردة…", mode: "incoming" });
   playCallSound("call-ringtone");
+  try { navigator.vibrate?.([400, 300, 400, 300, 600]); } catch (_) {}
 
-  // v56.1: نجهّز قناة الإرسال فورًا حتى يعمل «رفض» و«مشغول» قبل القبول
   openCallChannelFor(activeCall.peerId)
     .then((ch) => { if (activeCall?.id === payload.callId) activeCall.sendChannel = ch; else supabase.removeChannel(ch); })
     .catch(() => {});
-  try { navigator.vibrate?.([400, 300, 400, 300, 600]); } catch (_) {}
 
+  // لا رد حتى انتهاء الرنين ⇒ مكالمة فائتة + شريط تنبيه
   activeCall.timeout = setTimeout(() => {
-    if (activeCall?.status === "incoming") endCall("مكالمة فائتة", true);
-  }, CALL_TIMEOUT_MS);
-}
-
-/** قبول المكالمة الواردة */
-async function acceptIncomingCall() {
-  if (!activeCall || activeCall.status !== "incoming") return;
-  stopCallSounds();
-  setCallStatus("جارٍ التوصيل…");
-
-  try {
-    activeCall.stream = await getMicStream();
-  } catch (_) {
-    endCall("لم يتم السماح باستخدام الميكروفون");
-    return;
-  }
-
-  if (!activeCall.sendChannel) {
-    try {
-      activeCall.sendChannel = await openCallChannelFor(activeCall.peerId);
-    } catch (_) {
-      endCall("تعذّر الاتصال");
-      return;
-    }
-  }
-
-  activeCall.status = "connecting";
-  sendCallEvent("accept");
-  logCallUpdate("answered", { answered_at: new Date().toISOString() });
-  showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "جارٍ التوصيل…", mode: "active" });
-  document.getElementById("call-mute")?.classList.remove("hidden");
-  document.getElementById("call-hangup")?.classList.remove("hidden");
-  document.getElementById("call-decline")?.classList.add("hidden");
-  clearTimeout(activeCall.timeout);
-}
-
-/** المتصل: بعد القبول ينشئ العرض */
-async function callerStartMedia() {
-  if (!activeCall || activeCall.role !== "caller") return;
-  clearTimeout(activeCall.timeout);
-  logCallUpdate("answered", { answered_at: new Date().toISOString() });
-  stopCallSounds();
-  setCallStatus("جارٍ التوصيل…");
-
-  try {
-    activeCall.stream = await getMicStream();
-  } catch (_) {
-    sendCallEvent("hangup");
-    endCall("لم يتم السماح باستخدام الميكروفون");
-    return;
-  }
-
-  activeCall.status = "connecting";
-  activeCall.pc = buildPeerConnection();
-  activeCall.stream.getTracks().forEach((t) => activeCall.pc.addTrack(t, activeCall.stream));
-
-  const offer = await activeCall.pc.createOffer({ offerToReceiveAudio: true });
-  await activeCall.pc.setLocalDescription(offer);
-  sendCallEvent("offer", { sdp: activeCall.pc.localDescription.sdp });
-  showCallOverlay({ name: activeCall.peerName, avatar: activeCall.peerAvatar, status: "جارٍ التوصيل…", mode: "active" });
-}
-
-/** المستقبِل: يجيب على العرض */
-async function calleeAnswer(sdp) {
-  if (!activeCall || activeCall.role !== "callee") return;
-  activeCall.pc = buildPeerConnection();
-  activeCall.stream.getTracks().forEach((t) => activeCall.pc.addTrack(t, activeCall.stream));
-
-  await activeCall.pc.setRemoteDescription({ type: "offer", sdp });
-  await flushPendingIce();
-  const answer = await activeCall.pc.createAnswer();
-  await activeCall.pc.setLocalDescription(answer);
-  sendCallEvent("answer", { sdp: activeCall.pc.localDescription.sdp });
+    if (activeCall?.id === payload.callId && activeCall.status === "incoming") finishIncomingAsMissed();
+  }, CALL_RING_MS);
 }
 
 function handleCallEvent(payload) {
@@ -5013,50 +4963,23 @@ function handleCallEvent(payload) {
       if (activeCall?.role === "caller") { activeCall.status = "busy"; endCall("الطرف الآخر في مكالمة أخرى"); }
       break;
 
-    case "accept":
-      if (activeCall?.role === "caller" && payload.callId === activeCall.id) callerStartMedia();
-      break;
-
     case "decline":
-      if (activeCall?.role === "caller" && payload.callId === activeCall.id) { activeCall.status = "declined"; endCall("تم رفض المكالمة"); }
-      break;
-
-    case "offer":
-      if (activeCall?.role === "callee" && payload.callId === activeCall.id) calleeAnswer(payload.sdp);
-      break;
-
-    case "answer":
-      if (activeCall?.role === "caller" && activeCall.pc && payload.callId === activeCall.id) {
-        activeCall.pc.setRemoteDescription({ type: "answer", sdp: payload.sdp })
-          .then(flushPendingIce)
-          .catch(() => {});
-      }
-      break;
-
-    case "ice":
-      if (activeCall && payload.callId === activeCall.id && payload.candidate) {
-        if (activeCall.pc?.remoteDescription) activeCall.pc.addIceCandidate(payload.candidate).catch(() => {});
-        else activeCall.pendingIce.push(payload.candidate);
+      if (activeCall?.role === "caller" && payload.callId === activeCall.id) {
+        activeCall.status = "declined";
+        endCall("تم رفض المكالمة");
       }
       break;
 
     case "hangup":
       if (activeCall && payload.callId === activeCall.id) {
-        endCall(activeCall.status === "active" ? "انتهت المكالمة" : "أُلغيت المكالمة");
+        if (activeCall.role === "callee" && activeCall.status === "incoming") {
+          finishIncomingAsMissed();     // المتصل انتهى رنينه بلا رد
+        } else {
+          activeCall.status = "canceled";
+          endCall("أُلغيت المكالمة", true);
+        }
       }
       break;
-  }
-}
-
-function muteCall() {
-  if (!activeCall?.stream) return;
-  const track = activeCall.stream.getAudioTracks()[0];
-  if (!track) return;
-  track.enabled = !track.enabled;
-  const btn = document.getElementById("call-mute");
-  if (btn) {
-    btn.textContent = track.enabled ? "كتم" : "إلغاء الكتم";
-    btn.classList.toggle("muted", !track.enabled);
   }
 }
 
@@ -5157,37 +5080,51 @@ async function checkMissedCalls() {
     .from("call_logs")
     .select("id, conversation_id, created_at, status, caller:caller_id (id, display_name, avatar_url)")
     .eq("callee_id", state.me.id)
-    .in("status", ["missed", "declined", "busy", "canceled"])
+    .in("status", ["missed", "declined", "busy", "canceled", "ringing"])
     .eq("seen_by_callee", false)
     .gte("created_at", since)
     .order("created_at", { ascending: false })
     .limit(6);
 
-  if (error || !data?.length) {
+  // v61: صف «ringing» لم يحدّثه المتصل (أُغلق تطبيقه مثلًا) يُعتبر فائتًا بعد انتهاء مهلة الرنين
+  const staleRing = CALL_RING_MS + 15000;
+  const now = Date.now();
+  const fresh = (data || []).filter((c) => {
+    if (c.status !== "ringing") return true;
+    const t = new Date(c.created_at).getTime();
+    return Number.isFinite(t) && now - t > staleRing;
+  });
+
+  if (error || !fresh.length) {
     if (error) console.warn("[CALL] تعذّر جلب المكالمات الفائتة:", error.message);
     return [];
   }
 
-  data.forEach(renderMissedCallBanner);
+  fresh.forEach(renderMissedCallBanner);
 
-  const first = data[0];
+  const first = fresh[0];
   showChatToast(`📞 مكالمة لم يرد عليها من ${first.caller?.display_name || "مستخدم"}`);
 
-  return data;
+  return fresh;
 }
 
 function wireCallUi() {
-  document.getElementById("call-accept")?.addEventListener("click", acceptIncomingCall);
+  // v61: زر واحد — «رفض» عند المستقبِل و«إلغاء» عند المتصل
   document.getElementById("call-decline")?.addEventListener("click", () => {
-    if (activeCall?.role === "callee") { sendCallEvent("decline"); endCall(""); }
-    else { logCallUpdate("canceled", { dbId: activeCall?.dbId }); endCall("أُلغيت المكالمة"); }
+    if (!activeCall) return;
+
+    if (activeCall.role === "callee") {
+      const convId = activeCall.conversationId;
+      activeCall.status = "declined";
+      sendCallEvent("decline");
+      endCall("");
+      // لا نُظهر له «مكالمة لم يرد عليها» لما رفضه بنفسه (بعد أن يحدّث المتصل الحالة)
+      setTimeout(() => { markRecentCallSeen(convId).catch(() => {}); }, 2500);
+    } else {
+      activeCall.status = "canceled";
+      endCall("أُلغيت المكالمة");
+    }
   });
-  document.getElementById("call-hangup")?.addEventListener("click", () => {
-    const wasActive = activeCall?.status === "active";
-    sendCallEvent("hangup");
-    endCall(wasActive ? "انتهت المكالمة" : "");
-  });
-  document.getElementById("call-mute")?.addEventListener("click", muteCall);
 
   window.addEventListener("beforeunload", () => { if (activeCall) endCall("", true); });
 }
@@ -6429,12 +6366,22 @@ function clearUnreadBadge(conversationId) {
 // HTML ESCAPE
 // ===============================================================
 
+// v61 (أمان): النسخة القديمة كانت تعتمد textContent→innerHTML فلا تهرّب " ولا '
+// ⇒ أي قيمة تُدرج داخل سمة HTML (مثل src="…") كان يمكن كسرها بحقن JavaScript.
+// الآن نهرّب الخمسة معًا فنُغلق حقن السمات في كل مواضع الاستخدام.
+const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
 function escapeHtml(str) {
-  const d = document.createElement("div");
+  return String(str ?? "").replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]);
+}
 
-  d.textContent = str || "";
-
-  return d.innerHTML;
+// v61 (أمان): لا نسمح في السمات إلا بروابط آمنة (http/https/blob/صورة data/مسار محلي)
+function safeUrl(url) {
+  const u = String(url ?? "").trim();
+  if (!u) return "";
+  if (/^(https?:\/\/|blob:|data:image\/)/i.test(u)) return u;
+  if (/^\.{0,2}\//.test(u)) return u;
+  return "";
 }
 
 async function openConversationFromNotificationRoute() {
@@ -7697,16 +7644,18 @@ function buildMessageBubble(m) {
   let attach = "";
   let mediaHint = "";
 
-  if (m.attachment_url) {
+  const attachUrl = safeUrl(m.attachment_url);
+
+  if (attachUrl) {
     if (m.attachment_type === "image") {
       attach = `
         <img
           class="msg-attachment msg-image"
-          src="${escapeHtml(m.attachment_url)}"
+          src="${escapeHtml(attachUrl)}"
           alt="صورة مرفقة"
           loading="lazy"
           decoding="async"
-          data-media-url="${escapeHtml(m.attachment_url)}"
+          data-media-url="${escapeHtml(attachUrl)}"
           data-media-type="image"
         >
       `;
@@ -7718,8 +7667,8 @@ function buildMessageBubble(m) {
           controls
           playsinline
           preload="metadata"
-          src="${escapeHtml(m.attachment_url)}"
-          data-media-url="${escapeHtml(m.attachment_url)}"
+          src="${escapeHtml(attachUrl)}"
+          data-media-url="${escapeHtml(attachUrl)}"
           data-media-type="video"
         ></video>
       `;
@@ -7730,7 +7679,7 @@ function buildMessageBubble(m) {
       attach = `
         <a
           class="msg-file"
-          href="${escapeHtml(m.attachment_url)}"
+          href="${escapeHtml(attachUrl)}"
           target="_blank"
           rel="noopener noreferrer"
         >
@@ -13841,7 +13790,7 @@ async function renderSwitchUserBlock() {
     row.className = "switch-user-row";
 
     const avatar = person.avatar_url
-      ? `<img src="${escapeHtml(person.avatar_url)}" alt="" />`
+      ? `<img src="${escapeHtml(safeUrl(person.avatar_url))}" alt="" />`
       : `<span class="switch-user-initial">${escapeHtml((person.display_name || "؟").trim().charAt(0))}</span>`;
 
     row.innerHTML = `
@@ -14376,10 +14325,11 @@ document.addEventListener(
 window.__waCall = {
   state: callState,
   start: startOutgoingCall,
-  accept: acceptIncomingCall,
-  decline: () => { if (activeCall?.role === "callee") { sendCallEvent("decline"); endCall(""); } },
-  hangup: () => { sendCallEvent("hangup"); endCall(""); },
-  mute: muteCall,
+  decline: () => { if (activeCall?.role === "callee") { activeCall.status = "declined"; sendCallEvent("decline"); endCall(""); } },
+  hangup: () => { if (activeCall) activeCall.status = "canceled"; sendCallEvent("hangup"); endCall(""); },
+  ringMs: () => CALL_RING_MS,
+  statusText: () => (document.getElementById("call-status")?.textContent || ""),
+  hasMicRequest: () => Boolean(navigator.mediaDevices?.getUserMedia && window.__micAsked),
   overlayVisible: () => !callOverlayEl()?.classList.contains("hidden"),
   ringtonePlaying: () => { const el = document.getElementById("call-ringtone"); return Boolean(el && !el.paused); },
   checkMissed: () => checkMissedCalls(),

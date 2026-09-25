@@ -48,6 +48,7 @@ serve(async (req) => {
     if (!actor) return json({ error: "Unauthorized" }, 401);
 
     const isSelfTest = payload?.test === true;
+    const isCall = Boolean(payload?.call?.conversationId);   // v61: إشعار مكالمة
     const delaySeconds = Math.min(Math.max(Number(payload?.delaySeconds) || 0, 0), 25);
 
     let receiverId;
@@ -63,6 +64,35 @@ serve(async (req) => {
       kind = "test";
       body = payload?.body || "اختبار الإشعارات ✅ إن كنت ترى هذا الإشعار فالإشعارات تعمل على جهازك.";
       receiverId = actor.id;
+    } else if (isCall) {
+      // v61: مكالمة (رنين وهمي بلا صوت) — إشعار «مكالمة واردة» أو «مكالمة لم يرد عليها»
+      const call = payload.call;
+      kind = "call";
+      body = String(call.event) === "missed" ? "📞 مكالمة لم يرد عليها" : "📞 مكالمة واردة…";
+
+      const { data: conversation, error: conversationError } = await admin
+        .from("conversations")
+        .select("user_id, admin_id")
+        .eq("id", call.conversationId)
+        .single();
+      if (conversationError) throw conversationError;
+      if (![conversation.user_id, conversation.admin_id].some((id) => String(id) === String(actor.id))) {
+        return json({ error: "Caller is not a participant" }, 403);
+      }
+
+      conversationId = call.conversationId;
+      messageId = String(call.callId || "");
+      senderId = actor.id;
+      receiverId = String(actor.id) === String(conversation.user_id)
+        ? conversation.admin_id
+        : conversation.user_id;
+
+      const { data: receiverProfile } = await admin
+        .from("profiles")
+        .select("is_admin, is_super_admin")
+        .eq("id", receiverId)
+        .maybeSingle();
+      receiverIsAdmin = Boolean(receiverProfile?.is_admin || receiverProfile?.is_super_admin);
     } else {
       const record = payload?.record || payload?.new_record || payload;
       if (String(actor.id) !== String(record?.sender_id)) return json({ error: "Unauthorized sender" }, 401);
@@ -114,6 +144,8 @@ serve(async (req) => {
       senderName = senderProfile?.display_name || senderProfile?.phone || "رسالة جديدة";
     }
 
+    if (isCall) senderName = `📞 ${senderName}`;
+
     const { data: tokens, error: tokenError } = await admin
       .from("fcm_tokens")
       .select("token")
@@ -155,7 +187,7 @@ serve(async (req) => {
       requireInteraction: true,
       vibrate: [100, 50, 100],
     };
-    if (receiverIsAdmin && !isSelfTest) {
+    if (receiverIsAdmin && !isSelfTest && !isCall) {
       webNotification.actions = [
         { action: "reply-done", title: "✅ تمّت المعالجة" },
         { action: "reply-ack", title: "👋 وصلنا طلبك" },
