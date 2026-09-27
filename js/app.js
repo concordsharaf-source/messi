@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "79";
+const BUILD = "80";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -8467,6 +8467,12 @@ function openMessageSelection(m, options = {}) {
 
   state.selectedMessageIds = ids;
   state.selectedMessageId = ids[ids.length - 1] || null;
+
+  // عند تحديد رسالة ثانية ننتقل إلى وضع التحديد المتعدد مثل واتساب.
+  if (ids.length > 1) {
+    hideQuickReactPanel();
+    document.querySelectorAll(".bubble-row.long-pressed").forEach((row) => row.classList.remove("long-pressed"));
+  }
 
   const bar = $("#msg-actions");
   const header = document.querySelector("#chat-active .chat-header");
