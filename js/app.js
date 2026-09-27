@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "72";
+const BUILD = "73";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -5399,26 +5399,51 @@ async function loadContacts() {
 
 function renderContactsFromCache(cached) {
   resetContactIndex();
-
+  const unique = new Map();
+  (cached || []).forEach((contact) => {
+    const key = contact?._conversationId
+      ? `conversation:${contact._conversationId}`
+      : `profile:${contact?.id || contact?.display_name || Math.random()}`;
+    if (!unique.has(key)) unique.set(key, contact);
+  });
+  const rows = [...unique.values()];
   $("#contact-list").innerHTML = "";
+  $("#admins-section").innerHTML = "";
+  $("#users-section").innerHTML = "";
+  $("#conversation-owner-filter")?.classList.add("hidden");
 
-  $("#admins-heading")?.classList.add("hidden");
-  $("#admins-section")?.classList.add("hidden");
-
-  $("#users-heading")?.classList.add("hidden");
-  $("#users-section")?.classList.add("hidden");
-
-  [...(cached || [])]
-    .sort(compareContactsByActivity)
-    .forEach((c) => {
-      $("#contact-list").appendChild(
-        buildContactRow(c, {
-          withUnread: !!c._unread,
-        })
-      );
+  if (!state.me?.can_moderate) {
+    // المستخدم العادي: نفس القائمة المسطحة المستخدمة عند الاتصال.
+    $("#admins-heading")?.classList.add("hidden");
+    $("#admins-section")?.classList.add("hidden");
+    $("#users-heading")?.classList.add("hidden");
+    $("#users-section")?.classList.add("hidden");
+    state.contacts = rows.sort(compareContactsByActivity);
+    state.contacts.forEach((contact) => {
+      $("#contact-list").appendChild(buildContactRow(contact, { withUnread: true }));
     });
-}
+    return;
+  }
 
+  // المشرف: نفس قسمي «المشرفون» و«المحادثات» المستخدمين عند الاتصال.
+  const otherAdmins = rows
+    .filter((contact) => contact?.is_admin && !contact?._conversationId && String(contact.id) !== String(state.me?.id))
+    .sort((a, b) => String(a.display_name || "").localeCompare(String(b.display_name || ""), "ar"));
+  const conversations = rows
+    .filter((contact) => Boolean(contact?._conversationId))
+    .sort(compareContactsByActivity);
+  state.otherAdminProfiles = otherAdmins;
+  state.conversationRows = conversations;
+  $("#admins-heading")?.classList.toggle("hidden", otherAdmins.length === 0);
+  $("#admins-section")?.classList.toggle("hidden", otherAdmins.length === 0);
+  otherAdmins.forEach((contact) => {
+    $("#admins-section").appendChild(buildContactRow(contact, { withUnread: false }));
+  });
+  $("#users-heading")?.classList.remove("hidden");
+  $("#users-section")?.classList.remove("hidden");
+  wireOwnerFilter();
+  renderConversationSection();
+}
 const PIN_KEY = "wa_pinned_conversations";
 
 function localPins() {
