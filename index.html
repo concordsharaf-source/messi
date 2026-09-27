@@ -26,7 +26,7 @@
   <!-- v49: اتصال مبكر بخادم البيانات + تحميل مسبق لكود التطبيق (إقلاع أسرع) -->
   <link rel="preconnect" href="https://jjamwoidjxrdovsoftbq.supabase.co" crossorigin />
   <link rel="dns-prefetch" href="https://jjamwoidjxrdovsoftbq.supabase.co" />
-  <link rel="modulepreload" href="./js/app.js?v=67" />
+  <link rel="modulepreload" href="./js/app.js?v=68" />
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
@@ -35,7 +35,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "67";
+  window.WA_BUILD = "68";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -94,8 +94,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=67" />
-  <script src="./vendor/supabase-js.js?v=67"></script>
+  <link rel="stylesheet" href="./css/style.css?v=68" />
+  <script src="./vendor/supabase-js.js?v=68"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -172,14 +172,19 @@
       </button>
     </div>
 
-    <div class="auth-tabs">
-      <button id="tab-login" class="active" data-i18n="login">تسجيل الدخول</button>
-      <button id="tab-signup" data-i18n="signup">إنشاء حساب</button>
+    <div id="auth-choices" class="auth-choices">
+      <div class="auth-choice-block">
+        <p>لديك حساب؟</p>
+        <button id="tab-login" class="auth-route-btn primary" type="button">تسجيل الدخول</button>
+      </div>
+      <div class="auth-choice-block">
+        <p>ليس لديك حساب؟</p>
+        <button id="tab-signup" class="auth-route-btn" type="button">إنشاء حساب جديد</button>
+      </div>
     </div>
-
     <p id="auth-error" class="auth-error hidden"></p>
-
-    <form id="login-form" class="auth-form">
+    <form id="login-form" class="auth-form hidden">
+      <button type="button" class="auth-back" data-auth-back>← العودة للخيارات</button>
       <div id="login-phone-wrap">
         <div class="phone-row">
           <div class="country-picker" id="login-country-picker">
@@ -192,28 +197,23 @@
             <input type="hidden" id="login-country" value="" />
           </div>
           <input id="login-phone" type="tel" inputmode="numeric" autocomplete="tel"
-                 placeholder="رقم الهاتف (بدون مفتاح الدولة)" />
+                 placeholder="رقم الجوال" />
         </div>
-
         <div class="phone-hint" id="login-phone-hint"></div>
-
         <input id="login-phone-pass" type="password" autocomplete="current-password" placeholder="كلمة المرور" />
-
         <button type="submit" id="btn-phone-login" class="auth-submit-phone">دخول</button>
-
         <button type="button" id="btn-phone-prefill" class="auth-link hidden">📱 استخدم رقمي المحفوظ</button>
-        <button type="button" id="btn-email-mode" class="auth-link">✉️ الدخول بالبريد الإلكتروني (المشرفون)</button>
+        <button type="button" id="btn-email-mode" class="auth-link">دخول المشرفين بالبريد الإلكتروني</button>
       </div>
-
       <div id="login-email-wrap" class="hidden">
-        <input id="login-email" type="email" autocomplete="email" data-i18n-placeholder="email" placeholder="البريد الإلكتروني" />
-        <input id="login-password" type="password" autocomplete="current-password" data-i18n-placeholder="password" placeholder="كلمة المرور" />
-        <button type="submit">دخول</button>
-        <button type="button" id="btn-phone-mode" class="auth-link">📱 الدخول برقم الهاتف</button>
+        <input id="login-email" type="email" autocomplete="email" placeholder="البريد الإلكتروني للمشرف" />
+        <input id="login-password" type="password" autocomplete="current-password" placeholder="كلمة المرور" />
+        <button type="submit">دخول المشرفين</button>
+        <button type="button" id="btn-phone-mode" class="auth-link">← العودة لدخول الجوال</button>
       </div>
     </form>
-
     <form id="signup-form" class="auth-form hidden">
+      <button type="button" class="auth-back" data-auth-back>← العودة للخيارات</button>
       <div class="phone-row">
         <div class="country-picker" id="signup-country-picker">
           <button type="button" class="country-btn" aria-haspopup="listbox" aria-expanded="false">
@@ -225,44 +225,28 @@
           <input type="hidden" id="signup-country" value="" />
         </div>
         <input id="signup-phone" type="tel" required inputmode="numeric" autocomplete="tel"
-               placeholder="رقم الهاتف (بدون مفتاح الدولة)" />
+               placeholder="رقم الجوال" />
       </div>
-
       <div class="phone-hint" id="signup-phone-hint"></div>
-
       <input id="signup-password" type="password" required minlength="6" autocomplete="new-password"
-             placeholder="كلمة المرور (مطلوبة — ٦ أحرف على الأقل)" />
-
-      <input id="signup-name" type="text" autocomplete="name" placeholder="الاسم (اختياري)" />
-      <input id="signup-email" type="email" autocomplete="email" placeholder="البريد الإلكتروني (اختياري)" />
-
+             placeholder="كلمة المرور (٦ أحرف على الأقل)" />
+      <input id="signup-password-confirm" type="password" required minlength="6" autocomplete="new-password"
+             placeholder="تأكيد كلمة المرور" />
       <div class="auth-note">
-        🔐 الدخول برقم الهاتف وكلمة المرور، فيعمل حسابك من أي جهاز.<br>
-        الاسم والبريد اختياريان — البريد لإشعارك فقط إن أدخلته.
+        اختر الدولة، اكتب رقم الجوال، ثم أنشئ كلمة مرور للدخول لاحقًا.
       </div>
-
       <button type="submit" data-i18n="signup_btn">إنشاء الحساب</button>
     </form>
-
-    <!-- ============ الدخول السريع ============ -->
-    <div class="auth-divider"><span data-i18n="or">أو</span></div>
-
+    <div class="auth-admin-entry">
+      <button id="btn-admin-entry" type="button">⌕ دخول المشرفين</button>
+    </div>
+    <div class="auth-divider"><span>أو</span></div>
     <button id="btn-google" type="button" class="auth-oauth">
-      <svg viewBox="0 0 48 48" width="19" height="19" aria-hidden="true">
-        <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.6 2.6 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.3 17.7 9.5 24 9.5z"/>
-        <path fill="#4285F4" d="M46.1 24.6c0-1.6-.1-2.8-.4-4H24v8.4h12.4c-.3 2.1-1.6 5.2-4.6 7.3l7.6 5.9c4.4-4.1 6.7-10.1 6.7-17.6z"/>
-        <path fill="#FBBC05" d="M10.4 28.7c-.5-1.4-.8-2.9-.8-4.7s.3-3.3.8-4.7l-7.8-6.1C1 16.2 0 19.9 0 24s1 7.8 2.6 10.8l7.8-6.1z"/>
-        <path fill="#34A853" d="M24 48c6.2 0 11.5-2 15.4-5.6l-7.6-5.9c-2 1.4-4.7 2.4-7.8 2.4-6.3 0-11.7-3.8-13.6-9.8l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/>
-      </svg>
-      <span data-i18n="continue_google">المتابعة بواسطة جوجل</span>
+      <span class="google-g-mark" aria-hidden="true">G</span>
+      <span>المتابعة بواسطة جوجل</span>
     </button>
-
-    <p class="auth-hint" data-i18n="oauth_hint">
-      الدخول بجوجل يستخدم حسابك مباشرةً — لا نطلب بيانات ولا كلمة مرور.
-    </p>
-
     <!-- v64: رقم الإصدار ظاهر قبل الدخول — ليتأكد المستخدم من أنه على أحدث نسخة -->
-    <div class="auth-build">الإصدار <b id="value-build-auth">v67</b></div>
+    <div class="auth-build">الإصدار <b id="value-build-auth">v68</b></div>
   </div>
 </div>
 
@@ -640,7 +624,7 @@
   <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
 </div>
 
-<script type="module" src="./js/app.js?v=67"></script>
+<script type="module" src="./js/app.js?v=68"></script>
 
   <!-- إعادة توجيه رسالة: اختر المحادثة -->
   <div id="forward-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="إعادة توجيه الرسالة">

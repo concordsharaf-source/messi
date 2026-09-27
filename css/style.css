@@ -8930,3 +8930,20 @@ body.call-open { overflow: hidden; }
 
 /* المعاينة في الرئيسية: المكالمة الفائتة بالأحمر */
 .contact-preview.missed-call { color: #e5424f; }
+
+/* v68: شاشة دخول مبسطة — مساران واضحان قبل إظهار أي خانات. */
+.auth-choices { display:flex; flex-direction:column; gap:14px; margin:18px 0 10px; }
+.auth-choice-block { text-align:center; }
+.auth-choice-block p { margin:0 0 7px; color:var(--wa-text-secondary); font-size:13px; }
+.auth-route-btn { width:100%; min-height:48px; border:1px solid rgba(0,168,132,.55); border-radius:24px; padding:12px 16px; background:transparent; color:var(--wa-green); font:700 16px inherit; cursor:pointer; transition:transform .15s ease, background .15s ease; }
+.auth-route-btn.primary { background:var(--wa-green); color:#fff; border-color:var(--wa-green); }
+.auth-route-btn:hover { transform:translateY(-1px); background:rgba(0,168,132,.12); }
+.auth-route-btn.primary:hover { background:#08b994; }
+.auth-form { position:relative; }
+.auth-back { align-self:flex-start; border:0; padding:0 2px 5px; background:transparent; color:var(--wa-text-secondary); font:600 13px inherit; cursor:pointer; }
+.auth-back:hover { color:var(--wa-green); }
+.auth-admin-entry { margin-top:16px; text-align:center; }
+.auth-admin-entry button { border:0; background:transparent; color:var(--wa-text-secondary); font:500 11px inherit; opacity:.8; cursor:pointer; }
+.auth-admin-entry button:hover { color:var(--wa-green); opacity:1; }
+.google-g-mark { color:#4285f4; font:800 20px Arial, sans-serif; }
+body[data-theme="light"] .auth-choice-block p, body[data-theme="light"] .auth-back, body[data-theme="light"] .auth-admin-entry button { color:#667781; }

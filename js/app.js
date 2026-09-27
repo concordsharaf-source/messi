@@ -971,12 +971,19 @@ function wireAuthForms() {
   $("#tab-signup")?.addEventListener("click", () => {
     switchAuthTab("signup");
   });
+  $("#btn-admin-entry")?.addEventListener("click", () => {
+    switchAuthTab("login");
+    setLoginMode("email");
+  });
+  document.querySelectorAll("[data-auth-back]").forEach((button) => {
+    button.addEventListener("click", () => switchAuthTab("choice"));
+  });
 
   // v42.1: كان هنا مستمع submit مكرّر لنفس النموذج (#login-form) — أدى إلى
   // تنفيذ signIn + enterApp مرتين، فظهر خطأ Presence إنجليزي في واجهة المستخدم.
   // المستمع الكامل أدناه (مع البريد والهاتف) يقوم بالمهمة.
 
-  // ===== إنشاء حساب: الرقم + كلمة المرور مطلوبان، الاسم والبريد اختياريان =====
+  // ===== إنشاء حساب: الدولة + الجوال + كلمتا المرور فقط =====
   $("#signup-form")?.addEventListener("submit", async (e) => {
     e.preventDefault();
 
@@ -991,8 +998,9 @@ function wireAuthForms() {
     const dial = country.dial;
     const phone = $("#signup-phone")?.value.trim() || "";
     const password = $("#signup-password")?.value || "";
-    const displayName = $("#signup-name")?.value.trim() || "";
-    const email = $("#signup-email")?.value.trim() || "";
+    const confirmPassword = $("#signup-password-confirm")?.value || "";
+    const displayName = "";
+    const email = "";
 
     if (!isValidPhone(phone, dial)) {
       showAuthError("أدخل رقم هاتف صحيح بعد مفتاح الدولة");
@@ -1001,6 +1009,10 @@ function wireAuthForms() {
 
     if (password.length < 6) {
       showAuthError("كلمة المرور مطلوبة (٦ أحرف على الأقل)");
+      return;
+    }
+    if (password !== confirmPassword) {
+      showAuthError("كلمتا المرور غير متطابقتين");
       return;
     }
 
@@ -1412,27 +1424,15 @@ function currentFullPhoneHint() {
 }
 
 function switchAuthTab(which) {
-  $("#tab-login")?.classList.toggle(
-    "active",
-    which === "login"
-  );
-
-  $("#tab-signup")?.classList.toggle(
-    "active",
-    which === "signup"
-  );
-
-  $("#login-form")?.classList.toggle(
-    "hidden",
-    which !== "login"
-  );
-
-  $("#signup-form")?.classList.toggle(
-    "hidden",
-    which !== "signup"
-  );
+  const isChoice = which === "choice";
+  $("#auth-choices")?.classList.toggle("hidden", !isChoice);
+  $("#login-form")?.classList.toggle("hidden", which !== "login");
+  $("#signup-form")?.classList.toggle("hidden", which !== "signup");
+  if (isChoice) {
+    $("#auth-error")?.classList.add("hidden");
+    setLoginMode("phone");
+  }
 }
-
 function showAuthError(msg) {
   const text =
     msg ||
