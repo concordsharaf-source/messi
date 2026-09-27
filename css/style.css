@@ -8981,3 +8981,18 @@ body[data-theme="light"] .auth-choice-block p, body[data-theme="light"] .auth-ba
 .document-icon { color:#956cff; } .poll-icon { color:#ffb31c; } .calendar-icon { color:#ec3985; } .ai-icon { color:#168cff; }
 body[data-theme="light"] .attachment-menu { background:#202c33; }
 @media (max-width:480px) { .attachment-options-grid { gap:16px 5px; } .attachment-option-icon { width:60px; } .attachment-option { font-size:12px; } }
+
+/* v77: لوحة المشرف قابلة للطي وقائمة الإرفاق ثابتة الخلايا. */
+.admin-tools-panel { margin-top:10px; border:1px solid rgba(134,150,160,.22); border-radius:12px; overflow:hidden; }
+.admin-tools-summary { display:flex; align-items:center; justify-content:space-between; min-height:44px; padding:0 14px; color:var(--wa-text-primary); font-weight:700; cursor:pointer; list-style:none; }
+.admin-tools-summary::-webkit-details-marker { display:none; }
+.admin-tools-summary::after { content:"+"; color:var(--wa-text-secondary); font-size:20px; font-weight:400; }
+.admin-tools-panel[open] > .admin-tools-summary::after { content:"−"; }
+.admin-tools-body { padding:0 10px 10px; }
+.admin-tools-body > .admin-title { display:none; }
+.attachment-menu { display:block !important; box-sizing:border-box; }
+.attachment-options-grid { width:100%; box-sizing:border-box; }
+.attachment-menu .attachment-option { display:grid !important; grid-template-rows:42px auto; align-content:start; justify-items:center; width:100%; min-width:0; height:auto; min-height:66px; padding:0; margin:0; gap:7px; box-sizing:border-box; line-height:1.2; }
+.attachment-menu .attachment-option-icon { display:grid !important; grid-row:1; width:66px; height:42px; min-height:42px; margin:0; padding:0; box-sizing:border-box; font-size:24px !important; line-height:1 !important; }
+.attachment-menu .attachment-option > span:last-child { display:block; grid-row:2; width:100%; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:center; font-size:12px !important; line-height:1.35 !important; }
+@media (max-width:480px) { .attachment-menu .attachment-option-icon { width:58px; } .attachment-menu .attachment-option > span:last-child { font-size:11px !important; } }

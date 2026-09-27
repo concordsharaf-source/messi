@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "76";
+const BUILD = "77";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -2131,6 +2131,7 @@ async function renderAdminTools() {
   }
 
   box.classList.remove("hidden");
+  document.querySelectorAll("#btn-archived, #archive-link").forEach((el) => el.classList.toggle("hidden", !state.me?.is_admin));
   await loadAutoReplySettings();
   renderReplyPreview();
 
