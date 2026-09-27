@@ -99,15 +99,20 @@
 
         <textarea id="composer-input" rows="1" autocomplete="off" spellcheck="true" data-i18n-placeholder="type_message" placeholder="اكتب رسالة"></textarea>
 
-        <label class="field-btn attach-btn" id="attach-btn" title="إرفاق ملف" aria-label="إرفاق ملف">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5a2.5 2.5 0 0 0 5 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
-          <input id="attach-input" type="file" accept="image/*,video/*,audio/*" hidden />
-        </label>
-
-        <label class="field-btn photo-btn" id="photo-btn" title="إضافة صورة" aria-label="إضافة صورة">
+        <button type="button" class="field-btn attach-btn" id="attach-btn" title="إرفاق" aria-label="إرفاق صورة أو ملف" aria-expanded="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .55-.45 1-1 1s-1-.45-1-1V6H10v9.5a2.5 2.5 0 0 0 5 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5S18 19.54 18 16.5V6h-1.5z"/></svg>
+        </button>
+        <button type="button" class="field-btn photo-btn" id="photo-btn" title="الكاميرا" aria-label="فتح الكاميرا">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 5h-3.17L15 3H9L7.17 5H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 14H4V7h4.05l1.83-2h4.24l1.83 2H20v12zM12 8c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zm0 8c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3z"/></svg>
-          <input id="photo-input" type="file" accept="image/*" capture="environment" hidden />
-        </label>
+        </button>
+        <input id="attach-input" type="file" accept="*/*" hidden />
+        <input id="photo-input" type="file" accept="image/*" capture="environment" hidden />
+        <input id="gallery-input" type="file" accept="image/*" hidden />
+        <div id="attachment-menu" class="attachment-menu hidden" role="menu" aria-label="خيارات الإرفاق">
+          <button type="button" data-attachment-action="gallery" role="menuitem"><span>🖼️</span> المعرض</button>
+          <button type="button" data-attachment-action="camera" role="menuitem"><span>📷</span> الكاميرا</button>
+          <button type="button" data-attachment-action="document" role="menuitem"><span>📄</span> مستند</button>
+        </div>
       </div>
 
       <button type="button" id="mic-btn" class="mic-btn" title="اضغط مطولاً للتسجيل" aria-label="رسالة صوتية">

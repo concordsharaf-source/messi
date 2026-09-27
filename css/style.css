@@ -8947,3 +8947,22 @@ body.call-open { overflow: hidden; }
 .auth-admin-entry button:hover { color:var(--wa-green); opacity:1; }
 .google-g-mark { color:#4285f4; font:800 20px Arial, sans-serif; }
 body[data-theme="light"] .auth-choice-block p, body[data-theme="light"] .auth-back, body[data-theme="light"] .auth-admin-entry button { color:#667781; }
+
+/* v69: مرفقات مثل واتساب — قائمة واحدة ومعاينة قبل الإرسال. */
+.composer-field { position:relative; }
+.attachment-menu { position:absolute; z-index:30; inset-inline-end:8px; bottom:calc(100% + 10px); display:flex; flex-direction:column; gap:4px; min-width:154px; padding:7px; border:1px solid rgba(134,150,160,.25); border-radius:14px; background:var(--wa-panel-dark,#202c33); box-shadow:0 10px 28px rgba(0,0,0,.28); }
+.attachment-menu.hidden { display:none; }
+.attachment-menu button { display:flex; align-items:center; gap:9px; border:0; border-radius:9px; padding:9px 11px; background:transparent; color:var(--wa-text-primary,#e9edef); text-align:start; font:600 13px inherit; cursor:pointer; }
+.attachment-menu button:hover { background:rgba(0,168,132,.16); }
+.attachment-menu button span { font-size:20px; }
+.attachment-preview { display:flex; align-items:center; gap:9px; min-height:64px; padding:8px 10px; border-top:1px solid rgba(134,150,160,.2); background:var(--wa-panel-dark,#202c33); }
+.attachment-preview.hidden { display:none; }
+.attachment-preview-media { display:grid; place-items:center; flex:0 0 48px; width:48px; height:48px; overflow:hidden; border-radius:8px; background:rgba(134,150,160,.15); font-size:25px; }
+.attachment-preview-media img { width:100%; height:100%; object-fit:cover; }
+.attachment-preview-info { min-width:70px; max-width:160px; overflow:hidden; }
+.attachment-preview-info b, .attachment-preview-info small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.attachment-preview-info b { font-size:12px; }
+.attachment-preview-info small { margin-top:3px; color:var(--wa-text-secondary,#8696a0); font-size:10px; }
+#attachment-caption { flex:1; min-width:60px; border:0; border-bottom:1px solid rgba(134,150,160,.32); outline:0; padding:7px 3px; background:transparent; color:inherit; font:14px inherit; }
+#attachment-preview-cancel { flex:0 0 32px; width:32px; height:32px; border:0; border-radius:50%; background:rgba(134,150,160,.13); color:inherit; cursor:pointer; }
+@media (max-width:480px) { .attachment-menu { inset-inline-end:2px; min-width:148px; } .attachment-preview-info { max-width:105px; } }

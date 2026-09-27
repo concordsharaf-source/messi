@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "67";
+const BUILD = "68";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -92,6 +92,7 @@ const state = {
   reactions: {},
   selectedMessageId: null,   // التوافق مع الكود القديم
   selectedMessageIds: [],     // تحديد عدة رسائل مثل واتساب
+  pendingAttachment: null,    // مرفق قيد المعاينة قبل الإرسال
   reactionPickerFor: null,    // v48: رسالة مفتوح لها منتقي الإيموجي الكامل
   forwardingMessage: null,   // v40: رسالة قيد إعادة التوجيه
   replyingTo: null,
@@ -4524,20 +4525,20 @@ function wireChatPanel() {
 
       const input = $("#composer-input");
       const text = input.value.trim();
-
-      if (!text) return;
-
+      const pending = state.pendingAttachment;
+      if (!text && !pending) return;
       input.value = "";
-
       autoGrowComposer();
       updateComposerButtons();
-
-      await sendMessage({
-        content: text,
-      });
-    }
+      if (pending) {
+        const caption = $("#attachment-caption")?.value.trim() || "";
+        clearPendingAttachment();
+        await sendMessage({ content: caption || null, attachmentFile: pending.file, attachmentType: pending.type });
+      } else {
+        await sendMessage({ content: text });
+      }
+    });
   );
-
   $("#composer-input")?.addEventListener("input", () => {
     handleTypingInput();
     autoGrowComposer();
@@ -4572,17 +4573,32 @@ function wireChatPanel() {
     setTimeout(autoGrowComposer, 0);
   });
 
-  $("#attach-input")?.addEventListener(
-    "change",
-    handleAttachmentUpload
-  );
-
-  // v42: زر الصورة (الكاميرا) داخل الخانة — نفس مسار المرفقات
-  $("#photo-input")?.addEventListener(
-    "change",
-    handleAttachmentUpload
-  );
-
+  $("#attach-btn")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const menu = $("#attachment-menu");
+    const open = menu?.classList.toggle("hidden") === false;
+    $("#attach-btn")?.setAttribute("aria-expanded", String(open));
+  });
+  $("#photo-btn")?.addEventListener("click", () => $("#photo-input")?.click());
+  $("#attachment-menu")?.addEventListener("click", (event) => {
+    const action = event.target.closest("[data-attachment-action]")?.dataset.attachmentAction;
+    if (!action) return;
+    $("#attachment-menu")?.classList.add("hidden");
+    $("#attach-btn")?.setAttribute("aria-expanded", "false");
+    if (action === "gallery") $("#gallery-input")?.click();
+    if (action === "camera") $("#photo-input")?.click();
+    if (action === "document") $("#attach-input")?.click();
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest("#attachment-menu, #attach-btn")) {
+      $("#attachment-menu")?.classList.add("hidden");
+      $("#attach-btn")?.setAttribute("aria-expanded", "false");
+    }
+  });
+  $("#attach-input")?.addEventListener("change", handleAttachmentUpload);
+  $("#photo-input")?.addEventListener("change", handleAttachmentUpload);
+  $("#gallery-input")?.addEventListener("change", handleAttachmentUpload);
+  $("#attachment-preview-cancel")?.addEventListener("click", clearPendingAttachment);
   $("#reply-preview-cancel")?.addEventListener(
     "click",
     clearReply
@@ -9498,55 +9514,47 @@ async function sendMessage({
 // ATTACHMENT
 // ===============================================================
 
-async function handleAttachmentUpload(e) {
-  const file =
-    e.target.files?.[0];
-
-  const resetInput = () => {
-    e.target.value = "";
-  };
-
-  if (
-    !file ||
-    !state.activeConversation
-  ) {
-    resetInput();
-    return;
-  }
-
-  if (state.mediaUploading) {
-    resetInput();
-    return;
-  }
-
-  let type = "file";
-
-  if (
-    file.type &&
-    file.type.startsWith("image/")
-  ) {
-    type = "image";
-  } else if (
-    file.type &&
-    file.type.startsWith("video/")
-  ) {
-    type = "video";
-  } else if (
-    file.type &&
-    file.type.startsWith("audio/")
-  ) {
-    type = "audio";
-  }
-
-  await sendMessage({
-    content: null,
-    attachmentFile: file,
-    attachmentType: type,
-  });
-
-  resetInput();
+function attachmentTypeForFile(file) {
+  if (file.type?.startsWith("image/")) return "image";
+  if (file.type?.startsWith("video/")) return "video";
+  if (file.type?.startsWith("audio/")) return "audio";
+  return "file";
 }
-
+function formatAttachmentSize(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} كيلوبايت`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} ميجابايت`;
+}
+function renderPendingAttachment() {
+  const item = state.pendingAttachment;
+  const box = $("#attachment-preview");
+  if (!box) return;
+  box.classList.toggle("hidden", !item);
+  if (!item) return;
+  $("#attachment-preview-name").textContent = item.file.name || "مرفق";
+  $("#attachment-preview-size").textContent = formatAttachmentSize(item.file.size);
+  const media = $("#attachment-preview-media");
+  media.innerHTML = "";
+  if (item.file.type.startsWith("image/")) {
+    const img = document.createElement("img");
+    img.src = item.url; img.alt = "معاينة الصورة"; media.appendChild(img);
+  } else { media.textContent = item.type === "video" ? "🎬" : item.type === "audio" ? "🎤" : "📄"; }
+}
+function clearPendingAttachment() {
+  if (state.pendingAttachment?.url) URL.revokeObjectURL(state.pendingAttachment.url);
+  state.pendingAttachment = null;
+  if ($("#attachment-caption")) $("#attachment-caption").value = "";
+  renderPendingAttachment();
+}
+async function handleAttachmentUpload(e) {
+  const file = e.target.files?.[0];
+  e.target.value = "";
+  if (!file || !state.activeConversation) return;
+  if (file.size > 25 * 1024 * 1024) { showAuthError("حجم المرفق يجب ألا يتجاوز 25 ميجابايت."); return; }
+  clearPendingAttachment();
+  state.pendingAttachment = { file, type: attachmentTypeForFile(file), url: URL.createObjectURL(file) };
+  renderPendingAttachment();
+}
 // ===============================================================
 // AVATAR
 // ===============================================================
