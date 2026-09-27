@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "70";
+const BUILD = "71";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -4550,7 +4550,8 @@ function wireChatPanel() {
       } else {
         await sendMessage({ content: text });
       }
-    );
+    }
+  );
   $("#composer-input")?.addEventListener("input", () => {
     handleTypingInput();
     autoGrowComposer();
