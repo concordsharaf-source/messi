@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "73";
+const BUILD = "74";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -2901,7 +2901,7 @@ const FILTER_LABELS = {
   new: "جديد",
   pending: "بانتظار رد",
   done: "تمّت",
-  archived: "المؤرشفة",
+  archived: "الأرشيف",
 };
 
 state.adminMeta = state.adminMeta || {};
@@ -3060,6 +3060,19 @@ function applyContactFilters() {
 
 function wireContactFilters() {
   wireOwnerFilter();
+
+  const archiveShortcut = $("#btn-archived");
+  archiveShortcut?.classList.toggle("hidden", !state.me?.is_admin);
+  if (archiveShortcut && archiveShortcut.dataset.wired !== "1") {
+    archiveShortcut.dataset.wired = "1";
+    archiveShortcut.addEventListener("click", () => {
+      state.contactFilter = "archived";
+      const filterBar = $("#chat-filters");
+      filterBar?.classList.remove("hidden");
+      filterBar?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.filter === "archived"));
+      applyContactFilters();
+    });
+  }
 
   const bar = $("#chat-filters");
   if (bar && bar.dataset.wired !== "1") {

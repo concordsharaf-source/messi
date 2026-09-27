@@ -26,7 +26,7 @@
   <!-- v49: اتصال مبكر بخادم البيانات + تحميل مسبق لكود التطبيق (إقلاع أسرع) -->
   <link rel="preconnect" href="https://jjamwoidjxrdovsoftbq.supabase.co" crossorigin />
   <link rel="dns-prefetch" href="https://jjamwoidjxrdovsoftbq.supabase.co" />
-  <link rel="modulepreload" href="./js/app.js?v=73" />
+  <link rel="modulepreload" href="./js/app.js?v=74" />
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
@@ -35,7 +35,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "73";
+  window.WA_BUILD = "74";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -94,8 +94,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=73" />
-  <script src="./vendor/supabase-js.js?v=73"></script>
+  <link rel="stylesheet" href="./css/style.css?v=74" />
+  <script src="./vendor/supabase-js.js?v=74"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -246,7 +246,7 @@
       <span>المتابعة بواسطة جوجل</span>
     </button>
     <!-- v64: رقم الإصدار ظاهر قبل الدخول — ليتأكد المستخدم من أنه على أحدث نسخة -->
-    <div class="auth-build">الإصدار <b id="value-build-auth">v73</b></div>
+    <div class="auth-build">الإصدار <b id="value-build-auth">v74</b></div>
   </div>
 </div>
 
@@ -268,6 +268,9 @@
         </div>
       </div>
       <div class="sidebar-actions">
+        <button id="btn-archived" type="button" class="sidebar-archive-btn" title="الأرشيف" aria-label="الأرشيف">
+          <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true"><path fill="currentColor" d="M20.54 5.23 19.15 3.55A2 2 0 0 0 17.62 3H6.38a2 2 0 0 0-1.53.55L3.46 5.23A2 2 0 0 0 3 6.5V19a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6.5a2 2 0 0 0-.46-1.27ZM5.12 5h13.76l.83 1H4.29l.83-1ZM19 19H5V8h14v11Zm-9-8h4v2h-4v-2Z"/></svg>
+        </button>
         <button id="btn-settings" type="button" title="الإعدادات" aria-label="الإعدادات">
           <svg class="kebab-icon" viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
             <circle cx="12" cy="5" r="2.1" fill="currentColor" />
@@ -302,7 +305,7 @@
 
     <div id="settings-panel" class="settings-panel hidden">
       <div class="settings-head">
-        <span class="settings-head-icon" aria-hidden="true">⚙️</span>
+        <span class="settings-head-icon" aria-hidden="true">إعدادات الحساب</span>
         <span data-i18n="settings">الإعدادات</span>
       </div>
 
@@ -310,7 +313,7 @@
 
       <!-- تبديل المستخدم يظهر أولاً للمشرف العام -->
       <details class="admin-block hidden" id="switch-user-block">
-        <summary>🔁 تبديل المستخدم<span class="block-value" id="value-switch"></span></summary>
+        <summary> تبديل المستخدم<span class="block-value" id="value-switch"></span></summary>
         <div class="settings-hint">دخول سريع إلى أي حساب مشرف محفوظ، مع زر واضح للعودة إلى حسابك الأصلي.</div>
         <div id="switch-back-row" class="switch-back-row hidden">
           <div class="switch-back-info"><small>حسابك الأصلي</small><b id="switch-back-name">—</b></div>
@@ -323,28 +326,28 @@
 
       <!-- ============ 1) الملف الشخصي ============ -->
       <details class="admin-block" open>
-        <summary>👤 <span data-i18n="profile">الملف الشخصي</span><span class="block-value" id="value-profile"></span></summary>
+        <summary> <span data-i18n="profile">الملف الشخصي</span><span class="block-value" id="value-profile"></span></summary>
 
         <!-- بصمة المستخدم: الرقم + الاسم + معلومات الجهاز -->
         <div id="identity-box" class="identity-box"></div>
 
         <details class="admin-sub">
-          <summary>🖼️ <span data-i18n="profile_picture">الصورة الشخصية</span></summary>
+          <summary> <span data-i18n="profile_picture">الصورة الشخصية</span></summary>
 
           <div class="avatar-panel">
             <button id="btn-avatar-open" class="avatar-preview-btn" type="button" aria-label="تغيير الصورة الشخصية">
               <span class="avatar-preview-wrap">
                 <img id="avatar-preview-img" alt="" class="hidden" />
                 <span id="avatar-preview-initial" class="avatar-preview-initial">؟</span>
-                <span class="avatar-camera-badge">📷</span>
+                <span class="avatar-camera-badge"></span>
               </span>
               <span class="avatar-preview-hint">اضغط لتغيير الصورة</span>
             </button>
 
             <div class="avatar-quick-actions">
-              <button id="btn-avatar-gallery" class="admin-btn-primary" type="button">🖼️ من المعرض</button>
-              <button id="btn-avatar-camera" class="admin-btn-mini" type="button">📷 بالكاميرا</button>
-              <button id="btn-remove-avatar" class="settings-danger" type="button">🗑️ إزالة الصورة</button>
+              <button id="btn-avatar-gallery" class="admin-btn-primary" type="button"> من المعرض</button>
+              <button id="btn-avatar-camera" class="admin-btn-mini" type="button"> بالكاميرا</button>
+              <button id="btn-remove-avatar" class="settings-danger" type="button"> إزالة الصورة</button>
             </div>
           </div>
 
@@ -358,7 +361,7 @@
 
       <!-- ============ 2) المظهر وحجم الخط ============ -->
       <details class="admin-block">
-        <summary>🎨 <span data-i18n="appearance">المظهر وحجم الخط</span><span class="block-value" id="value-theme"></span></summary>
+        <summary> <span data-i18n="appearance">المظهر وحجم الخط</span><span class="block-value" id="value-theme"></span></summary>
 
         <label data-i18n="theme_mode">وضع المظهر</label>
         <select id="theme-mode">
@@ -369,8 +372,8 @@
 
         <label data-i18n="theme_style">الشكل</label>
         <div class="settings-inline">
-          <button id="theme-dark" type="button" class="settings-choice">🌙 داكن</button>
-          <button id="theme-light" type="button" class="settings-choice">☀️ فاتح</button>
+          <button id="theme-dark" type="button" class="settings-choice"> داكن</button>
+          <button id="theme-light" type="button" class="settings-choice"> فاتح</button>
         </div>
 
         <label data-i18n="font_size">حجم الخط</label>
@@ -380,15 +383,15 @@
 
       <!-- ============ 3) خلفية الدردشة ============ -->
       <details class="admin-block">
-        <summary>🖼️ <span data-i18n="wallpaper">خلفية الدردشة</span><span class="block-value" id="value-wallpaper"></span></summary>
+        <summary> <span data-i18n="wallpaper">خلفية الدردشة</span><span class="block-value" id="value-wallpaper"></span></summary>
 
         <p class="wp-hint" data-i18n="wallpaper_hint">اختر خلفية للدردشة — «واتساب» هي الخلفية الأصلية بنقشتها الرسمية، ويمكنك رفع صورة من جهازك.</p>
 
         <!-- v63: معاينة حيّة — شكل الدردشة بالخلفية المختارة قبل تطبيقها -->
         <div class="wp-preview-chat" id="wp-preview-chat">
           <div class="wp-preview-inner">
-            <div class="wp-preview-bubble them" data-i18n="wp_demo_them">مرحباً 👋 كيف يمكننا مساعدتك؟</div>
-            <div class="wp-preview-bubble mine" data-i18n="wp_demo_mine">أهلاً، أريد الاستفسار عن خدمة ✅</div>
+            <div class="wp-preview-bubble them" data-i18n="wp_demo_them">مرحباً  كيف يمكننا مساعدتك؟</div>
+            <div class="wp-preview-bubble mine" data-i18n="wp_demo_mine">أهلاً، أريد الاستفسار عن خدمة </div>
           </div>
         </div>
         <div class="wp-preview-caption" data-i18n="wp_preview_caption">معاينة مباشرة — هكذا ستظهر الدردشة.</div>
@@ -396,12 +399,12 @@
         <div id="wallpaper-grid" class="wp-grid" role="radiogroup" aria-label="خلفية الدردشة"></div>
 
         <input id="wallpaper-input" type="file" accept="image/*" hidden />
-        <button id="btn-remove-wallpaper" class="settings-danger wp-remove hidden" type="button">🗑️ إزالة خلفيتي</button>
+        <button id="btn-remove-wallpaper" class="settings-danger wp-remove hidden" type="button"> إزالة خلفيتي</button>
       </details>
 
       <!-- ============ 4) الإشعارات (النغمة + إشعارات الجهاز) ============ -->
       <details class="admin-block">
-        <summary>🔔 <span data-i18n="notifications">الإشعارات</span><span class="block-value" id="value-tone"></span></summary>
+        <summary> <span data-i18n="notifications">الإشعارات</span><span class="block-value" id="value-tone"></span></summary>
 
         <div class="settings-sub" data-i18n="notif_tone">نغمة الإشعارات</div>
         <div id="tone-list" class="tone-list"></div>
@@ -412,22 +415,22 @@
         <div class="settings-hint" id="push-device-count"></div>
 
         <!-- v44: اختبار الإشعارات على هذا الجهاز (يعمل والتطبيق مغلق) -->
-        <button id="btn-test-push" type="button" class="admin-btn-mini">🧪 اختبار الإشعارات على هذا الجهاز</button>
+        <button id="btn-test-push" type="button" class="admin-btn-mini"> اختبار الإشعارات على هذا الجهاز</button>
         <div class="settings-hint" id="push-test-status"></div>
       </details>
 
       <!-- ============ 5) تثبيت التطبيق ============ -->
       <details class="admin-block">
-        <summary>📲 <span data-i18n="install_app">تثبيت التطبيق</span><span class="block-value" id="value-install"></span></summary>
+        <summary> <span data-i18n="install_app">تثبيت التطبيق</span><span class="block-value" id="value-install"></span></summary>
 
         <div class="settings-hint" data-i18n="install_app_hint">ثبّت التطبيق ليُفتح مستقلاً على جهازك وتصلك الإشعارات.</div>
-        <button id="btn-install-settings" type="button" class="admin-btn-primary">📲 <span data-i18n="install_now">تثبيت على هذا الجهاز</span></button>
-        <button id="btn-install-guide" type="button" class="admin-btn-mini">📖 <span data-i18n="install_steps">خطوات التثبيت (آيفون/أندرويد)</span></button>
+        <button id="btn-install-settings" type="button" class="admin-btn-primary"> <span data-i18n="install_now">تثبيت على هذا الجهاز</span></button>
+        <button id="btn-install-guide" type="button" class="admin-btn-mini"> <span data-i18n="install_steps">خطوات التثبيت (آيفون/أندرويد)</span></button>
       </details>
 
       <!-- ============ 6) اللغة ============ -->
       <details class="admin-block">
-        <summary>🌐 <span data-i18n="language">اللغة</span><span class="block-value" id="value-lang"></span></summary>
+        <summary> <span data-i18n="language">اللغة</span><span class="block-value" id="value-lang"></span></summary>
 
         <div class="settings-inline">
           <button id="lang-ar" type="button" class="settings-choice">العربية</button>
@@ -437,13 +440,13 @@
 
       <!-- ============ 7) الأمان ============ -->
       <details class="admin-block">
-        <summary>🔐 <span data-i18n="security">الأمان</span></summary>
+        <summary> <span data-i18n="security">الأمان</span></summary>
 
         <label>كلمة مرور الدخول (لاستخدام التطبيق من أي جهاز)</label>
 
         <div class="settings-inline">
           <input id="my-password" type="password" autocomplete="new-password" placeholder="كلمة مرور جديدة (٦ أحرف على الأقل)" />
-          <button id="btn-save-password" type="button" class="admin-btn-primary">💾 حفظ كلمة المرور</button>
+          <button id="btn-save-password" type="button" class="admin-btn-primary"> حفظ كلمة المرور</button>
         </div>
 
         <div class="admin-hint" id="my-password-status"></div>
@@ -451,7 +454,7 @@
         <label data-i18n="change_password">تغيير كلمة المرور بالطريقة القديمة</label>
         <input id="new-password" type="password" autocomplete="new-password" placeholder="كلمة المرور الجديدة" />
         <input id="new-password-confirm" type="password" autocomplete="new-password" placeholder="تأكيد كلمة المرور الجديدة" />
-        <button id="btn-change-password" type="button" class="admin-btn-primary">💾 تغيير كلمة المرور</button>
+        <button id="btn-change-password" type="button" class="admin-btn-primary"> تغيير كلمة المرور</button>
         <div id="password-status" class="settings-hint"></div>
         <div class="settings-hint">لا تُرسل كلمة المرور لأي جهة — التغيير يتم مباشرةً في خدمة المصادقة.</div>
       </details>
@@ -461,12 +464,12 @@
       <!-- ============================================================ -->
       <section id="admin-tools" class="hidden">
         <div class="admin-divider"></div>
-        <div class="admin-title">🛡️ لوحة المشرف</div>
+        <div class="admin-title"> لوحة المشرف</div>
 
         <div id="admin-stats" class="admin-stats hidden"></div>
 
         <details class="admin-block" id="auto-reply-block" open>
-          <summary>💬 الرد التلقائي</summary>
+          <summary> الرد التلقائي</summary>
 
           <label class="admin-switch">
             <input type="checkbox" id="auto-reply-enabled" />
@@ -474,39 +477,39 @@
           </label>
 
           <label for="auto-reply-greeting">نص رسالة الترحيب</label>
-          <textarea id="auto-reply-greeting" rows="3" maxlength="400" placeholder="مرحباً بك 👋 كيف يمكننا مساعدتك؟"></textarea>
+          <textarea id="auto-reply-greeting" rows="3" maxlength="400" placeholder="مرحباً بك  كيف يمكننا مساعدتك؟"></textarea>
 
           <label>الأزرار الجاهزة <span class="admin-hint">(تظهر أسفل رسالة الترحيب — لكل زر: نصّه، وما يُرسله المستخدم عند الضغط، والردّ التلقائي عليه)</span></label>
           <div id="auto-reply-buttons"></div>
           <button id="btn-add-reply-button" type="button" class="admin-btn-mini">＋ إضافة زر</button>
 
           <div class="admin-actions">
-            <button id="btn-save-auto-reply" type="button" class="admin-btn-primary">💾 حفظ</button>
-            <button id="btn-preview-auto-reply" type="button" class="admin-btn-mini">👁️ معاينة</button>
+            <button id="btn-save-auto-reply" type="button" class="admin-btn-primary"> حفظ</button>
+            <button id="btn-preview-auto-reply" type="button" class="admin-btn-mini"> معاينة</button>
           </div>
           <div id="auto-reply-status" class="admin-hint"></div>
           <div id="auto-reply-preview" class="admin-preview hidden"></div>
         </details>
 
         <details class="admin-block" id="summary-block">
-          <summary>📊 ملخص اليوم</summary>
+          <summary> ملخص اليوم</summary>
           <div id="summary-body"></div>
           <button id="btn-refresh-summary" type="button" class="admin-btn-mini">↻ تحديث</button>
         </details>
 
         <details class="admin-block hidden" id="activity-block">
-          <summary>🕘 سجل نشاط المشرفين</summary>
+          <summary> سجل نشاط المشرفين</summary>
           <div id="activity-list" class="activity-list"></div>
           <button id="btn-refresh-activity" type="button" class="admin-btn-mini">↻ تحديث</button>
         </details>
 
         <details class="admin-block hidden" id="admin-manage-block">
-          <summary>👥 إدارة المشرفين والمستخدمين</summary>
+          <summary> إدارة المشرفين والمستخدمين</summary>
           <div class="admin-hint">اضغط على أي اسم لعرض بقية المعلومات والخيارات (تعديل الاسم، الصورة، الصلاحيات، كلمة المرور).</div>
 
           <div class="admin-group">
             <div class="admin-group-head">
-              <span>👑 المشرفون</span>
+              <span> المشرفون</span>
               <span class="admin-group-count" id="admin-group-admins-count">0</span>
             </div>
             <div id="admin-users-list" class="admin-users"></div>
@@ -514,7 +517,7 @@
 
           <div class="admin-group">
             <div class="admin-group-head admin-users-toolbar">
-              <span>👤 المستخدمون</span>
+              <span> المستخدمون</span>
               <span class="admin-group-count" id="admin-group-users-count">0</span>
             </div>
 
@@ -542,10 +545,10 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary>🔄 التحديثات<span class="block-value" id="value-build">v73</span></summary>
+        <summary> التحديثات<span class="block-value" id="value-build">v74</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
-        <button id="btn-force-update" type="button" class="admin-btn-primary">🔄 تحديث التطبيق الآن</button>
+        <button id="btn-force-update" type="button" class="admin-btn-primary"> تحديث التطبيق الآن</button>
         <div class="admin-hint" id="update-status"></div>
       </details>
 
@@ -624,7 +627,7 @@
   <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
 </div>
 
-<script type="module" src="./js/app.js?v=73"></script>
+<script type="module" src="./js/app.js?v=74"></script>
 
   <!-- إعادة توجيه رسالة: اختر المحادثة -->
   <div id="forward-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="إعادة توجيه الرسالة">
