@@ -26,7 +26,7 @@
   <!-- v49: اتصال مبكر بخادم البيانات + تحميل مسبق لكود التطبيق (إقلاع أسرع) -->
   <link rel="preconnect" href="https://jjamwoidjxrdovsoftbq.supabase.co" crossorigin />
   <link rel="dns-prefetch" href="https://jjamwoidjxrdovsoftbq.supabase.co" />
-  <link rel="modulepreload" href="./js/app.js?v=84" />
+  <link rel="modulepreload" href="./js/app.js?v=83" />
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png">
@@ -35,7 +35,7 @@
   <meta name="theme-color" content="#111b21" />
   <script>
   // ===== حارس التحديثات (v25): يضمن وصول أحدث CSS/JS حتى لو بقيت نسخة قديمة مخزّنة =====
-  window.WA_BUILD = "84";
+  window.WA_BUILD = "83";
 
   // أبعاد الشاشة الحقيقية مبكراً (يمنع اهتزاز/انزلاق العناصر المثبتة)
   window.__splashStart = performance.now();
@@ -94,8 +94,8 @@
     } catch (e) {}
   })();
 </script>
-  <link rel="stylesheet" href="./css/style.css?v=84" />
-  <script src="./vendor/supabase-js.js?v=84"></script>
+  <link rel="stylesheet" href="./css/style.css?v=83" />
+  <script src="./vendor/supabase-js.js?v=83"></script>
   <script>
   // ===== بلا إنترنت: لا ننتظر أي طلب خارجي (Supabase/Firebase/جوجل) =====
   // الطلبات الخارجية تفشل فوراً بدل أن تُعلّق الواجهة ثوانٍ في انتظار الشبكة،
@@ -246,17 +246,22 @@
       <span>المتابعة بواسطة جوجل</span>
     </button>
     <!-- v64: رقم الإصدار ظاهر قبل الدخول — ليتأكد المستخدم من أنه على أحدث نسخة -->
-    <div class="auth-build">الإصدار <b id="value-build-auth">v84</b></div>
+    <div class="auth-build">الإصدار <b id="value-build-auth">v83</b></div>
   </div>
 </div>
 
 <!-- ================= APP SHELL ================= -->
 <div id="app-shell" class="app-shell hidden">
+  <div id="offline-banner" class="offline-banner hidden" data-i18n="offline_notice">
+    لا يوجد اتصال بالإنترنت — سيتم إرسال رسائلك عند عودة الاتصال
+  </div>
+
+
   <!-- Sidebar: contact / chat list -->
   <aside id="sidebar" class="sidebar">
     <header class="sidebar-header">
       <div class="me">
-        <div class="avatar user-avatar-status"><img id="my-avatar" src="" alt="" /><span id="offline-indicator" class="offline-indicator hidden" title="غير متصل" aria-label="غير متصل"></span></div>
+        <div class="avatar"><img id="my-avatar" src="" alt="" /></div>
         <div class="me-text">
           <b class="me-app" data-i18n="app_name">واتساب الوليد</b>
           <span id="my-name" dir="auto"></span>
@@ -543,7 +548,7 @@
 
       <!-- ============ 8) التحديثات ============ -->
       <details class="admin-block">
-        <summary> التحديثات<span class="block-value" id="value-build">v84</span></summary>
+        <summary> التحديثات<span class="block-value" id="value-build">v83</span></summary>
 
         <div class="settings-hint">إن لم تظهر آخر التعديلات على جهازك، اضغط الزر: يمسح النسخة القديمة المخزّنة ثم يعيد تحميل التطبيق بأحدث إصدار.</div>
         <button id="btn-force-update" type="button" class="admin-btn-primary"> تحديث التطبيق الآن</button>
@@ -626,7 +631,7 @@
   <button id="btn-open-chrome-close" type="button" class="chrome-banner-close" aria-label="إغلاق">✕</button>
 </div>
 
-<script type="module" src="./js/app.js?v=84"></script>
+<script type="module" src="./js/app.js?v=83"></script>
 
   <!-- إعادة توجيه رسالة: اختر المحادثة -->
   <div id="forward-panel" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="إعادة توجيه الرسالة">

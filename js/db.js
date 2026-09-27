@@ -4,11 +4,11 @@
 // يتم إرسالها أثناء انقطاع الشبكة (Outbox) ومزامنتها تلقائياً عند العودة.
 
 const DB_NAME = "wa_clone_db";
-const DB_VERSION = 2;
+const DB_VERSION = 1;
 const STORES = {
   messages: "messages",       // keyPath: id, index: conversation_id
   conversations: "conversations", // keyPath: id (metadata + last message)
-  contacts: "contact_cache", // keyPath: cache_id حتى لا تستبدل المحادثات بعضها
+  contacts: "contacts",       // keyPath: id
   outbox: "outbox",           // keyPath: local_id (auto), pending outgoing messages
 };
 
@@ -18,9 +18,8 @@ function openDb() {
   if (dbPromise) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = (event) => {
+    req.onupgradeneeded = () => {
       const db = req.result;
-      const upgradeTx = event.target.transaction;
       if (!db.objectStoreNames.contains(STORES.messages)) {
         const store = db.createObjectStore(STORES.messages, { keyPath: "id" });
         store.createIndex("by_conversation", "conversation_id");
@@ -29,23 +28,7 @@ function openDb() {
         db.createObjectStore(STORES.conversations, { keyPath: "id" });
       }
       if (!db.objectStoreNames.contains(STORES.contacts)) {
-        db.createObjectStore(STORES.contacts, { keyPath: "cache_id" });
-      }
-      // v2: نقل السجلات القديمة التي كان مفتاحها id، حتى لا يفقد المستخدم
-      // قائمته عند أول تشغيل للنسخة الجديدة.
-      if (db.objectStoreNames.contains("contacts")) {
-        const oldStore = upgradeTx.objectStore("contacts");
-        const newStore = upgradeTx.objectStore(STORES.contacts);
-        oldStore.openCursor().onsuccess = (cursorEvent) => {
-          const cursor = cursorEvent.target.result;
-          if (!cursor) return;
-          const contact = cursor.value;
-          const cache_id = contact?._conversationId
-            ? `conversation:${contact._conversationId}`
-            : `profile:${contact?.id}`;
-          newStore.put({ ...contact, cache_id });
-          cursor.continue();
-        };
+        db.createObjectStore(STORES.contacts, { keyPath: "id" });
       }
       if (!db.objectStoreNames.contains(STORES.outbox)) {
         db.createObjectStore(STORES.outbox, { keyPath: "local_id", autoIncrement: true });
@@ -98,12 +81,7 @@ export async function cacheConversationMeta(meta) {
 
 export async function cacheContacts(contacts) {
   return tx(STORES.contacts, "readwrite", (store) => {
-    contacts.forEach((c) => {
-      const cache_id = c?._conversationId
-        ? `conversation:${c._conversationId}`
-        : `profile:${c?.id}`;
-      store.put({ ...c, cache_id });
-    });
+    contacts.forEach((c) => store.put(c));
   });
 }
 

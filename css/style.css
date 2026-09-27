@@ -9002,8 +9002,3 @@ body[data-theme="light"] .attachment-menu { background:#202c33; }
 
 /* v81: أثناء تحديد الرسائل لا تحجب طبقة الريأكت الرسائل الأخرى. */
 body.msg-selection-active #react-backdrop { pointer-events:none; }
-
-/* v84: مؤشر عدم الاتصال بجانب صورة المستخدم بدل الشريط العلوي. */
-.user-avatar-status { position:relative; }
-.offline-indicator { position:absolute; right:-1px; bottom:-1px; width:10px; height:10px; border-radius:50%; background:#ef4444; border:2px solid var(--wa-panel-bg, #202c33); box-shadow:0 0 0 1px rgba(0,0,0,.18); z-index:2; }
-.offline-indicator.hidden { display:none; }
