@@ -9115,3 +9115,76 @@ body.msg-selection-active #react-backdrop { pointer-events:none; }
 }
 .call-log-row .clr-btn:hover { background: rgba(0, 168, 132, .24); }
 .call-log-row .clr-btn svg { width: 17px; height: 17px; fill: currentColor; }
+
+/* v90: ذيل فقاعات واتساب أوضح — مثلث صغير خارج الزاوية السفلية. */
+.bubble-row.tail.user-side .bubble { border-end-start-radius: 2px; }
+.bubble-row.tail.admin-side .bubble { border-end-end-radius: 2px; }
+.bubble-row.tail.user-side .bubble::after,
+.bubble-row.tail.admin-side .bubble::after {
+  bottom: 0;
+  width: 9px;
+  height: 14px;
+}
+.bubble-row.tail.user-side .bubble::after {
+  inset-inline-start: -9px;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.bubble-row.tail.admin-side .bubble::after {
+  inset-inline-end: -9px;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+/* v90: على الكمبيوتر زر الريأكت الجانبي فقط؛ لا شريط أزرار يظهر بمجرد التحويم. */
+@media (hover: hover) and (pointer: fine) {
+  .bubble-actions {
+    top: 50%;
+    inset-inline-end: -38px;
+    transform: translateY(-50%);
+    align-items: center;
+    padding: 3px;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 50%;
+  }
+  .bubble-row:hover .bubble-actions {
+    display: flex;
+  }
+  .bubble-actions button { display: none; }
+  .bubble-actions .bubble-action-react {
+    display: inline-flex;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(134, 150, 160, .35);
+    background: var(--wa-panel-dark, #202c33);
+    box-shadow: 0 1px 5px rgba(0,0,0,.25);
+    font-size: 17px;
+    cursor: pointer;
+  }
+  body[data-theme="light"] .bubble-actions .bubble-action-react { background: #fff; }
+  .bubble-row.react-open .bubble-actions,
+  .bubble-row.message-selected .bubble-actions { display: none !important; }
+}
+
+/* v90: لا تبقى طبقة التعتيم فوق نصوص الرسائل أثناء التحديد المتعدد. */
+body.msg-selection-active #react-backdrop,
+body.msg-selected #react-backdrop {
+  display: none !important;
+  pointer-events: none !important;
+}
+.bubble-row.message-selected .bubble,
+.bubble-row.message-selected .bubble-text,
+.bubble-row.message-selected .bubble-meta,
+.bubble-row.message-selected .bubble-time,
+.bubble-row.message-selected .ticks,
+.bubble-row.message-selected .reaction-bar,
+.bubble-row.message-selected .reaction-chip {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+.bubble-row.message-selected .bubble-text {
+  color: inherit !important;
+  -webkit-text-fill-color: currentColor;
+}

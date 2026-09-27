@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "89";
+const BUILD = "90";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -8641,6 +8641,10 @@ function wireMessageLongPress(row, m, canDelete) {
   row.addEventListener("pointerdown", (event) => {
     if (event.button !== undefined && event.button !== 0) return;
 
+    // في الكمبيوتر لا نفتح الريأكت بالضغط المطول؛ يظهر زر الريأكت الجانبي
+    // عند التحويم ويُفتح بالنقر عليه فقط.
+    if (event.pointerType === "mouse") return;
+
     // الأزرار والوسائط والروابط تعمل طبيعياً
     if (event.target.closest("button, a, input, textarea, audio, video, .js-jump-quote")) return;
 
@@ -8721,6 +8725,8 @@ function wireMessageLongPress(row, m, canDelete) {
   // الآن: تُلغى دائماً، ولا تفتح اللوحة إلا إن كانت مغلقة.
   row.addEventListener("contextmenu", (event) => {
     event.preventDefault();
+
+    if (event.pointerType === "mouse") return;
 
     if (row.classList.contains("react-open")) return;
 
