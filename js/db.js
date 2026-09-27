@@ -4,7 +4,9 @@
 // يتم إرسالها أثناء انقطاع الشبكة (Outbox) ومزامنتها تلقائياً عند العودة.
 
 const DB_NAME = "wa_clone_db";
-const DB_VERSION = 1;
+// v85: لا يمكن لـ IndexedDB الرجوع من الإصدار 2 إلى 1 بعد فتح v84.
+// نبقي بنية المخزن القديمة كما هي، ونستخدم الإصدار 2 للتوافق مع الأجهزة المتأثرة.
+const DB_VERSION = 2;
 const STORES = {
   messages: "messages",       // keyPath: id, index: conversation_id
   conversations: "conversations", // keyPath: id (metadata + last message)
