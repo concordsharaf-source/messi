@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "74";
+const BUILD = "75";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -3061,9 +3061,10 @@ function applyContactFilters() {
 function wireContactFilters() {
   wireOwnerFilter();
 
-  const archiveShortcut = $("#btn-archived");
-  archiveShortcut?.classList.toggle("hidden", !state.me?.is_admin);
-  if (archiveShortcut && archiveShortcut.dataset.wired !== "1") {
+  const archiveShortcuts = [$("#btn-archived"), $("#archive-link")].filter(Boolean);
+  archiveShortcuts.forEach((archiveShortcut) => {
+    archiveShortcut.classList.toggle("hidden", !state.me?.can_moderate);
+    if (archiveShortcut.dataset.wired === "1") return;
     archiveShortcut.dataset.wired = "1";
     archiveShortcut.addEventListener("click", () => {
       state.contactFilter = "archived";
@@ -3072,7 +3073,7 @@ function wireContactFilters() {
       filterBar?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.filter === "archived"));
       applyContactFilters();
     });
-  }
+  });
 
   const bar = $("#chat-filters");
   if (bar && bar.dataset.wired !== "1") {
@@ -4614,6 +4615,7 @@ function wireChatPanel() {
     if (action === "gallery") $("#gallery-input")?.click();
     if (action === "camera") $("#photo-input")?.click();
     if (action === "document") $("#attach-input")?.click();
+    if (action === "unsupported") showAuthError("هذا الخيار ظاهر ضمن قائمة واتساب، لكنه غير متاح حاليًا.");
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest("#attachment-menu, #attach-btn")) {

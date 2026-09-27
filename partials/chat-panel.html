@@ -109,9 +109,17 @@
         <input id="photo-input" type="file" accept="image/*" capture="environment" hidden />
         <input id="gallery-input" type="file" accept="image/*" hidden />
         <div id="attachment-menu" class="attachment-menu hidden" role="menu" aria-label="خيارات الإرفاق">
-          <button type="button" data-attachment-action="gallery" role="menuitem"><span>🖼️</span> المعرض</button>
-          <button type="button" data-attachment-action="camera" role="menuitem"><span>📷</span> الكاميرا</button>
-          <button type="button" data-attachment-action="document" role="menuitem"><span>📄</span> مستند</button>
+          <div class="attachment-menu-handle" aria-hidden="true"></div>
+          <div class="attachment-options-grid">
+            <button type="button" class="attachment-option" data-attachment-action="gallery" role="menuitem"><span class="attachment-option-icon gallery-icon">▣</span><span>المعرض</span></button>
+            <button type="button" class="attachment-option" data-attachment-action="camera" role="menuitem"><span class="attachment-option-icon camera-icon">●</span><span>الكاميرا</span></button>
+            <button type="button" class="attachment-option" data-attachment-action="unsupported" role="menuitem"><span class="attachment-option-icon location-icon">●</span><span>الموقع</span></button>
+            <button type="button" class="attachment-option" data-attachment-action="unsupported" role="menuitem"><span class="attachment-option-icon contact-icon">●</span><span>جهة اتصال</span></button>
+            <button type="button" class="attachment-option" data-attachment-action="document" role="menuitem"><span class="attachment-option-icon document-icon">▤</span><span>مستند</span></button>
+            <button type="button" class="attachment-option" data-attachment-action="unsupported" role="menuitem"><span class="attachment-option-icon poll-icon">≡</span><span>استطلاع رأي</span></button>
+            <button type="button" class="attachment-option" data-attachment-action="unsupported" role="menuitem"><span class="attachment-option-icon calendar-icon">□</span><span>مناسبة</span></button>
+            <button type="button" class="attachment-option" data-attachment-action="unsupported" role="menuitem"><span class="attachment-option-icon ai-icon">✦</span><span>صور AI</span></button>
+          </div>
         </div>
       </div>
 
