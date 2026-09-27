@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "86";
+const BUILD = "87";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -455,9 +455,8 @@ function closeChatView() {
 
 function updateOfflineBanner() {
   const banner = $("#offline-banner");
-  if (!banner) return;
-
-  banner.classList.toggle("hidden", state.isOnline);
+  banner?.classList.add("hidden");
+  $("#offline-indicator")?.classList.toggle("hidden", state.isOnline);
 }
 
 // ===============================================================
