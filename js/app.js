@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "85";
+const BUILD = "86";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -2700,7 +2700,9 @@ async function signInWithGoogle() {
   try {
     // الطريق الأول: مزوّد جوجل الأصلي في Supabase
     // (يُستخدم تلقائياً متى أُضيف مفتاح جوجل في إعدادات المشروع)
-    if (await isGoogleProviderReady()) {
+    // مسار الجسر هو المسار المجهز في هذا المشروع؛ المسار الأصلي في Supabase
+    // قد يعيد التوجيه بنجاح ثم لا يضمن إنشاء/قراءة صف profiles للمستخدم.
+    if (false && await isGoogleProviderReady()) {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
