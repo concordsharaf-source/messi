@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "80";
+const BUILD = "81";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -8490,6 +8490,9 @@ function openMessageSelection(m, options = {}) {
 
   if (bar) bar.classList.remove("hidden");
   header?.classList.add("actions-mode");
+  // وجود تحديد فعّال يعني أن النقر التالي يجب أن يصل إلى رسالة أخرى،
+  // لا إلى طبقة الريأكت التي كانت تغلق التحديد بالخطأ.
+  document.body.classList.add("msg-selection-active");
 
   // لا نُظهر زر «نسخ» إن لم يكن في المحدَّد أي رسالة نصية
   const chosen = selectedMessages();
@@ -8529,6 +8532,7 @@ function closeMessageSelection() {
   $("#msg-actions")?.classList.add("hidden");
   document.querySelector("#chat-active .chat-header")?.classList.remove("actions-mode");
   document.body.classList.remove("msg-selected");
+  document.body.classList.remove("msg-selection-active");
 }
 
 /** الرسالة المحددة حالياً (من قائمة الرسائل المعروضة) */

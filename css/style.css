@@ -8999,3 +8999,6 @@ body[data-theme="light"] .attachment-menu { background:#202c33; }
 
 /* v78: hidden يجب أن يتغلب على display:block في لوحة المرفقات. */
 .attachment-menu.hidden { display:none !important; }
+
+/* v81: أثناء تحديد الرسائل لا تحجب طبقة الريأكت الرسائل الأخرى. */
+body.msg-selection-active #react-backdrop { pointer-events:none; }
