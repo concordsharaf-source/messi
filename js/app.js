@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "82";
+const BUILD = "83";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -8603,6 +8603,7 @@ function wireMessageLongPress(row, m, canDelete) {
   let pressAt = 0;
   let pressX = 0;
   let pressY = 0;
+  let selectionAtPressStart = false;
 
   const cancel = () => {
     clearTimeout(longPressTimer);
@@ -8631,6 +8632,7 @@ function wireMessageLongPress(row, m, canDelete) {
     if (event.target.closest("button, a, input, textarea, audio, video, .js-jump-quote")) return;
 
     pressActive = true;
+    selectionAtPressStart = isMessageSelected();
     pressAt = performance.now();
     pressX = event.clientX;
     pressY = event.clientY;
@@ -8667,6 +8669,20 @@ function wireMessageLongPress(row, m, canDelete) {
 
     if (!wasActive) return;
 
+    // بعد بدء التحديد: نفس الرسالة تلغي الوضع، ورسالة أخرى تُضاف إليه.
+    // هذا يحدث في pointerup قبل click حتى لا تتدخل طبقة الريأكت.
+    if (selectionAtPressStart) {
+      const sameMessage = (state.selectedMessageIds || []).some((id) => String(id) === String(m.id));
+      if (sameMessage) {
+        closeQuickReact(true);
+      } else {
+        hideQuickReactPanel();
+        openMessageSelection(m);
+      }
+      swallowClickUntil = performance.now() + 450;
+      selectionAtPressStart = false;
+      return;
+    }
     if (!row.classList.contains("react-open") && held >= MIN_HOLD_TO_REACT) {
       if (!isMessageSelected()) openFor();
     }
