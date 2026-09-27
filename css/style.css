@@ -9025,6 +9025,30 @@ body.msg-selection-active #react-backdrop { pointer-events:none; }
 }
 .settings-head-close:hover { background: rgba(134, 150, 160, .16); }
 
+/* ملاحظة مهمة: .settings-panel button تفرض width:100% — فنتجاوزها لأزرار الصفوف
+   (كانت تسحق الأزرار والأيقونات داخلها فتبدو كمربعات متراكبة) */
+.calls-panel .clr-actions { flex: 0 0 auto; }
+
+.calls-panel .clr-btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;   /* .settings-panel button { min-height:44px } كانت تجعلها بيضاوية */
+  padding: 0;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.calls-panel .clr-btn svg { width: 17px; height: 17px; display: block; }
+
+.calls-panel .settings-head-close {
+  width: auto;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 8px;
+  flex: 0 0 auto;
+}
+
 .calls-list { display: flex; flex-direction: column; gap: 2px; }
 
 .calls-group-title {

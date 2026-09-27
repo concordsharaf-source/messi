@@ -4176,6 +4176,9 @@ function openSettings(options = {}) {
 
   const wasClosed = panel.classList.contains("hidden");
 
+  // v88: لا تبقى لوحة المكالمات مفتوحة تحت الإعدادات
+  if (typeof closeCallsPanel === "function") closeCallsPanel();
+
   panel.classList.remove("hidden");
   $("#settings-backdrop")?.classList.remove("hidden");
 
@@ -5185,6 +5188,8 @@ async function logCallUpdate(status, extra = {}) {
 function renderMissedCallBanner(call) {
   const host = document.getElementById("missed-call-host");
   if (!host || !call) return;
+  // v88: المستخدم يشاهد سجل المكالمات الآن ⇒ لا داعي لشريط فوقه
+  if (callsPanelOpen) return;
 
   const who = call.caller?.display_name || "مستخدم";
   const when = new Date(call.created_at);
@@ -5260,7 +5265,12 @@ async function checkMissedCalls() {
   fresh.forEach(renderMissedCallBanner);
 
   const first = fresh[0];
-  showChatToast(`📞 مكالمة لم يرد عليها من ${first.caller?.display_name || "مستخدم"}`);
+  // v88: إن كان المستخدم يشاهد سجل المكالمات فالخبر أمامه بالفعل ⇒ لا تنبيه
+  if (!callsPanelOpen) {
+    showChatToast(`📞 مكالمة لم يرد عليها من ${first.caller?.display_name || "مستخدم"}`);
+  } else {
+    markAllMissedCallsSeen().catch(() => {});
+  }
 
   return fresh;
 }
@@ -14612,6 +14622,7 @@ state.calls = state.calls || [];
 state.callsProfiles = state.callsProfiles || {};
 let callsChannel = null;
 let callsLoading = false;
+let callsPanelOpen = false;   // v88: يمنع ظهور شريط «مكالمة لم يرد عليها» فوق سجل المكالمات
 
 function callDirectionInfo(call) {
   const me = String(state.me?.id || "");
@@ -14805,21 +14816,49 @@ async function loadCalls({ render = true } = {}) {
   }
 }
 
+/** v88: فتح سجل المكالمات = اطّلاع ⇒ لا تبقى الفائتة «غير مرئية» */
+async function markAllMissedCallsSeen() {
+  if (!state.me?.id) return;
+  try {
+    await supabase
+      .from("call_logs")
+      .update({ seen_by_callee: true })
+      .eq("callee_id", state.me.id)
+      .eq("seen_by_callee", false);
+  } catch (_) {}
+  document.querySelectorAll(".missed-call-banner").forEach((el) => el.remove());
+}
+
 function openCallsPanel() {
   const panel = $("#calls-panel");
   if (!panel) return;
 
+  callsPanelOpen = true;
+
+  // على الجوال: إن كنا داخل محادثة فالقائمة مخفية ⇒ نرجع للقائمة أولاً
+  if (document.body.classList.contains("viewing-chat")) {
+    try { closeChatView(); } catch (_) {}
+  }
+  if (typeof isSettingsOpen === "function" && isSettingsOpen()) {
+    try { closeSettings(true); } catch (_) {}
+  }
+
   panel.classList.remove("hidden");
   $("#calls-backdrop")?.classList.remove("hidden");
 
-  // مكالمات لم يرد عليها: تُعتبر «مقروءة» بمجرد فتح السجل
-  markCallConversationRead(null).catch?.(() => {});
+  // إزالة فورية لأي شريط ظاهر (بلا انتظار الشبكة) ثم تعليم الفائتة كمقروءة
+  document.querySelectorAll(".missed-call-banner").forEach((el) => el.remove());
+  markAllMissedCallsSeen().catch(() => {});
+  // قد يصل الشريط بعد فتح اللوحة بلحظات (فحص دوري) ⇒ نُنظّف مرة أخرى
+  setTimeout(() => { if (callsPanelOpen) markAllMissedCallsSeen().catch(() => {}); }, 4000);
+  setTimeout(() => { if (callsPanelOpen) markAllMissedCallsSeen().catch(() => {}); }, 9000);
 
   renderCallsList();
   loadCalls().catch(() => {});
 }
 
 function closeCallsPanel() {
+  callsPanelOpen = false;
   $("#calls-panel")?.classList.add("hidden");
   $("#calls-backdrop")?.classList.add("hidden");
 }
