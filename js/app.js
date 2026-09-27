@@ -153,9 +153,18 @@ async function boot() {
 
   // بلا إنترنت: لا ننتظر الشبكة (قد تُحاول المكتبة تجديد الجلسة فتتأخّر الإقلاع).
   // الجلسة المخزّنة محلياً تكفي، والملف الشخصي يأتي من النسخة المحفوظة.
-  const session = navigator.onLine === false
-    ? null
-    : (await supabase.auth.getSession()).data?.session || null;
+  let session = null;
+  if (navigator.onLine !== false) {
+    try {
+      const sessionResult = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("session timeout")), 7000)),
+      ]);
+      session = sessionResult?.data?.session || null;
+    } catch (error) {
+      console.warn("تعذّر استعادة الجلسة أثناء الإقلاع:", error?.message || error);
+    }
+  }
 
   // ننسخ الجلسة لمُشغِّل الخدمة (للرد من الإشعار بلا فتح التطبيق)
   mirrorSession(session);
@@ -456,16 +465,20 @@ function updateOfflineBanner() {
 // ===============================================================
 
 async function loadChatPanelPartial() {
-  const res = await fetch(`./partials/chat-panel.html?v=${BUILD}`);
-  const html = await res.text();
-
   const container = $("#chat-panel-container");
-
-  if (container) {
-    container.innerHTML = html;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7000);
+    const res = await fetch(`./partials/chat-panel.html?v=${BUILD}`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!res.ok) throw new Error(`chat panel ${res.status}`);
+    const html = await res.text();
+    if (container) container.innerHTML = html;
+  } catch (error) {
+    console.warn("تعذّر تحميل لوحة المحادثة أثناء الإقلاع:", error?.message || error);
+    if (container) container.innerHTML = "";
   }
 }
-
 // ===============================================================
 // AUTH SCREEN
 // ===============================================================
@@ -14655,10 +14668,25 @@ document.addEventListener("DOMContentLoaded", () => {
 // START
 // ===============================================================
 
-document.addEventListener(
-  "DOMContentLoaded",
-  boot
-);
+document.addEventListener("DOMContentLoaded", () => {
+  let finished = false;
+  const safetyTimer = setTimeout(() => {
+    if (finished) return;
+    console.warn("[boot] safety timeout — showing auth screen");
+    try { showAuthScreen(); } catch (_) {}
+    window.__hideSplash?.();
+  }, 8000);
+  boot()
+    .catch((error) => {
+      console.error("[boot] failed:", error);
+      try { showAuthScreen(); } catch (_) {}
+    })
+    .finally(() => {
+      finished = true;
+      clearTimeout(safetyTimer);
+      window.__hideSplash?.();
+    });
+});
 
 // ===============================================================
 // v47: أدوات تشخيص (للفحص الآلي) — لا تؤثر على السلوك
