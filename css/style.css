@@ -8966,3 +8966,18 @@ body[data-theme="light"] .auth-choice-block p, body[data-theme="light"] .auth-ba
 #attachment-caption { flex:1; min-width:60px; border:0; border-bottom:1px solid rgba(134,150,160,.32); outline:0; padding:7px 3px; background:transparent; color:inherit; font:14px inherit; }
 #attachment-preview-cancel { flex:0 0 32px; width:32px; height:32px; border:0; border-radius:50%; background:rgba(134,150,160,.13); color:inherit; cursor:pointer; }
 @media (max-width:480px) { .attachment-menu { inset-inline-end:2px; min-width:148px; } .attachment-preview-info { max-width:105px; } }
+
+/* v75: قائمة إرفاق شبكية مستوحاة من واتساب. */
+.archive-link { display:block; width:calc(100% - 24px); margin:4px 12px 8px; padding:8px 12px; border:0; border-radius:8px; background:transparent; color:var(--wa-green,#00a884); text-align:start; font:600 13px inherit; cursor:pointer; }
+.archive-link:hover { background:rgba(0,168,132,.10); }
+.attachment-menu { inset-inline:0; bottom:calc(100% + 8px); width:100%; min-width:0; padding:12px 12px 16px; border:0; border-radius:20px 20px 0 0; background:#111820; box-shadow:0 -10px 32px rgba(0,0,0,.38); }
+.attachment-menu-handle { width:64px; height:5px; margin:0 auto 16px; border-radius:99px; background:#8b949b; }
+.attachment-options-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px 12px; }
+.attachment-option { display:flex; min-width:0; flex-direction:column; align-items:center; gap:7px; border:0; background:transparent; color:#b9c0c5; font:500 13px inherit; cursor:pointer; }
+.attachment-option > span:last-child { white-space:nowrap; }
+.attachment-option-icon { display:grid; place-items:center; width:66px; height:42px; border:1px solid rgba(158,171,180,.34); border-radius:24px; font:800 27px/1 Arial,sans-serif; }
+.attachment-option:hover .attachment-option-icon { background:rgba(255,255,255,.08); }
+.gallery-icon { color:#1389f5; } .camera-icon { color:#ff1683; } .location-icon { color:#00d5a2; } .contact-icon { color:#00a9ef; }
+.document-icon { color:#956cff; } .poll-icon { color:#ffb31c; } .calendar-icon { color:#ec3985; } .ai-icon { color:#168cff; }
+body[data-theme="light"] .attachment-menu { background:#202c33; }
+@media (max-width:480px) { .attachment-options-grid { gap:16px 5px; } .attachment-option-icon { width:60px; } .attachment-option { font-size:12px; } }
