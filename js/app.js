@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "87";
+const BUILD = "88";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -723,6 +723,8 @@ async function enterApp() {
   // (كان اسم الخلفية يبقى فارغًا حتى أول فتح للإعدادات).
   applyThemeVars();
   syncSettingsValues();
+  // v66: تجهيز سجل المكالمات (زر + ريلتايم)
+  try { wireCallsPanel(); if (state.me?.id) loadCalls({ render: false }); } catch (_) {}
 
 
   const moderationRoles = earlyUserId
@@ -14596,6 +14598,260 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+// ===============================================================
+// v66: سجل المكالمات — «تبويب المكالمات» زي واتساب
+// ---------------------------------------------------------------
+// يعرض كل مكالماتي (صادرة/واردة/فائتة) من جدول call_logs مرتّبة بالأحدث،
+// مجمّعة باليوم/أمس/التاريخ، بأيقونة الاتجاه والوقت، مع:
+//   • الضغط على الصف  ⇒ فتح المحادثة
+//   • زر الاتصال      ⇒ إعادة الاتصال
+// ويتحدّث لحظياً (ريلتايم) دون إعادة تحميل.
+// ===============================================================
+
+state.calls = state.calls || [];
+state.callsProfiles = state.callsProfiles || {};
+let callsChannel = null;
+let callsLoading = false;
+
+function callDirectionInfo(call) {
+  const me = String(state.me?.id || "");
+  const mine = String(call.caller_id || "") === me;
+  const status = String(call.status || "");
+  const missed = !mine && (status === "missed" || status === "canceled" || status === "busy");
+  const declined = status === "declined";
+
+  const t = state.t || {};
+  return {
+    mine,
+    missed: missed || (declined && mine),
+    label: mine ? (t.call_outgoing || "صادرة") : missed ? (t.call_missed_short || "فائتة") : (t.call_incoming || "واردة"),
+    // سهم صادر ↗ / وارد ↘ (زي واتساب)
+    arrow: mine
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h8.6L5 17.6 6.4 19 17 8.4V17h2V5H7v2z"/></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 17H8.4L19 6.4 17.6 5 7 15.6V7H5v12h12v-2z"/></svg>',
+  };
+}
+
+function callPeerOf(call) {
+  const me = String(state.me?.id || "");
+  return String(call.caller_id || "") === me ? String(call.callee_id || "") : String(call.caller_id || "");
+}
+
+function callPeerName(call) {
+  const peerId = callPeerOf(call);
+  const prof = state.callsProfiles[peerId];
+  if (prof?.display_name) return prof.display_name;
+
+  const contact = homeContacts().find((c) => String(c.id) === peerId || String(c.otherId) === peerId);
+  return contact?.display_name || "مستخدم";
+}
+
+function formatCallDuration(seconds) {
+  const n = Number(seconds || 0);
+  if (!n) return "";
+  const m = Math.floor(n / 60);
+  const sec = n % 60;
+  return m ? `${m}:${String(sec).padStart(2, "0")}` : `0:${String(sec).padStart(2, "0")}`;
+}
+
+function callGroupLabel(iso) {
+  const t = state.t || {};
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const today = startOf(new Date());
+  const day = startOf(d);
+  const diff = Math.round((today - day) / 86400000);
+  if (diff <= 0) return t.calls_today || "اليوم";
+  if (diff === 1) return t.calls_yesterday || "أمس";
+  return d.toLocaleDateString(state.lang === "ar" ? "ar-SA" : "en-US", { day: "2-digit", month: "long" });
+}
+
+/** يجلب أسماء/صور الأطراف في سجل المكالمات */
+async function loadCallProfiles(ids) {
+  const missing = [...new Set(ids)].filter((id) => id && !state.callsProfiles[id]);
+  if (!missing.length) return;
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", missing);
+
+    if (error || !Array.isArray(data)) return;
+    data.forEach((prof) => { state.callsProfiles[prof.id] = prof; });
+  } catch (_) {}
+}
+
+function buildCallLogRow(call) {
+  const dir = callDirectionInfo(call);
+  const peerId = callPeerOf(call);
+  const prof = state.callsProfiles[peerId] || {};
+  const name = callPeerName(call);
+  const when = new Date(call.created_at);
+  const time = Number.isNaN(when.getTime())
+    ? ""
+    : when.toLocaleTimeString(state.lang === "ar" ? "ar-SA" : "en-US", { hour: "2-digit", minute: "2-digit" });
+  const dur = formatCallDuration(call.duration_seconds);
+
+  const row = document.createElement("div");
+  row.className = `call-log-row${dir.missed ? " missed" : ""}`;
+  row.dataset.callId = call.id;
+
+  const avatar = avatarUrl({ avatar_url: prof.avatar_url, display_name: name });
+  const initial = (name || "?").trim().charAt(0);
+
+  row.innerHTML = `
+    <span class="clr-avatar">${prof.avatar_url ? `<img src="${escapeHtml(avatar)}" alt="" loading="lazy" decoding="async">` : escapeHtml(initial)}</span>
+
+    <span class="clr-main">
+      <span class="clr-name" dir="${nameDirection(name)}">${escapeHtml(name)}</span>
+      <span class="clr-meta">
+        <span class="clr-dir">${dir.arrow}</span>
+        <span>${escapeHtml(dir.label)}</span>
+        <span dir="ltr">${escapeHtml(time)}</span>
+        ${dur ? `<span dir="ltr">· ${escapeHtml(dur)}</span>` : ""}
+      </span>
+    </span>
+
+    <span class="clr-actions">
+      <button type="button" class="clr-btn clr-chat" title="${escapeHtml((state.t || {}).open_chat || "فتح المحادثة")}" aria-label="${escapeHtml((state.t || {}).open_chat || "فتح المحادثة")}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2z"/></svg>
+      </button>
+      <button type="button" class="clr-btn clr-call" title="${escapeHtml((state.t || {}).call_back || "اتصال")}" aria-label="${escapeHtml((state.t || {}).call_back || "اتصال")}">
+        ${missedCallIconSvg()}
+      </button>
+    </span>
+  `;
+
+  const openChat = async () => {
+    closeCallsPanel();
+    const convId = call.conversation_id;
+    const contact =
+      (state.contacts || []).find((c) => String(c._conversationId) === String(convId)) ||
+      (state.conversationRows || []).find((c) => String(c._conversationId) === String(convId));
+    if (contact) await openConversation(contact);
+    else if (convId) await openConversationById(convId);
+  };
+
+  const callBack = async () => {
+    closeCallsPanel();
+    await openChat();
+    // ملاحظة: openChat تُغلق اللوحة وتفتح المحادثة، ثم نبدأ الاتصال
+    setTimeout(() => { try { startOutgoingCall(); } catch (_) {} }, 350);
+  };
+
+  row.addEventListener("click", () => { openChat().catch(() => {}); });
+  row.querySelector(".clr-call")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    callBack().catch(() => {});
+  });
+
+  return row;
+}
+
+function renderCallsList() {
+  const host = $(" #calls-list".trim());
+  const empty = $("#calls-empty");
+  if (!host) return;
+
+  const calls = Array.isArray(state.calls) ? state.calls : [];
+  host.innerHTML = "";
+
+  if (empty) empty.classList.toggle("hidden", calls.length > 0);
+
+  let lastGroup = "";
+
+  calls.forEach((call) => {
+    const group = callGroupLabel(call.created_at);
+
+    if (group && group !== lastGroup) {
+      lastGroup = group;
+      const title = document.createElement("div");
+      title.className = "calls-group-title";
+      title.textContent = group;
+      host.appendChild(title);
+    }
+
+    host.appendChild(buildCallLogRow(call));
+  });
+}
+
+/** يجلب سجل المكالمات من القاعدة (صادرة + واردة) */
+async function loadCalls({ render = true } = {}) {
+  if (!state.me?.id || callsLoading) return;
+  callsLoading = true;
+
+  try {
+    const me = state.me.id;
+    const { data, error } = await supabase
+      .from("call_logs")
+      .select("id, conversation_id, caller_id, callee_id, status, duration_seconds, created_at, answered_at")
+      .or(`caller_id.eq.${me},callee_id.eq.${me}`)
+      .order("created_at", { ascending: false })
+      .limit(200);
+
+    if (error) {
+      console.warn("[CALL] تعذّر جلب سجل المكالمات:", error.message);
+      return;
+    }
+
+    state.calls = Array.isArray(data) ? data : [];
+    await loadCallProfiles(state.calls.map(callPeerOf));
+    if (render) renderCallsList();
+  } catch (_) {
+  } finally {
+    callsLoading = false;
+  }
+}
+
+function openCallsPanel() {
+  const panel = $("#calls-panel");
+  if (!panel) return;
+
+  panel.classList.remove("hidden");
+  $("#calls-backdrop")?.classList.remove("hidden");
+
+  // مكالمات لم يرد عليها: تُعتبر «مقروءة» بمجرد فتح السجل
+  markCallConversationRead(null).catch?.(() => {});
+
+  renderCallsList();
+  loadCalls().catch(() => {});
+}
+
+function closeCallsPanel() {
+  $("#calls-panel")?.classList.add("hidden");
+  $("#calls-backdrop")?.classList.add("hidden");
+}
+
+function wireCallsPanel() {
+  const btn = $("#btn-calls");
+  if (btn && btn.dataset.wired !== "1") {
+    btn.dataset.wired = "1";
+    btn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const panel = $("#calls-panel");
+      if (panel && !panel.classList.contains("hidden")) closeCallsPanel();
+      else openCallsPanel();
+    });
+  }
+
+  $("#close-calls")?.addEventListener("click", closeCallsPanel);
+  $("#calls-backdrop")?.addEventListener("click", closeCallsPanel);
+
+  // الريلتايم: أي مكالمة جديدة/محدّثة تظهر في السجل فوراً
+  if (!callsChannel && state.me?.id && window.supabase) {
+    try {
+      callsChannel = supabase
+        .channel("calls-log")
+        .on("postgres_changes", { event: "*", schema: "public", table: "call_logs" }, () => {
+          loadCalls({ render: !$("#calls-panel")?.classList.contains("hidden") }).catch(() => {});
+        })
+        .subscribe();
+    } catch (_) {}
+  }
+}
+
 // زر «تحديث التطبيق الآن» في الإعدادات: يمسح كل الكاش ويُلغي الـ SW ويعيد التحميل
 async function forceAppUpdate() {
   const status = document.getElementById("update-status");
@@ -14730,6 +14986,9 @@ window.WA_UPDATE = {
 // زر «تحديث التطبيق الآن» + رقم الإصدار: يُربطان دائماً (حتى قبل تسجيل الدخول)
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("btn-force-update")?.addEventListener("click", () => forceAppUpdate());
+
+  // v66: زر سجل المكالمات (متاح قبل الدخول أيضاً — يعمل بعد الجهوزية)
+  wireCallsPanel();
 
   const buildLabel = document.getElementById("value-build");
   if (buildLabel) buildLabel.textContent = `v${BUILD}`;
