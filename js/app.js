@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "81";
+const BUILD = "82";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -5294,6 +5294,12 @@ function wireConversationOptions() {
     if (!quote) return;
     event.stopPropagation();
     jumpToQuotedMessage(quote.dataset.quoteId);
+  });
+  // واتساب: الضغط على المساحة الفارغة يلغي الريأكت والتحديد.
+  // أما الضغط على رسالة أخرى فيُترك لمستمع الرسالة ليضيفها للتحديد المتعدد.
+  $("#chat-messages")?.addEventListener("click", (event) => {
+    if (event.target?.closest?.(".bubble-row")) return;
+    if (isMessageSelected() || quickReactTarget) closeQuickReact(true);
   });
   wireMessageActions();
 
