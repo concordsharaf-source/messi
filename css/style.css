@@ -9314,3 +9314,34 @@ body.msg-selected #react-backdrop {
     inset-inline-end: auto;
   }
 }
+
+/* v94: موضع ذيل واتساب الصحيح مع عكس شكل المثلث فقط، وتثبيت أزرار رأس القائمة. */
+.bubble-row.tail.user-side .bubble::after {
+  inset-inline-start: -8px;
+  inset-inline-end: auto;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+.bubble-row.tail.admin-side .bubble::after {
+  inset-inline-end: -8px;
+  inset-inline-start: auto;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.sidebar-header {
+  position: relative;
+  overflow: visible;
+}
+.sidebar-header .me {
+  overflow: hidden;
+}
+.sidebar-actions {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  min-width: max-content;
+  overflow: visible;
+}
+.sidebar-actions button {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+}
