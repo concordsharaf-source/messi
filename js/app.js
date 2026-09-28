@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "90";
+const BUILD = "91";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -735,6 +735,10 @@ async function enterApp() {
     state.me.is_admin ||
     moderationRoles.some((role) => ["admin", "moderator"].includes(role))
   );
+
+  // قد تُربط فلاتر القائمة قبل اكتمال بيانات الصلاحيات؛ حدّث الاختصار
+  // فور معرفة الدور بدل انتظار فتح الإعدادات ثم إغلاقها.
+  updateArchiveShortcutsVisibility();
 
   $("#my-name").textContent = state.me.display_name;
   $("#my-name")?.setAttribute("dir", nameDirection(state.me.display_name));
@@ -2132,7 +2136,7 @@ async function renderAdminTools() {
   }
 
   box.classList.remove("hidden");
-  document.querySelectorAll("#btn-archived, #archive-link").forEach((el) => el.classList.toggle("hidden", !state.me?.is_admin));
+  updateArchiveShortcutsVisibility();
   await loadAutoReplySettings();
   renderReplyPreview();
 
@@ -4031,6 +4035,13 @@ function wireAdminFeatures() {
   $("#btn-refresh-activity")?.addEventListener("click", renderActivityFeed);
   $("#btn-refresh-summary")?.addEventListener("click", renderDailySummary);
 
+}
+
+function updateArchiveShortcutsVisibility() {
+  const canModerate = Boolean(state.me?.can_moderate || state.me?.is_admin);
+  document.querySelectorAll("#btn-archived, #archive-link").forEach((el) => {
+    el.classList.toggle("hidden", !canModerate);
+  });
 }
 
 // ===============================================================

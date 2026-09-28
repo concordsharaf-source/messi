@@ -9188,3 +9188,30 @@ body.msg-selected #react-backdrop {
   color: inherit !important;
   -webkit-text-fill-color: currentColor;
 }
+
+
+/* v91: أزرار رأس القائمة متجاورة بلا تداخل، ويظل لكل زر مساحة مستقلة. */
+.sidebar-header { min-width: 0; }
+.sidebar-header .me { min-width: 0; flex: 1 1 auto; }
+.sidebar-header .me-text { min-width: 0; }
+.sidebar-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: max-content;
+  white-space: nowrap;
+}
+.sidebar-actions button {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  padding: 0;
+  margin: 0;
+}
+.sidebar-actions button svg { display: block; width: 20px; height: 20px; }
+@media (max-width: 520px) {
+  .sidebar-actions { gap: 1px; }
+  .sidebar-actions button { width: 34px; height: 34px; flex-basis: 34px; }
+  .sidebar-actions button svg { width: 18px; height: 18px; }
+}
