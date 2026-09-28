@@ -9292,3 +9292,25 @@ body.msg-selected #react-backdrop {
     background: transparent !important;
   }
 }
+
+/* v93: عكس جهة ذيل الفقاعة والريأكت — مطابق للاتجاه المطلوب في واتساب. */
+.bubble-row.tail.user-side .bubble::after {
+  inset-inline-end: -8px;
+  inset-inline-start: auto;
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+.bubble-row.tail.admin-side .bubble::after {
+  inset-inline-start: -8px;
+  inset-inline-end: auto;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+@media (hover: hover) and (pointer: fine) {
+  .bubble-row.user-side .bubble-actions {
+    inset-inline-end: -38px;
+    inset-inline-start: auto;
+  }
+  .bubble-row.admin-side .bubble-actions {
+    inset-inline-start: -38px;
+    inset-inline-end: auto;
+  }
+}
