@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "95";
+const BUILD = "96";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -75,6 +75,7 @@ const state = {
   // فلتر قسم «المحادثات»: mine | all | <adminId>
   conversationRows: [],
   otherAdminProfiles: [],
+  adminsCollapsed: localStorage.getItem("wa_admins_collapsed") === "1",
   ownerFilter:
     typeof localStorage !== "undefined"
       ? localStorage.getItem("wa_owner_filter") || "mine"
@@ -3078,7 +3079,33 @@ function applyContactFilters() {
   }
 }
 
+function wireAdminSectionToggle() {
+  const heading = $("#admins-heading");
+  const section = $("#admins-section");
+  if (!heading || !section || heading.dataset.wired === "1") return;
+  heading.dataset.wired = "1";
+  heading.setAttribute("role", "button");
+  heading.setAttribute("tabindex", "0");
+  const toggle = () => {
+    state.adminsCollapsed = !state.adminsCollapsed;
+    try { localStorage.setItem("wa_admins_collapsed", state.adminsCollapsed ? "1" : "0"); } catch (_) {}
+    section.classList.toggle("hidden", state.adminsCollapsed);
+    heading.classList.toggle("is-collapsed", state.adminsCollapsed);
+    heading.setAttribute("aria-expanded", String(!state.adminsCollapsed));
+  };
+  heading.addEventListener("click", toggle);
+  heading.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  });
+  heading.classList.toggle("is-collapsed", state.adminsCollapsed);
+  heading.setAttribute("aria-expanded", String(!state.adminsCollapsed));
+}
+
 function wireContactFilters() {
+  wireAdminSectionToggle();
   wireOwnerFilter();
 
   const archiveShortcuts = [$("#btn-archived"), $("#archive-link")].filter(Boolean);
@@ -5924,7 +5951,8 @@ function renderConversationSection() {
   const bar = $("#conversation-owner-filter");
   const items = archiveView ? [] : buildOwnerChips(rows);
   $("#admins-heading")?.classList.toggle("hidden", archiveView || !(state.otherAdminProfiles || []).length);
-  $("#admins-section")?.classList.toggle("hidden", archiveView || !(state.otherAdminProfiles || []).length);
+  $("#admins-section")?.classList.toggle("hidden", archiveView || state.adminsCollapsed || !(state.otherAdminProfiles || []).length);
+  $("#admins-heading")?.setAttribute("aria-expanded", String(!state.adminsCollapsed));
   $("#users-heading")?.classList.remove("hidden");
   $("#users-section")?.classList.remove("hidden");
 
