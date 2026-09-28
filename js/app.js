@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "91";
+const BUILD = "92";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -320,6 +320,17 @@ async function boot() {
     // إغلاق داخلي للإعدادات: لا نفعل شيئاً (الحالة سُحبت بالفعل)
     if (popstateFromSettings) {
       popstateFromSettings = false;
+      return;
+    }
+
+    // صفحة المكالمات لها حالة مستقلة؛ الرجوع منها يعيد القائمة ولا يغادر
+    // التطبيق أو يستدعي closeChatView.
+    if (popstateFromCalls) {
+      popstateFromCalls = false;
+      return;
+    }
+    if (callsPanelOpen) {
+      closeCallsPanel(true);
       return;
     }
 
@@ -4174,6 +4185,8 @@ window.__hideSplash = () => {
 
 let settingsHistoryPushed = false;   // هل أضفنا حالة الإعدادات للسجل؟
 let popstateFromSettings = false;    // نمنع التعامل مرّتين بعد إغلاق بالسجل
+let callsHistoryPushed = false;
+let popstateFromCalls = false;
 
 function isSettingsOpen() {
   return !document.getElementById("settings-panel")?.classList.contains("hidden");
@@ -4188,7 +4201,7 @@ function openSettings(options = {}) {
   const wasClosed = panel.classList.contains("hidden");
 
   // v88: لا تبقى لوحة المكالمات مفتوحة تحت الإعدادات
-  if (typeof closeCallsPanel === "function") closeCallsPanel();
+  if (typeof closeCallsPanel === "function") closeCallsPanel(true);
 
   panel.classList.remove("hidden");
   $("#settings-backdrop")?.classList.remove("hidden");
@@ -8066,7 +8079,12 @@ function buildMessageBubble(m) {
           title="React"
           type="button"
         >
-          😊
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <circle cx="12" cy="12" r="9.25" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            <circle cx="9" cy="10" r="1" fill="currentColor"/>
+            <circle cx="15" cy="10" r="1" fill="currentColor"/>
+            <path d="M8.5 14c.9 1.2 2.05 1.8 3.5 1.8s2.6-.6 3.5-1.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
         </button>
         ${canDeleteMessage ? `<button class="bubble-action-delete" title="حذف الرسالة للجميع (مشرف)" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>` : ""}
       </div>
@@ -14862,6 +14880,13 @@ function openCallsPanel() {
 
   panel.classList.remove("hidden");
   $("#calls-backdrop")?.classList.remove("hidden");
+  if (history.state?.waSettings) {
+    history.replaceState({ waCalls: true }, "", "#calls");
+    callsHistoryPushed = true;
+  } else if (!callsHistoryPushed) {
+    callsHistoryPushed = true;
+    history.pushState({ waCalls: true }, "", "#calls");
+  }
 
   // إزالة فورية لأي شريط ظاهر (بلا انتظار الشبكة) ثم تعليم الفائتة كمقروءة
   document.querySelectorAll(".missed-call-banner").forEach((el) => el.remove());
@@ -14874,10 +14899,17 @@ function openCallsPanel() {
   loadCalls().catch(() => {});
 }
 
-function closeCallsPanel() {
+function closeCallsPanel(viaBack = false) {
   callsPanelOpen = false;
   $("#calls-panel")?.classList.add("hidden");
   $("#calls-backdrop")?.classList.add("hidden");
+  if (!viaBack && callsHistoryPushed && history.state?.waCalls) {
+    callsHistoryPushed = false;
+    popstateFromCalls = true;
+    history.back();
+    return;
+  }
+  callsHistoryPushed = false;
 }
 
 function wireCallsPanel() {
