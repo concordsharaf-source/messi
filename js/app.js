@@ -43,7 +43,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "94";
+const BUILD = "95";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -2957,6 +2957,7 @@ async function loadAdminMeta() {
     state.adminMeta = map;
 
     Object.keys(map).forEach(paintContactMeta);
+    if (state.contactFilter === "archived") renderConversationSection();
     applyContactFilters();
 
     // v59.1: القائمة تُرسم قبل وصول بيانات التثبيت ⇒ نُعيد الترتيب بعد وصولها
@@ -3090,6 +3091,7 @@ function wireContactFilters() {
       const filterBar = $("#chat-filters");
       filterBar?.classList.remove("hidden");
       filterBar?.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.filter === "archived"));
+      renderConversationSection();
       applyContactFilters();
     });
   });
@@ -3111,6 +3113,7 @@ function wireContactFilters() {
 
       state.contactFilter = btn.dataset.filter;
       bar.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b === btn));
+      renderConversationSection();
       applyContactFilters();
     });
   }
@@ -5913,9 +5916,17 @@ function renderConversationSection() {
   if (!host) return;
 
   const rows = state.conversationRows || [];
+  const archiveView = state.contactFilter === "archived";
+  const archiveRows = archiveView
+    ? rows.filter((c) => Boolean(metaFor(c?._conversationId).archived))
+    : rows;
   const meId = String(state.me?.id || "");
   const bar = $("#conversation-owner-filter");
-  const items = buildOwnerChips(rows);
+  const items = archiveView ? [] : buildOwnerChips(rows);
+  $("#admins-heading")?.classList.toggle("hidden", archiveView || !(state.otherAdminProfiles || []).length);
+  $("#admins-section")?.classList.toggle("hidden", archiveView || !(state.otherAdminProfiles || []).length);
+  $("#users-heading")?.classList.remove("hidden");
+  $("#users-section")?.classList.remove("hidden");
 
   if (bar) {
     const showBar = items.length > 1;
@@ -5950,8 +5961,8 @@ function renderConversationSection() {
 
   const filter = state.ownerFilter;
 
-  const visible = rows.filter((c) => {
-    if (filter === "all") return true;
+  const visible = archiveRows.filter((c) => {
+    if (archiveView || filter === "all") return true;
     if (filter === "mine") return conversationOwnerId(c) === meId;
     return conversationOwnerId(c) === filter;
   });
@@ -5963,7 +5974,9 @@ function renderConversationSection() {
 
     empty.className = "owner-empty";
     empty.textContent =
-      filter === "mine"
+      archiveView
+        ? "لا توجد محادثات مؤرشفة."
+        : filter === "mine"
         ? "لا توجد محادثات لك أنت حتى الآن."
         : filter === "all"
         ? "لا توجد محادثات على الإطلاق."
