@@ -3,6 +3,7 @@ import {
   signUp,
   signIn,
   signOut,
+  verifyCurrentPassword,
   getCurrentProfile,
   signUpWithPhone,
   signInWithPhone,
@@ -43,7 +44,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "96";
+const BUILD = "97";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -4314,12 +4315,41 @@ function wireChrome() {
   wireAdminFeatures();
 
   $("#btn-logout")?.addEventListener("click", async () => {
+    const profile = state.me;
+    if (!profile?.id) return;
+    const password = await showAppPrompt({
+      title: "تأكيد تسجيل الخروج",
+      text: "لن يتم تسجيل الخروج إلا بعد إدخال كلمة المرور الحالية.",
+      icon: "🔐",
+      placeholder: "كلمة المرور الحالية",
+      yes: "متابعة",
+      no: "إلغاء",
+    });
+    if (!password) return;
+    const verified = await verifyCurrentPassword({
+      email: profile.email,
+      phone: profile.phone,
+      password,
+    });
+    if (!verified) {
+      showAuthError("كلمة المرور غير صحيحة — لم يتم تسجيل الخروج.");
+      return;
+    }
+    const confirmed = await showAppConfirm({
+      title: "تسجيل الخروج نهائيًا؟",
+      text: "ستحتاج إلى إدخال كلمة المرور مرة أخرى عند العودة.",
+      icon: "🚪",
+      yes: "تسجيل الخروج",
+      no: "البقاء داخل التطبيق",
+      danger: true,
+    });
+    if (!confirmed) return;
     closeSettings();
     clearCachedProfile();
     try {
       await clearAllCache();
     } catch (err) {}
-    await signOut(state.me?.id);
+    await signOut(profile.id);
     location.reload();
   });
 

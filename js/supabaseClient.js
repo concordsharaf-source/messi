@@ -11,7 +11,13 @@ function offlineAwareFetch(input, init) {
 }
 
 export const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true },
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true,
+    storage: window.localStorage,
+    storageKey: "messi.supabase.auth",
+  },
   realtime: { params: { eventsPerSecond: 10 } },
   global: { fetch: offlineAwareFetch },
 });

@@ -65,6 +65,17 @@ export async function signIn({ email, password }) {
   return data;
 }
 
+export async function verifyCurrentPassword({ email, phone, password }) {
+  const candidate = String(email || phone || "").trim().toLowerCase();
+  if (!candidate || !password) return false;
+  const account = candidate.includes("@") ? candidate : internalEmail(candidate);
+  const { error } = await supabase.auth.signInWithPassword({
+    email: account,
+    password,
+  });
+  return !error;
+}
+
 export async function signOut(userId) {
   // تُحذف ملكية الرمز قبل signOut حتى تسمح RLS للمستخدم الحالي بالحذف.
   await removeFcmToken(userId);
