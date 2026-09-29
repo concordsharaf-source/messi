@@ -44,7 +44,7 @@ import {
 } from "./push.js";
 
 // رقم الإصدار: يُحدَّث مع كل نشرة (يُستخدم في كسر الكاش وفي عرض رقم الإصدار)
-const BUILD = "97";
+const BUILD = "98";
 
 // ===============================================================
 // الصورة الافتراضية للمستخدم — نفس شكل صورة واتساب (ظلّ رمادي)
@@ -4322,6 +4322,7 @@ function wireChrome() {
       text: "لن يتم تسجيل الخروج إلا بعد إدخال كلمة المرور الحالية.",
       icon: "🔐",
       placeholder: "كلمة المرور الحالية",
+      inputType: "password",
       yes: "متابعة",
       no: "إلغاء",
     });
@@ -7238,11 +7239,12 @@ function openAppModal(options = {}) {
 
   if (options.mode === "prompt" && inputWrap && input) {
     inputWrap.classList.remove("hidden");
+    input.type = options.inputType || "text";
     input.value = options.value || "";
     input.placeholder = options.placeholder || "";
   } else {
     inputWrap?.classList.add("hidden");
-    if (input) input.value = "";
+    if (input) { input.value = ""; input.type = "text"; }
   }
 
   modal.classList.remove("hidden");
